@@ -28,13 +28,18 @@ The loop autonomously ran **20+ GPU experiments**, rewrote the paper's narrative
 
 ## 🔄 Workflows
 
-These skills compose into a full research lifecycle:
+These skills compose into a full research lifecycle. The two workflows can be used independently or chained together:
+
+- **Already have an idea + initial plan?** Jump straight to Workflow 1 (auto review loop)
+- **Exploring a new area (e.g., writing a survey)?** Start with Workflow 2 (idea discovery)
+- **Full pipeline?** Workflow 2 → Workflow 1, from literature survey all the way to submission
 
 ### Full Pipeline 🚀
 
 ```
 /research-lit → /idea-creator → /novelty-check → implement → /run-experiment → /auto-review-loop → submit
   (survey)      (brainstorm)    (verify novel)    (code)      (deploy & run)    (review & fix)     (done!)
+  ├──── Workflow 2: Idea Discovery ────┤              ├──────── Workflow 1: Auto Loop ────────┤
 ```
 
 ### Workflow 1: Auto Research Loop 🔁 (sleep & wake up to results)
