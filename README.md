@@ -432,32 +432,6 @@ Claude Code reads this and knows how to SSH in, activate the environment, and la
 
 **No server?** The review and rewriting skills still work without GPU access. Only experiment-related fixes will be skipped (flagged for manual follow-up).
 
-## 🏗️ How It Works
-
-```
-┌─────────────────────────────────────────────────┐
-│                 Claude Code                      │
-│                                                  │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐   │
-│  │  Read     │    │  Write   │    │  SSH to  │   │
-│  │  project  │───▶│  code &  │───▶│  GPU     │   │
-│  │  context  │    │  scripts │    │  server  │   │
-│  └──────────┘    └──────────┘    └──────────┘   │
-│       │                               │          │
-│       ▼                               ▼          │
-│  ┌──────────────────────────────────────────┐    │
-│  │         Codex MCP (External LLM)         │    │
-│  │                                          │    │
-│  │  Round 1: "Score 5/10. Weaknesses: ..."  │    │
-│  │  Round 2: "Score 6.5. Better, but ..."   │    │
-│  │  Round 3: "Score 7.0. Almost there..."   │    │
-│  │  Round 4: "Score 7.5. Ready." ✅         │    │
-│  └──────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────┘
-```
-
-The key insight: **Claude Code handles execution** (reading files, writing code, running experiments, collecting results) while **the external LLM handles evaluation** (scoring, identifying weaknesses, suggesting fixes). This separation creates a genuine feedback loop — neither model is grading its own work.
-
 ## 🎛️ Customization
 
 Skills are plain Markdown files. Fork and customize:
