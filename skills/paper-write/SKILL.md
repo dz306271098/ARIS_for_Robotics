@@ -14,14 +14,15 @@ Draft a LaTeX paper based on: **$ARGUMENTS**
 - **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex MCP for section review. Must be an OpenAI model.
 - **TARGET_VENUE = `ICLR`** — Default venue. Supported: `ICLR`, `NeurIPS`, `ICML`. Determines style file and formatting.
 - **ANONYMOUS = true** — If true, use anonymous author block. Set `false` for camera-ready.
-- **MAX_PAGES = 9** — Main body page limit (excluding references and appendix).
+- **MAX_PAGES = 9** — Main body page limit. Counts from first page to end of Conclusion section. References and appendix are NOT counted.
 
 ## Inputs
 
 1. **PAPER_PLAN.md** — outline with claims-evidence matrix, section plan, figure plan (from `/paper-plan`)
-2. **Generated figures** — PDF/PNG files in `figures/` (from `/paper-figure`)
-3. **LaTeX includes** — `figures/latex_includes.tex` (from `/paper-figure`)
-4. **Bibliography** — existing `.bib` file, or will create one
+2. **NARRATIVE_REPORT.md** — the research narrative (primary source of content)
+3. **Generated figures** — PDF/PNG files in `figures/` (from `/paper-figure`)
+4. **LaTeX includes** — `figures/latex_includes.tex` (from `/paper-figure`)
+5. **Bibliography** — existing `.bib` file, or will create one
 
 If no PAPER_PLAN.md exists, ask the user to run `/paper-plan` first or provide a brief outline.
 
@@ -29,7 +30,7 @@ If no PAPER_PLAN.md exists, ask the user to run `/paper-plan` first or provide a
 
 ### Venue-Specific Setup
 
-The skill includes conference templates. Select based on TARGET_VENUE:
+The skill includes conference templates in `templates/`. Select based on TARGET_VENUE:
 
 **ICLR:**
 ```latex
@@ -60,7 +61,7 @@ paper/
 ├── main.tex                    # master file (includes sections)
 ├── iclr2026_conference.sty     # or neurips_2025.sty / icml2025.sty
 ├── math_commands.tex           # shared math macros
-├── references.bib              # bibliography
+├── references.bib              # bibliography (filtered — only cited entries)
 ├── sections/
 │   ├── 0_abstract.tex
 │   ├── 1_introduction.tex
@@ -68,35 +69,31 @@ paper/
 │   ├── 3_method.tex            # or preliminaries, setup, etc.
 │   ├── 4_experiments.tex
 │   ├── 5_conclusion.tex
-│   └── A_appendix.tex
+│   └── A_appendix.tex          # proof details, extra experiments
 └── figures/                    # symlink or copy from project figures/
 ```
 
+**Section files are FLEXIBLE**: If the paper plan has 6-8 sections, create corresponding files (e.g., `4_theory.tex`, `5_experiments.tex`, `6_analysis.tex`, `7_conclusion.tex`).
+
 ## Workflow
+
+### Step 0: Backup
+
+If `paper/` already exists, back up to `paper-backup-{timestamp}/` before overwriting. Never silently destroy existing work.
 
 ### Step 1: Initialize Project
 
-1. Create `paper/` directory (if it already exists, back up to `paper-backup-{timestamp}/` first)
-2. Copy venue style file (from templates/ or download)
-3. Generate `main.tex` master file with:
-   - Document class and packages
-   - Anonymous author block (or placeholder)
-   - `\input{sections/X.tex}` for each section
-   - Bibliography setup
+1. Create `paper/` directory
+2. Copy venue template from `templates/` — the template already includes:
+   - All standard packages (amsmath, hyperref, cleveref, booktabs, etc.)
+   - Theorem environments with `\crefname{assumption}` fix
+   - Anonymous author block
+3. Generate `math_commands.tex` with paper-specific notation
+4. Create section files matching PAPER_PLAN structure
 
 **Author block (anonymous mode):**
 ```latex
 \author{Anonymous Authors}
-```
-
-**Author block (camera-ready mode):**
-```latex
-% Author information to be filled by the user
-\author{
-  [Author Name] \\
-  [Affiliation] \\
-  \texttt{[email]} \\
-}
 ```
 
 ### Step 2: Generate math_commands.tex
@@ -107,7 +104,6 @@ Create shared math macros based on the paper's notation:
 % math_commands.tex — shared notation
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\E}{\mathbb{E}}
-\newcommand{\N}{\mathcal{N}}
 \DeclareMathOperator*{\argmin}{arg\,min}
 \DeclareMathOperator*{\argmax}{arg\,max}
 % Add paper-specific notation here
@@ -118,9 +114,10 @@ Create shared math macros based on the paper's notation:
 Process sections in order. For each section:
 
 1. **Read the plan** — what claims, evidence, citations belong here
-2. **Draft content** — write complete LaTeX (not placeholders)
-3. **Insert figures/tables** — use snippets from `figures/latex_includes.tex`
-4. **Add citations** — use `\citep{}` / `\citet{}` (all three venues use `natbib`)
+2. **Read NARRATIVE_REPORT.md** — extract relevant content, findings, and quantitative results
+3. **Draft content** — write complete LaTeX (not placeholders)
+4. **Insert figures/tables** — use snippets from `figures/latex_includes.tex`
+5. **Add citations** — use `\citep{}` / `\citet{}` (all three venues use `natbib`)
 
 #### Section-Specific Guidelines
 
@@ -130,6 +127,7 @@ Process sections in order. For each section:
 - Include one concrete quantitative result
 - 150-250 words (check venue limit)
 - No citations, no undefined acronyms
+- No `\begin{abstract}` — that's in main.tex
 
 **§1 Introduction:**
 - Open with a compelling hook (1-2 sentences, problem motivation)
@@ -140,15 +138,17 @@ Process sections in order. For each section:
 - Target: 1.5 pages
 
 **§2 Related Work:**
-- Organize by category, not chronologically
-- Each category: 1 paragraph summarizing the line of work + 1 sentence positioning this paper
-- Use `\paragraph{Category Name.}` for subsections within related work
+- **MINIMUM 1 full page** (3-4 substantive paragraphs). Short related work sections are a common reviewer complaint.
+- Organize by category using `\paragraph{Category Name.}`
+- Each category: 1 paragraph summarizing the line of work + 1-2 sentences positioning this paper
 - Do NOT just list papers — synthesize and compare
-- Target: 1 page
+- End each paragraph with how this paper relates/differs
 
 **§3 Method / Preliminaries / Setup:**
 - Define notation early (reference math_commands.tex)
 - Use `\begin{definition}`, `\begin{theorem}` environments for formal statements
+- For theory papers: include proof sketches of key results in main body, full proofs in appendix
+- For theory papers: include a **comparison table** of prior bounds vs. this paper
 - Include algorithm pseudocode if applicable (`algorithm2e` or `algorithmic`)
 - Target: 1.5-2 pages
 
@@ -163,52 +163,79 @@ Process sections in order. For each section:
 - Summarize contributions (NOT copy-paste from intro — rephrase)
 - Limitations (be honest — reviewers appreciate this)
 - Future work (1-2 concrete directions)
+- Ethics statement and reproducibility statement (if venue requires)
 - Target: 0.5 pages
 
 **Appendix:**
-- Proof details, additional experiments, implementation details
-- Full hyperparameter tables
+- Proof details (full proofs of main-body theorems)
+- Additional experiments, ablations
+- Implementation details, hyperparameter tables
 - Additional visualizations
 
 ### Step 4: Build Bibliography
 
-1. Scan all `\citep{}` and `\citet{}` references in the drafted sections
-2. For each citation key:
-   - Check existing `.bib` files in the project
-   - If not found, search arXiv/Scholar for correct BibTeX
-   - **NEVER fabricate BibTeX entries** — mark unknown ones as `[VERIFY]`
-3. Write `references.bib`
+**CRITICAL: Only include entries that are actually cited in the paper.**
 
-**Citation verification rules:**
+1. Scan all `\citep{}` and `\citet{}` references in the drafted sections
+2. Build a citation key list
+3. For each citation key:
+   - Check existing `.bib` files in the project/narrative docs
+   - If not found, search arXiv/Scholar for correct BibTeX
+   - **NEVER fabricate BibTeX entries** — mark unknown ones with `[VERIFY]` comment
+4. Write `references.bib` containing ONLY cited entries (no bloat)
+
+**Citation verification rules (from claude-scholar + Imbad0202):**
 1. Every BibTeX entry must have: author, title, year, venue/journal
 2. Prefer published venue versions over arXiv preprints (if published)
 3. Use consistent key format: `{firstauthor}{year}{keyword}` (e.g., `ho2020denoising`)
 4. Double-check year and venue for every entry
+5. Remove duplicate entries (same paper with different keys)
 
-### Step 5: Cross-Review Draft
+### Step 5: De-AI Polish (from kgraph57/paper-writer-skill)
 
-Send the complete draft to REVIEWER_MODEL:
+After drafting all sections, scan for common AI writing patterns and fix them:
+
+**Content patterns to fix:**
+- Significance inflation ("groundbreaking", "revolutionary" → use measured language)
+- Formulaic transitions ("In this section, we..." → remove or vary)
+- Generic conclusions ("This work opens exciting new avenues" → be specific)
+
+**Language patterns to fix (watch words):**
+- Replace: delve, pivotal, landscape, tapestry, underscore, noteworthy, intriguingly
+- Remove filler: "It is worth noting that", "Importantly,", "Notably,"
+- Avoid rule-of-three lists ("X, Y, and Z" appearing repeatedly)
+- Don't start consecutive sentences with "This" or "We"
+
+### Step 6: Cross-Review with REVIEWER_MODEL
+
+Send the complete draft to GPT-5.4 xhigh:
 
 ```
 mcp__codex__codex:
   model: gpt-5.4
   config: {"model_reasoning_effort": "xhigh"}
   prompt: |
-    Review this [VENUE] paper draft. Focus on:
-    1. Does each claim have supporting evidence?
-    2. Is the writing clear and concise?
+    Review this [VENUE] paper draft (main body, excluding appendix).
+
+    Focus on:
+    1. Does each claim from the intro have supporting evidence?
+    2. Is the writing clear, concise, and free of AI-isms?
     3. Any logical gaps or unclear explanations?
-    4. Does it fit within [MAX_PAGES] pages?
-    5. Missing related work?
+    4. Does it fit within [MAX_PAGES] pages (to end of Conclusion)?
+    5. Is related work sufficiently comprehensive (≥1 page)?
+    6. For theory papers: are proof sketches adequate?
+    7. Are figures/tables clearly described and properly referenced?
+
+    For each issue, specify: severity (CRITICAL/MAJOR/MINOR), location, and fix.
 
     [paste full draft text]
 ```
 
-Apply feedback and iterate.
+Apply CRITICAL and MAJOR fixes. Document MINOR issues for the user.
 
-### Step 6: Reverse Outline Test
+### Step 7: Reverse Outline Test (from Research-Paper-Writing-Skills)
 
-After drafting all sections, perform a reverse outline (from Research-Paper-Writing-Skills):
+After drafting all sections:
 
 1. **Extract topic sentences** — pull the first sentence of every paragraph
 2. **Read them in sequence** — they should form a coherent narrative on their own
@@ -216,7 +243,7 @@ After drafting all sections, perform a reverse outline (from Research-Paper-Writ
 4. **Check evidence mapping** — every experiment/figure must support a stated claim
 5. **Fix gaps** — if a topic sentence doesn't advance the story, rewrite the paragraph
 
-### Step 7: Final Checks
+### Step 8: Final Checks
 
 Before declaring done:
 
@@ -224,10 +251,13 @@ Before declaring done:
 - [ ] All `\citep{}` / `\citet{}` have corresponding BibTeX entries
 - [ ] No author information in anonymous mode
 - [ ] Figure/table numbering is correct
-- [ ] Page count within MAX_PAGES
+- [ ] Page count within MAX_PAGES (main body to Conclusion end)
 - [ ] No TODO/FIXME/XXX markers left in the text
+- [ ] No `[VERIFY]` markers left unchecked
 - [ ] Abstract is self-contained (understandable without reading the paper)
 - [ ] Title is specific and informative (not generic)
+- [ ] Related work is ≥1 full page
+- [ ] references.bib contains ONLY cited entries (no bloat)
 
 ## Key Rules
 
@@ -238,16 +268,26 @@ Before declaring done:
 - **Compile-ready** — the output should compile with `latexmk` without errors (modulo missing figures)
 - **No over-claiming** — use hedging language ("suggests", "indicates") for weak evidence
 - **Venue style matters** — all three venues (ICLR/NeurIPS/ICML) use `natbib` (`\citep`/`\citet`)
+- **Page limit = main body to Conclusion** — references and appendix do NOT count
+- **Clean bib** — references.bib must only contain entries that are actually `\cite`d
+- **Section count is flexible** — match PAPER_PLAN structure, don't force into 5 sections
+- **Backup before overwrite** — never destroy existing `paper/` directory without backing up
 
 ## Writing Quality Reference
 
-Principles borrowed from [Research-Paper-Writing-Skills](https://github.com/Master-cai/Research-Paper-Writing-Skills):
+Principles from [Research-Paper-Writing-Skills](https://github.com/Master-cai/Research-Paper-Writing-Skills):
 
 1. **One message per paragraph** — each paragraph makes exactly one point
 2. **Topic sentence first** — the first sentence states the paragraph's message
 3. **Explicit transitions** — connect paragraphs with logical connectors
-4. **Reverse outline test** — after writing, extract topic sentences; they should form a coherent narrative
+4. **Reverse outline test** — extract topic sentences; they should form a coherent narrative
+
+De-AI patterns from [kgraph57/paper-writer-skill](https://github.com/kgraph57/paper-writer-skill):
+
+5. **No AI watch words** — delve, pivotal, landscape, tapestry, underscore
+6. **No significance inflation** — groundbreaking, revolutionary, paradigm shift
+7. **No formulaic structures** — vary sentence openings and transitions
 
 ## Acknowledgements
 
-Writing methodology adapted from [Research-Paper-Writing-Skills](https://github.com/Master-cai/Research-Paper-Writing-Skills) (CCF award-winning methodology). Citation verification framework from [claude-scholar](https://github.com/Galaxy-Dawn/claude-scholar). Modular LaTeX structure inspired by real ICLR submissions.
+Writing methodology adapted from [Research-Paper-Writing-Skills](https://github.com/Master-cai/Research-Paper-Writing-Skills) (CCF award-winning methodology). Citation verification from [claude-scholar](https://github.com/Galaxy-Dawn/claude-scholar) and [Imbad0202/academic-research-skills](https://github.com/Imbad0202/academic-research-skills). De-AI polish from [kgraph57/paper-writer-skill](https://github.com/kgraph57/paper-writer-skill). Backup mechanism from [baoyu-skills](https://github.com/jimliu/baoyu-skills).

@@ -174,7 +174,7 @@ claude
 | 🔭 [`idea-discovery`](skills/idea-discovery/SKILL.md) | **工作流 1 全流程**：research-lit → idea-creator → novelty-check → research-review | 是 |
 | 🏗️ [`research-pipeline`](skills/research-pipeline/SKILL.md) | **完整流水线**：工作流 1 → 实现 → 工作流 2，从方向到投稿 | 是 |
 | 📐 [`paper-plan`](skills/paper-plan/SKILL.md) | 生成论文大纲：claims-evidence 矩阵、图表计划、引用规划 | 是 |
-| 📊 [`paper-figure`](skills/paper-figure/SKILL.md) | 从实验数据生成出版级 matplotlib/seaborn 图表，含 LaTeX 插入代码 | 否 |
+| 📊 [`paper-figure`](skills/paper-figure/SKILL.md) | 从实验数据生成出版级 matplotlib/seaborn 图表，含 LaTeX 插入代码 | 可选 |
 | ✍️ [`paper-write`](skills/paper-write/SKILL.md) | 逐 section LaTeX 生成，支持 ICLR/NeurIPS/ICML 模板 | 是 |
 | 🔨 [`paper-compile`](skills/paper-compile/SKILL.md) | 编译 LaTeX 为 PDF，自动修复错误，投稿就绪检查 | 否 |
 

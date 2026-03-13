@@ -212,7 +212,7 @@ These skills compose into a full research lifecycle. The two workflows can be us
 | 🔭 [`idea-discovery`](skills/idea-discovery/SKILL.md) | **Workflow 1 pipeline**: research-lit → idea-creator → novelty-check → research-review | Yes |
 | 🏗️ [`research-pipeline`](skills/research-pipeline/SKILL.md) | **Full pipeline**: Workflow 1 → implement → Workflow 2, from direction to submission | Yes |
 | 📐 [`paper-plan`](skills/paper-plan/SKILL.md) | Generate paper outline with claims-evidence matrix, figure plan, and citation scaffolding | Yes |
-| 📊 [`paper-figure`](skills/paper-figure/SKILL.md) | Publication-quality matplotlib/seaborn plots from experiment data, with LaTeX snippets | No |
+| 📊 [`paper-figure`](skills/paper-figure/SKILL.md) | Publication-quality matplotlib/seaborn plots from experiment data, with LaTeX snippets | Optional |
 | ✍️ [`paper-write`](skills/paper-write/SKILL.md) | Section-by-section LaTeX generation with ICLR/NeurIPS/ICML templates | Yes |
 | 🔨 [`paper-compile`](skills/paper-compile/SKILL.md) | Compile LaTeX to PDF, auto-fix errors, submission readiness checks | No |
 

@@ -2,7 +2,7 @@
 name: paper-figure
 description: "Generate publication-quality figures and tables from experiment results. Use when user says \"画图\", \"作图\", \"generate figures\", \"paper figures\", or needs plots for a paper."
 argument-hint: [figure-plan-or-data-path]
-allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, mcp__codex__codex, mcp__codex__codex-reply
 ---
 
 # Paper Figure: Publication-Quality Plots from Experiment Data
@@ -17,6 +17,7 @@ Generate all figures and tables for a paper based on: **$ARGUMENTS**
 - **COLOR_PALETTE = `tab10`** — Default matplotlib color cycle. Options: `tab10`, `Set2`, `colorblind` (deuteranopia-safe)
 - **FONT_SIZE = 10** — Base font size (matches typical conference body text)
 - **FIG_DIR = `figures/`** — Output directory for generated figures
+- **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex MCP for figure quality review.
 
 ## Inputs
 
@@ -38,6 +39,11 @@ Parse the Figure Plan table from PAPER_PLAN.md:
 | Fig 1 | Architecture | ... | manual | HIGH |
 | Fig 2 | Line plot | ... | figures/exp.json | HIGH |
 ```
+
+Identify:
+- Which figures can be auto-generated from data
+- Which need manual creation (architecture diagrams, etc.)
+- Which are comparison tables (generate as LaTeX)
 
 ### Step 2: Set Up Plotting Environment
 
@@ -76,7 +82,22 @@ def save_fig(fig, name, fmt=FORMAT):
     print(f'Saved: {FIG_DIR}/{name}.{fmt}')
 ```
 
-### Step 3: Generate Each Figure
+### Step 3: Auto-Select Figure Type
+
+Use this decision tree for data-driven figures (inspired by Imbad0202/academic-research-skills):
+
+| Data Pattern | Recommended Type | Size |
+|-------------|-----------------|------|
+| X=time/steps, Y=metric | Line plot | 0.48\textwidth |
+| Methods × 1 metric | Bar chart | 0.48\textwidth |
+| Methods × multiple metrics | Grouped bar / radar | 0.95\textwidth |
+| Two continuous variables | Scatter plot | 0.48\textwidth |
+| Matrix / grid values | Heatmap | 0.48\textwidth |
+| Distribution comparison | Box/violin plot | 0.48\textwidth |
+| Multi-dataset results | Multi-panel (subfigure) | 0.95\textwidth |
+| Prior work comparison | LaTeX table | — |
+
+### Step 4: Generate Each Figure
 
 For each figure in the plan, create a standalone Python script:
 
@@ -112,29 +133,30 @@ for bar, val in zip(bars, values):
 save_fig(fig, 'fig3_comparison')
 ```
 
-**Tables** (results tables as LaTeX):
+**Comparison tables** (LaTeX, for theory papers):
 ```latex
 \begin{table}[t]
 \centering
-\caption{Main results on [dataset].}
-\label{tab:main}
-\begin{tabular}{lcccc}
+\caption{Comparison of estimation error bounds. $n$: sample size, $D$: ambient dim, $d$: latent dim, $K$: subspaces, $n_k$: modes.}
+\label{tab:bounds}
+\begin{tabular}{lccc}
 \toprule
-Method & Metric 1 & Metric 2 & Metric 3 \\
+Method & Rate & Depends on $D$? & Multi-modal? \\
 \midrule
-Baseline & 82.3 & 75.1 & 0.92 \\
-Ours & \textbf{89.2} & \textbf{81.4} & \textbf{0.97} \\
+\citet{MinimaxOkoAS23} & $n^{-s'/D}$ & Yes (curse) & No \\
+\citet{ScoreMatchingdistributionrecovery} & $n^{-2/d}$ & No & No \\
+\textbf{Ours} & $\sqrt{\sum n_k d_k / n}$ & No & Yes \\
 \bottomrule
 \end{tabular}
 \end{table}
 ```
 
-**Architecture diagrams** (text-based, for manual refinement):
-- Generate a clear description + TikZ skeleton OR
-- Generate a clean SVG using matplotlib patches
+**Architecture diagrams** (TikZ or description):
+- Generate a TikZ skeleton if possible
+- Otherwise, generate a clear text description for manual creation
 - Flag as "manual refinement recommended"
 
-### Step 4: Run All Scripts
+### Step 5: Run All Scripts
 
 ```bash
 # Run all figure generation scripts
@@ -145,7 +167,7 @@ done
 
 Verify all output files exist and are non-empty.
 
-### Step 5: Generate LaTeX Include Snippets
+### Step 6: Generate LaTeX Include Snippets
 
 For each figure, output the LaTeX code to include it:
 
@@ -161,17 +183,42 @@ For each figure, output the LaTeX code to include it:
 
 Save all snippets to `figures/latex_includes.tex` for easy copy-paste into the paper.
 
-### Step 6: Quality Checklist
+### Step 7: Figure Quality Review with REVIEWER_MODEL
 
-Before finishing, verify each figure:
+Send figure descriptions and captions to GPT-5.4 for review:
+
+```
+mcp__codex__codex:
+  model: gpt-5.4
+  config: {"model_reasoning_effort": "xhigh"}
+  prompt: |
+    Review these figure/table plans for a [VENUE] submission.
+
+    For each figure:
+    1. Is the caption informative and self-contained?
+    2. Does the figure type match the data being shown?
+    3. Is the comparison fair and clear?
+    4. Any missing baselines or ablations?
+    5. Would a different visualization be more effective?
+
+    [list all figures with captions and descriptions]
+```
+
+### Step 8: Quality Checklist
+
+Before finishing, verify each figure (from pedrohcgs/claude-code-my-workflow):
 
 - [ ] Font size readable at printed paper size (not too small)
 - [ ] Colors distinguishable in grayscale (print-friendly)
+- [ ] **No title inside figures** — titles go only in LaTeX `\caption{}` (from pedrohcgs)
 - [ ] Legend does not overlap data
 - [ ] Axis labels have units where applicable
+- [ ] Axis labels are publication-quality (not variable names like `emp_rate`)
 - [ ] Figure width fits single column (0.48\textwidth) or full width (0.95\textwidth)
 - [ ] PDF output is vector (not rasterized text)
 - [ ] No matplotlib default title (remove `plt.title` for publications)
+- [ ] Serif font matches paper body text (Times / Computer Modern)
+- [ ] Colorblind-accessible (if using colorblind palette)
 
 ## Output
 
@@ -185,7 +232,7 @@ figures/
 ├── fig2_training_curves.pdf
 ├── fig3_comparison.pdf
 ├── latex_includes.tex           # LaTeX snippets for all figures
-└── TABLE_main_results.tex       # standalone table LaTeX
+└── TABLE_*.tex                  # standalone table LaTeX files
 ```
 
 ## Key Rules
@@ -195,8 +242,10 @@ figures/
 - **Use vector format (PDF)** for all plots — PNG only as fallback
 - **No decorative elements** — no background colors, no 3D effects, no chart junk
 - **Consistent style across all figures** — same fonts, colors, line widths
-- **Colorblind-safe** — if using COLOR_PALETTE=colorblind, verify with https://davidmathlogic.com/colorblind/
+- **Colorblind-safe** — verify with https://davidmathlogic.com/colorblind/ if needed
 - **One script per figure** — easy to re-run individual figures when data changes
+- **No titles inside figures** — captions are in LaTeX only
+- **Comparison tables count as figures** — generate them as standalone .tex files
 
 ## Figure Type Reference
 
@@ -210,7 +259,8 @@ figures/
 | Box/violin | Distribution comparison | 0.48\textwidth |
 | Architecture | System overview | 0.95\textwidth |
 | Multi-panel | Combined results (subfigures) | 0.95\textwidth |
+| Comparison table | Prior bounds vs. ours (theory) | full width |
 
 ## Acknowledgements
 
-Design pattern (type × style matrix) inspired by [baoyu-skills](https://github.com/jimliu/baoyu-skills). Publication style defaults informed by [claude-scientific-skills](https://github.com/K-Dense-AI/claude-scientific-skills).
+Design pattern (type × style matrix) inspired by [baoyu-skills](https://github.com/jimliu/baoyu-skills). Publication style defaults and figure rules from [pedrohcgs/claude-code-my-workflow](https://github.com/pedrohcgs/claude-code-my-workflow). Visualization decision tree from [Imbad0202/academic-research-skills](https://github.com/Imbad0202/academic-research-skills).

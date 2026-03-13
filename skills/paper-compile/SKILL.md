@@ -15,6 +15,7 @@ Compile the LaTeX paper and fix any issues: **$ARGUMENTS**
 - **ENGINE = `pdflatex`** — LaTeX engine. Options: `pdflatex` (default), `xelatex` (for CJK/custom fonts), `lualatex`.
 - **MAX_COMPILE_ATTEMPTS = 3** — Maximum attempts to fix errors and recompile.
 - **PAPER_DIR = `paper/`** — Directory containing LaTeX source files.
+- **MAX_PAGES** — Main body page limit (to end of Conclusion, excluding references & appendix). ICLR=9, NeurIPS=9, ICML=8.
 
 ## Workflow
 
@@ -85,7 +86,7 @@ LaTeX Warning: Citation `smith2024' undefined
 → Add the missing entry to `references.bib` or fix the citation key.
 
 **`[VERIFY]` markers in text:**
-→ Search for `[VERIFY]` markers left by `/paper-write`. These indicate unverified citations. Search for the correct BibTeX entry or flag to the user.
+→ Search for `[VERIFY]` markers left by `/paper-write`. These indicate unverified citations or facts. Search for the correct information or flag to the user.
 
 **Overfull hbox:**
 ```
@@ -98,6 +99,9 @@ Overfull \hbox (12.5pt too wide) in paragraph at lines 42--45
 I was expecting a `,' or a `}'---line 15 of references.bib
 ```
 → Fix BibTeX syntax (missing comma, unmatched braces, special characters in title).
+
+**`\crefname` undefined for custom theorem types:**
+→ Ensure `\crefname{assumption}{Assumption}{Assumptions}` and similar are in the preamble after `\newtheorem{assumption}`.
 
 ### Step 4: Iterative Fix Loop
 
@@ -133,7 +137,7 @@ pdfinfo main.pdf | grep Pages
 **Automated checks:**
 
 - [ ] PDF file exists and is > 100KB (not empty/corrupt)
-- [ ] Page count is within MAX_PAGES + appendix
+- [ ] Total page count is reasonable (MAX_PAGES + appendix + references)
 - [ ] No "??" in the PDF (undefined references — grep the log)
 - [ ] No "[?]" in the PDF (undefined citations — grep the log)
 - [ ] Figures are rendered (not missing image placeholders)
@@ -146,27 +150,45 @@ grep -c "LaTeX Warning.*undefined" compile.log
 grep -c "Citation.*undefined" compile.log
 ```
 
-### Step 6: Submission Readiness
+### Step 6: Page Count Verification
+
+**CRITICAL**: Verify main body fits within MAX_PAGES.
+
+Main body = first page through end of Conclusion section (§5 or §6 depending on structure).
+References and appendix are NOT counted.
+
+To check:
+1. Find the page where Conclusion ends (look for `\bibliography` or `\appendix` in the PDF)
+2. That page number must be ≤ MAX_PAGES
+
+If over limit:
+- Identify which sections are longest
+- Suggest specific cuts (move proofs to appendix, compress tables, tighten writing)
+- Report: "Main body is X pages (limit: MAX_PAGES). Suggestion: move [specific content] to appendix."
+
+### Step 7: Submission Readiness
 
 For conference submission, additional checks:
 
 - [ ] **Anonymous**: no author names, affiliations, or self-citations that reveal identity
-- [ ] **Page limit**: main body within MAX_PAGES (check with `\usepackage{ruler}` if needed)
+- [ ] **Page limit**: main body within MAX_PAGES (to end of Conclusion)
 - [ ] **Font embedding**: all fonts embedded in PDF
   ```bash
-  pdffonts main.pdf | grep -v "yes"  # should return nothing
+  pdffonts main.pdf | grep -v "yes"  # should return nothing (or only header)
   ```
 - [ ] **No supplementary mixed in**: appendix clearly after `\newpage\appendix`
 - [ ] **File size**: reasonable (< 50MB for most venues, < 10MB preferred)
+- [ ] **No `[VERIFY]` markers**: search the PDF text for leftover markers
 
-### Step 7: Output Summary
+### Step 8: Output Summary
 
 ```markdown
 ## Compilation Report
 
 - **Status**: SUCCESS / FAILED
 - **PDF**: paper/main.pdf
-- **Pages**: X (main body) + Y (appendix) + Z (references)
+- **Pages**: X (main body to Conclusion) + Y (references) + Z (appendix)
+- **Within page limit**: YES/NO (MAX_PAGES = N)
 - **Errors fixed**: [list of auto-fixed issues]
 - **Warnings remaining**: [list of non-critical warnings]
 - **Undefined references**: 0
@@ -185,11 +207,12 @@ For conference submission, additional checks:
 - **Don't suppress warnings** — report them, let the user decide
 - **If LaTeX is not installed**, provide clear installation instructions rather than failing silently
 - **Font embedding is critical** — some venues reject PDFs with non-embedded fonts
+- **Page count = main body to Conclusion** — this is the metric that matters for submission
 
 ## Common Venue Requirements
 
-| Venue | Style File | Citation | Page Limit | Submission |
-|-------|-----------|----------|------------|------------|
-| ICLR 2026 | `iclr2026_conference.sty` | `natbib` (`\citep`/`\citet`) | 9 pages + unlimited appendix | OpenReview |
-| NeurIPS 2025 | `neurips_2025.sty` | `natbib` (`\citep`/`\citet`) | 9 pages + unlimited appendix | OpenReview |
-| ICML 2025 | `icml2025.sty` | `natbib` (`\citep`/`\citet`) | 8 pages + unlimited appendix | OpenReview |
+| Venue | Style File | Citation | Page Limit (main body) | Submission |
+|-------|-----------|----------|------------------------|------------|
+| ICLR 2026 | `iclr2026_conference.sty` | `natbib` (`\citep`/`\citet`) | 9 pages (to Conclusion end) | OpenReview |
+| NeurIPS 2025 | `neurips_2025.sty` | `natbib` (`\citep`/`\citet`) | 9 pages (to Conclusion end) | OpenReview |
+| ICML 2025 | `icml2025.sty` | `natbib` (`\citep`/`\citet`) | 8 pages (to Conclusion end) | OpenReview |
