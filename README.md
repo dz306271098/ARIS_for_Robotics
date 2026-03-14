@@ -96,6 +96,15 @@ A real overnight 4-round run on an ML research project, from borderline reject t
 
 The loop autonomously ran **20+ GPU experiments**, rewrote the paper's narrative framing, and killed claims that didn't hold up — all without human intervention.
 
+## 🧩 Community Skills & Extensions
+
+Domain-specific skills and external projects contributed by the community. PRs welcome — just add a `skills/your-skill/SKILL.md` and open a PR!
+
+| Type | Name | Domain | Description | Codex MCP? |
+|------|------|--------|-------------|-----------|
+| Skill | 🏗️ [`dse-loop`](skills/dse-loop/SKILL.md) | Architecture / EDA | Autonomous design space exploration — iteratively run, analyze, and tune parameters (gem5, Yosys, etc.). Works for any domain with tunable parameters | No |
+| Skill | 🤖 [`idea-discovery-robot`](skills/idea-discovery-robot/SKILL.md) | Robotics / Embodied AI | Workflow 1 adaptation — grounds idea discovery in embodiment, benchmark, sim2real path, and real-robot safety constraints | Yes |
+
 ## 🔄 Workflows
 
 These skills compose into a full research lifecycle. The three workflows can be used independently or chained together:
@@ -355,17 +364,6 @@ After Workflow 3 generates the paper, `/auto-paper-improvement-loop` runs 2 roun
 | 🔄 [`auto-paper-improvement-loop`](skills/auto-paper-improvement-loop/SKILL.md) | 2-round content review + format check loop on generated paper (4/10 → 8.5/10) | Yes |
 | 📝 [`paper-writing`](skills/paper-writing/SKILL.md) | **Workflow 3 pipeline**: paper-plan → paper-figure → paper-write → paper-compile → auto-paper-improvement-loop | Yes |
 | 📱 [`feishu-notify`](skills/feishu-notify/SKILL.md) | [Feishu/Lark](#-feishulark-integration-optional) notifications — push (webhook) or interactive (bidirectional). Off by default | No |
-
----
-
-### 🧩 Community Skills & Extensions
-
-Domain-specific skills and external projects contributed by the community. PRs welcome — just add a `skills/your-skill/SKILL.md` and open a PR!
-
-| Type | Name | Domain | Description | Codex MCP? |
-|------|------|--------|-------------|-----------|
-| Skill | 🏗️ [`dse-loop`](skills/dse-loop/SKILL.md) | Architecture / EDA | Autonomous design space exploration — iteratively run, analyze, and tune parameters (gem5, Yosys, etc.). Works for any domain with tunable parameters | No |
-| Skill | 🤖 [`idea-discovery-robot`](skills/idea-discovery-robot/SKILL.md) | Robotics / Embodied AI | Workflow 1 adaptation — grounds idea discovery in embodiment, benchmark, sim2real path, and real-robot safety constraints | Yes |
 
 ---
 
