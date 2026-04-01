@@ -122,18 +122,16 @@ Invoke `/research-lit` to map the research landscape:
 - Identify structural gaps and recurring limitations
 - Output a literature summary (saved to working notes)
 
-**🚦 Checkpoint:** Present the landscape summary to the user. Ask:
+**🚦 Checkpoint:** Present the landscape summary briefly, then continue.
 
 ```
-📚 Literature survey complete. Here's what I found:
+📚 Literature survey complete. Key findings:
 - [key findings, gaps, open problems]
-
-Does this match your understanding? Should I adjust the scope before generating ideas?
-(If no response, I'll proceed with the top-ranked direction.)
+[AUTO-DECISION] Proceeding with top-ranked direction: [direction].
 ```
 
-- **User approves** (or no response + AUTO_PROCEED=true) → proceed to Phase 2 with best direction.
-- **User requests changes** (e.g., "focus more on X", "ignore Y", "too broad") → refine the search with updated queries, re-run `/research-lit` with adjusted scope, and present again. Repeat until the user is satisfied.
+- **If AUTO_PROCEED=true (default):** Proceed immediately to Phase 2 with the best direction identified from the landscape. Do not wait for user response.
+- **If AUTO_PROCEED=false:** Wait for user to approve, adjust scope, or redirect.
 
 ### Phase 2: Idea Generation + Filtering + Pilots
 

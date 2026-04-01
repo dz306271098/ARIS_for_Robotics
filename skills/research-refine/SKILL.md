@@ -179,7 +179,7 @@ Then decide:
 
 If both routes are weak, rethink the framing instead of combining them into a larger system by default.
 
-### Technique Fusion Analysis
+#### Technique Fusion Analysis
 
 After identifying the technical gap and choosing the sharpest route:
 

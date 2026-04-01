@@ -38,7 +38,7 @@ Generate all figures and tables for a paper based on: **$ARGUMENTS**
 2. **Experiment data** — JSON files, CSV files, or screen logs in `figures/` or project root
 3. **Existing figures** — any manually created figures to preserve
 
-If no PAPER_PLAN.md exists, scan for data files and ask the user which figures to generate.
+If no PAPER_PLAN.md exists, scan for data files (JSON/CSV in `figures/`, `results/`, project root) and autonomously generate standard academic figures: main results comparison table, ablation table, and key metric visualization. Document auto-selected figures before proceeding.
 
 ## Workflow
 

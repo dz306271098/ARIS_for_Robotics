@@ -25,7 +25,7 @@ Draft a LaTeX paper based on: **$ARGUMENTS**
 4. **LaTeX includes** — `figures/latex_includes.tex` (from `/paper-figure`)
 5. **Bibliography** — existing `.bib` file, or will create one
 
-If no PAPER_PLAN.md exists, ask the user to run `/paper-plan` first or provide a brief outline.
+If no PAPER_PLAN.md exists, autonomously invoke `/paper-plan` first to generate the outline, then proceed with writing. If `/paper-plan` also lacks inputs, it will auto-infer from available project files.
 
 ## Orchestra-Guided Writing Overlay
 

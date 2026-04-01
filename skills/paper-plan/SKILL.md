@@ -34,7 +34,7 @@ The skill expects one or more of these in the project directory:
 4. **IDEA_REPORT.md** — from idea-discovery pipeline (if applicable)
 5. **Compact files** (if available): `IDEA_CANDIDATES.md`, `findings.md`, `EXPERIMENT_LOG.md` — preferred over full files when present, saves context window
 
-If none exist, ask the user to describe the paper's contribution in 3-5 sentences.
+If none exist, autonomously infer the paper's contribution from available project files (`CLAUDE.md`, `RESEARCH_BRIEF.md`, existing code, `innovation-logs/FINAL_METHOD.md`, experiment results). Document the inferred contribution before proceeding.
 
 ## Orchestra-Guided Writing Overlay
 

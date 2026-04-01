@@ -39,9 +39,9 @@ This is NOT a review-fix loop. This is a **research program** that discovers, sy
 | Constant | Default | Description |
 |----------|---------|-------------|
 | `MAX_ROUNDS` | 50 | Hard upper limit on innovation rounds |
-| `PHASE_EXPLORE` | 15 | Rounds 1-15: exploration-heavy (bold new techniques) |
-| `PHASE_REFINE` | 15 | Rounds 16-30: exploitation-heavy (optimize best variant) |
-| `PHASE_POLISH` | 10 | Rounds 31-40+: diminishing-returns optimization (ablation + robustness) |
+| `PHASE_EXPLORE` | 15 | Expected rounds 1-15: exploration-heavy (bold new techniques). Actual transition is driven by PATIENCE_EXPLORE, not hard round boundary. |
+| `PHASE_REFINE` | 15 | Expected rounds 16-30: exploitation-heavy (optimize best variant). Actual transition is driven by PATIENCE_REFINE. |
+| `PHASE_POLISH` | 10 | Expected rounds 31-40+: diminishing-returns optimization (ablation + robustness). Actual transition is driven by PATIENCE_POLISH. |
 | `PATIENCE_EXPLORE` | 5 | No improvement for 5 rounds in explore → shift to refine |
 | `PATIENCE_REFINE` | 4 | No improvement for 4 rounds in refine → shift to polish |
 | `PATIENCE_POLISH` | 3 | No improvement for 3 rounds in polish → terminate |
@@ -58,6 +58,19 @@ This is NOT a review-fix loop. This is a **research program** that discovers, sy
 | `PRIMARY_BASELINE` | AIR-IO | Primary comparison baseline |
 
 Override inline: `/deep-innovation-loop "improve inertial odometry" — baseline: AIR-IO, venue: RAL, max rounds: 40, human checkpoint: true`
+
+## Full Autonomy Principle
+
+This loop is designed to run **fully autonomously for 40+ rounds without human intervention**. At every decision point:
+
+1. **Never block** — make the best decision based on available data, document reasoning, continue.
+2. **Auto-select variants** — after GPT-5.4 adversarial challenge, Claude Opus 4.6 selects the surviving variant with the best expected improvement. No user approval needed.
+3. **Auto-recover** — experiment failure → auto-debug (3 attempts) → revert to best variant if unrecoverable → continue loop.
+4. **Auto-pivot** — if the current direction plateaus (patience exhausted), automatically transition to the next macro phase. No user confirmation.
+5. **Auto-infer** — if required files are missing, infer from context. Never stop to ask.
+6. **Log all decisions** — every autonomous choice is logged with `[AUTO-DECISION]` prefix and reasoning, so the user can review the full decision trail in `EVOLUTION_LOG.md` after the loop completes.
+
+The only exception: `HUMAN_CHECKPOINT=true` explicitly opts into manual review (off by default).
 
 ## Output File Structure
 
@@ -163,14 +176,29 @@ Repeat until a stopping condition is met.
 
 This is the critical differentiator from `auto-review-loop`. Instead of asking "what's wrong," ask "**why** is it wrong."
 
-**If Round 1**: Use `mcp__codex__codex` to start a new thread.
-**If Round 2+**: Use `mcp__codex__codex-reply` with saved `threadId`.
-
 Always use `config: {"model_reasoning_effort": "xhigh"}`.
 
+**Round 1** — start a new Codex thread:
 ```
-mcp__codex__codex (or codex-reply):
+mcp__codex__codex:
   config: {"model_reasoning_effort": "xhigh"}
+  prompt: |
+    [Round 1/MAX_ROUNDS — ROOT CAUSE DIAGNOSIS]
+```
+
+**Round 2+** — continue the existing thread (preserves full conversation history):
+```
+mcp__codex__codex-reply:
+  threadId: [saved from Round 1]
+  config: {"model_reasoning_effort": "xhigh"}
+  prompt: |
+    [Round N/MAX_ROUNDS — ROOT CAUSE DIAGNOSIS]
+```
+
+Save the `threadId` from the Round 1 response. Use it for ALL subsequent rounds.
+
+**Prompt content (same for both)**:
+```
   prompt: |
     [Round N/MAX_ROUNDS — ROOT CAUSE DIAGNOSIS]
     
@@ -308,7 +336,7 @@ Save search results to `innovation-logs/round-NN/research.md`.
 | **Refine** (rounds PHASE_EXPLORE+1 to PHASE_EXPLORE+PHASE_REFINE) | Fusion optimization: systematically test technique combinations | Hyperparameter + architecture tuning of best variant |
 | **Polish** (rounds beyond PHASE_EXPLORE+PHASE_REFINE) | Ablation-guided trimming: remove unnecessary complexity | Edge case handling and robustness improvements |
 
-**Special case — Fusion Round** (every `FUSION_INTERVAL` rounds):
+**Special case — Fusion Round** (triggered when `round % FUSION_INTERVAL == 0`, e.g., rounds 5, 10, 15, 20...):
 
 Replace normal Phase C with a fusion-specific round:
 
@@ -318,8 +346,20 @@ Replace normal Phase C with a fusion-specific round:
    - Does technique A's strength compensate for technique B's weakness?
    - Are they architecturally compatible (no conflicting assumptions)?
    - Has this exact combination been tested before?
-4. Submit fusion candidates to GPT-5.4 for ranking
-5. Test the top 1-2 fusion combinations
+4. Submit fusion candidates to GPT-5.4 for ranking via `mcp__codex__codex-reply`:
+   ```
+   prompt: |
+     [Round N — FUSION OPTIMIZATION]
+     
+     These techniques have been individually tested. Rank the following 
+     fusion combinations by expected synergy, considering architectural 
+     compatibility and complementary strengths:
+     [paste candidate combinations with individual test results]
+     
+     For each combination: expected improvement, risk, implementation plan.
+     Rank top 3.
+   ```
+5. Claude Opus 4.6 (executor) selects and tests the top 1-2 fusion combinations based on GPT-5.4's ranking and available compute
 
 **Normal round — Innovation proposal via Codex MCP:**
 
@@ -375,18 +415,49 @@ mcp__codex__codex-reply:
     - Prefer techniques with UNTESTED status in the library
 ```
 
-**Variant selection** (by Claude Opus 4.6 — the executor):
+**Adversarial Challenge** (GPT-5.4 plays devil's advocate on the proposed variants):
 
-Select the most promising variant based on:
+After receiving the variant proposals, immediately challenge them in the same thread:
+
+```
+mcp__codex__codex-reply:
+  threadId: [saved]
+  config: {"model_reasoning_effort": "xhigh"}
+  prompt: |
+    [Round N — ADVERSARIAL CHALLENGE]
+    
+    You proposed these variants. Now play DEVIL'S ADVOCATE.
+    For EACH variant:
+    
+    1. FATAL FLAW: What is the single strongest reason this will NOT work?
+    2. HIDDEN ASSUMPTION: What assumption are you making that might be wrong?
+    3. EASIER ALTERNATIVE: Is there a simpler approach that achieves the 
+       same goal without this complexity?
+    4. EVALUATION TRAP: How could this variant appear to improve metrics 
+       but actually be a flawed improvement (e.g., overfitting, unfair 
+       comparison, metric gaming)?
+    5. SURVIVAL VERDICT: After your own critique, which variant(s) survive?
+       Kill any variant whose fatal flaw is unresolvable.
+    
+    Be BRUTALLY honest. The purpose is to eliminate weak ideas BEFORE 
+    wasting GPU hours on them.
+```
+
+**Variant selection** (by Claude Opus 4.6 — the executor makes the final decision, informed by GPT-5.4's adversarial feedback):
+
+Only select from variants that **survived** GPT-5.4's adversarial challenge (i.e., NOT killed by a fatal flaw). Claude Opus 4.6 applies these selection criteria:
 1. Does it address the highest-severity root cause?
-2. Is the hypothesis testable with available resources?
-3. Does it build on the current best variant, not a dead branch?
-4. Is the change small enough to attribute improvement?
-5. Does the synergy argument ("1+1>2") make physical/mathematical sense?
+2. Did it survive GPT-5.4's adversarial critique without a fatal flaw?
+3. Is the hypothesis testable with available resources?
+4. Does it build on the current best variant, not a dead branch?
+5. Is the change small enough to attribute improvement?
+6. Does the synergy argument ("1+1>2") make physical/mathematical sense?
+
+If GPT-5.4 killed all variants: request new proposals in the same thread, incorporating the critique.
 
 **Anti-circle check**: Before implementing, compare the selected variant against the last 5 variants in `EVOLUTION_LOG.md`. If the proposed change is essentially identical to a previously tried variant (same technique combination, same integration point), reject it and request a different proposal.
 
-Save to `innovation-logs/round-NN/innovation.md`.
+Save to `innovation-logs/round-NN/innovation.md` (include both proposals AND adversarial critique).
 
 ---
 
@@ -398,6 +469,47 @@ Save to `innovation-logs/round-NN/innovation.md`.
 - Make the code changes described in the selected variant
 - Self-review: does the implementation match the design?
 - Code quality: proper seeding, logging, result saving
+
+**Step 1.5: Experiment Design + Code Review (Codex MCP)**
+
+Before deploying, submit the experiment design AND implementation to GPT-5.4 for review:
+
+```
+mcp__codex__codex-reply:
+  threadId: [saved]
+  config: {"model_reasoning_effort": "xhigh"}
+  prompt: |
+    [Round N — EXPERIMENT DESIGN & CODE REVIEW]
+    
+    Variant: [name and description]
+    Hypothesis: [what we expect to see]
+    
+    Experiment setup:
+    - Dataset/sequences: [list]
+    - Metrics: [list]
+    - Baselines: [list]
+    - Training config: [key hyperparameters]
+    - Evaluation protocol: [how results are compared]
+    
+    Key code changes:
+    [paste the diff or key modified functions]
+    
+    REVIEW CHECKLIST:
+    1. Does the experiment actually test the stated hypothesis?
+    2. Is the comparison against baselines fair (same data, same budget)?
+    3. Are there logic bugs in the implementation?
+    4. CRITICAL: Does evaluation use dataset ground truth, NOT another 
+       model's output?
+    5. Could the result be trivially explained by something other than 
+       the proposed innovation (e.g., more parameters, more data, lucky seed)?
+    6. Are seeds fixed? Are results reproducible?
+    7. Missing edge cases in the evaluation?
+    
+    Flag issues as CRITICAL (must fix) / MAJOR (should fix) / MINOR.
+```
+
+- If CRITICAL issues found: Claude Opus 4.6 (the executor) implements the fixes, then re-submits for review (max 2 review rounds). After fixes pass or 2 rounds exhausted, proceed to Step 2.
+- If Codex MCP unavailable: skip review, proceed with self-review only
 
 **Step 2: Sanity check**
 - Run a quick sanity test (smallest dataset / fewest epochs) to verify no crashes
@@ -450,6 +562,12 @@ Save to `innovation-logs/round-NN/results.md`.
 | **Tied** (within noise margin) | Increment `patience_counter`. Keep current best. |
 | **Slightly worse** | Increment `patience_counter`. Keep current best. |
 | **Significantly worse** | Increment `regression_counter`. If `regression_counter >= REGRESSION_TOLERANCE`: revert code to best variant and reset regression_counter. |
+
+**Threshold guidance** (adapt to your domain):
+- **Improved**: Primary metric (e.g., mean ATE) shows absolute improvement beyond noise range (typically > 1-2% relative improvement, or > 1 standard deviation across seeds). If multiple metrics, majority must improve with none significantly regressing.
+- **Tied**: Primary metric changes by less than noise range in either direction.
+- **Slightly worse**: Primary metric regresses within 5% relative, or only on a minority of sequences.
+- **Significantly worse**: Primary metric regresses by > 5% relative, or regresses on a majority of sequences.
 
 **Step 3: Technique library update**
 - For each technique used in this round's variant:
@@ -594,7 +712,7 @@ When the loop ends (by any stopping condition):
 
 4. **Generate claims**: Invoke `/result-to-claim` with best variant's results to produce `CLAIMS_FROM_RESULTS.md`. Bridges to paper writing workflow.
 
-5. **Write method description**: Write a 1-2 paragraph method description to `INNOVATION_REVIEW.md` under `## Method Description` section — suitable for `/paper-illustration` to auto-generate architecture diagrams.
+5. **Write method description**: Append a `## Method Description` section to `FINAL_METHOD.md` — a 1-2 paragraph concise description of the final method, architecture, and data flow, suitable for `/paper-illustration` to auto-generate architecture diagrams.
 
 6. **Novelty snapshot**: If rounds >= 20, invoke `/novelty-check` on the final method to verify it's still novel after all the evolution.
 

@@ -43,7 +43,7 @@ This skill expects one or more of:
 4. **`IDEA_CANDIDATES.md`** — compact idea summary (preferred when `COMPACT: true`)
 5. **`IDEA_REPORT.md`** — full brainstorm output (fallback)
 
-If none exist, ask the user what experiments to implement.
+If none exist, autonomously infer experiments from available context: read `IDEA_REPORT.md`, `RESEARCH_BRIEF.md`, `CLAUDE.md`, and any existing code to design a minimal experiment plan. Document the auto-generated plan before proceeding. Only ask the user if there is truly no project context to work from.
 
 ## Workflow
 
@@ -108,13 +108,14 @@ For each milestone (in order), write the experiment scripts:
 
 **Skip this step if `CODE_REVIEW` is `false`.**
 
-Before deploying, send the experiment code to GPT-5.4 xhigh for review:
+Before deploying, send the experiment **design AND code** to GPT-5.4 xhigh for adversarial review:
 
 ```
 mcp__codex__codex:
   config: {"model_reasoning_effort": "xhigh"}
   prompt: |
-    Review the following experiment implementation for correctness.
+    Review the following experiment DESIGN and IMPLEMENTATION for correctness.
+    Act as a devil's advocate — find problems BEFORE we waste GPU hours.
 
     ## Experiment Plan:
     [paste key sections from EXPERIMENT_PLAN.md]
@@ -125,7 +126,19 @@ mcp__codex__codex:
     ## Implementation:
     [paste the experiment scripts]
 
-    Check for:
+    ## PART 1 — EXPERIMENT DESIGN REVIEW:
+    1. Does the experiment actually test the stated claims?
+    2. Are the chosen baselines the STRONGEST available, or are weak 
+       baselines cherry-picked to make our method look better?
+    3. Are the evaluation metrics standard for this field? Would a 
+       different metric tell a different story?
+    4. Is the comparison fair (same hyperparameter tuning budget, same 
+       data augmentation, same compute)?
+    5. Are there enough runs/seeds for statistical significance?
+    6. What is the most likely way a reviewer would attack this 
+       experimental setup?
+
+    ## PART 2 — CODE REVIEW:
     1. Does the code correctly implement the method described in the proposal?
     2. Are all hyperparameters from the plan reflected in the code?
     3. Are there any logic bugs (wrong loss function, incorrect data split, missing eval)?

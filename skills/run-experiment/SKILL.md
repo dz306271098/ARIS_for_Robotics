@@ -23,7 +23,7 @@ Read the project's `CLAUDE.md` to determine the experiment environment:
 1. If `CLAUDE.md` has `gpu: vast` or a `## Vast.ai` section:
    - If `vast-instances.json` exists and has a running instance → use that instance
    - If no running instance → call `/vast-gpu provision` which analyzes the task, presents cost-optimized GPU options, and rents the user's choice
-2. If no server info is found in `CLAUDE.md`, ask the user.
+2. If no server info is found in `CLAUDE.md`, default to `gpu: local` and attempt to use locally available GPUs (via `nvidia-smi`). If no local GPU detected, log a warning and attempt CPU execution for small-scale experiments.
 
 ### Step 2: Pre-flight Check
 

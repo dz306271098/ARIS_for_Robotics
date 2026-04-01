@@ -18,6 +18,18 @@ End-to-end autonomous research workflow for: **$ARGUMENTS**
 
 > 💡 Override via argument, e.g., `/research-pipeline "topic" — AUTO_PROCEED: false, human checkpoint: true`.
 
+## Full Autonomy Principle
+
+This pipeline is designed to run **fully autonomously without human intervention**. At every decision point:
+
+1. **Never block waiting for user input** — make the best decision based on available data, document the reasoning, and continue.
+2. **Auto-select at forks** — when multiple options exist (ideas, variants, fix strategies), apply quantitative criteria to select the best one. Log the decision and alternatives.
+3. **Auto-recover from failures** — when experiments fail, web searches hang, or reviews are harsh, diagnose the issue, apply the best fix, and continue. Exhaust at least 2 approaches before flagging as unresolvable.
+4. **Auto-infer missing context** — when required files are absent (RESEARCH_BRIEF.md, EXPERIMENT_PLAN.md), infer the needed information from whatever IS available (CLAUDE.md, existing code, prior outputs).
+5. **Document all autonomous decisions** — every auto-decision is logged with reasoning so the user can review after the fact. Format: `[AUTO-DECISION] Chose X over Y because Z`.
+
+All downstream skills inherit this principle. No sub-skill should stop the pipeline to ask the user a question unless there is genuinely zero context to make any decision.
+
 ## Overview
 
 This skill chains the entire research lifecycle into a single pipeline:
