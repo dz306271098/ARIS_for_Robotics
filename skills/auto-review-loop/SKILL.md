@@ -13,12 +13,13 @@ Autonomously iterate: review → implement fixes → re-review, until the extern
 
 ## Constants
 
-- MAX_ROUNDS = 4
+- **MAX_ROUNDS = 4** — Maximum number of review iterations. Override via argument, e.g., `— max rounds: 20`.
 - POSITIVE_THRESHOLD: score >= 6/10, or verdict contains "accept", "sufficient", "ready for submission"
 - REVIEW_DOC: `AUTO_REVIEW.md` in project root (cumulative log)
 - REVIEWER_MODEL = `gpt-5.4` — Model used via Codex MCP. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`)
 - **HUMAN_CHECKPOINT = false** — When `true`, pause after each round's review (Phase B) and present the score + weaknesses to the user. Wait for user input before proceeding to Phase C. The user can: approve the suggested fixes, provide custom modification instructions, skip specific fixes, or stop the loop early. When `false` (default), the loop runs fully autonomously.
 - **COMPACT = false** — When `true`, (1) read `EXPERIMENT_LOG.md` and `findings.md` instead of parsing full logs on session recovery, (2) append key findings to `findings.md` after each round.
+- **RESEARCH_DRIVEN_FIX = false** — When `true`, add a Phase B.5 between review parsing and fix implementation: for each critical weakness, classify as symptom vs root cause, search literature for techniques addressing the root cause, and propose 2-3 fix strategies (not just minimal fix). Select the most promising strategy based on integration elegance, expected improvement, and implementation cost. When `false` (default), implement the reviewer's suggested minimal fixes directly.
 
 > 💡 Override: `/auto-review-loop "topic" — compact: true, human checkpoint: true`
 
@@ -139,6 +140,33 @@ After parsing the score, check if `~/.claude/feishu.json` exists and mode is not
 - Send a `review_scored` notification: "Round N: X/10 — [verdict]" with top 3 weaknesses
 - If **interactive** mode and verdict is "almost": send as checkpoint, wait for user reply on whether to continue or stop
 - If config absent or mode off: skip entirely (no-op)
+
+#### Phase B.5: Research-Driven Fix Design (when RESEARCH_DRIVEN_FIX = true)
+
+**Skip this step entirely if `RESEARCH_DRIVEN_FIX = false` (default).**
+
+When `RESEARCH_DRIVEN_FIX = true`, for each critical weakness identified in Phase B:
+
+1. **Classify**: Is this a surface symptom or a root cause?
+   - Symptom: "accuracy is low on sequence X"
+   - Root cause: "the model has no mechanism to estimate gyroscope bias drift"
+
+2. **If root cause is novel** (not addressed in prior rounds):
+   a. Search arXiv + Semantic Scholar for techniques addressing this root cause.
+      **Web resilience**: Prefer API tools (`python tools/arxiv_fetch.py search "query"`, `python tools/semantic_scholar_fetch.py search "query"`) over WebSearch. If WebSearch/WebFetch hangs (~60s), abandon immediately and continue with available results. Phase B.5 must NEVER block the pipeline.
+   b. Look for solutions in adjacent domains (SLAM, VIO, signal processing, state estimation)
+   c. Propose 2-3 fix strategies — not just the minimal fix, but research-informed alternatives:
+      - Strategy A: Minimal fix (as reviewer suggested)
+      - Strategy B: Technique from literature that addresses the root cause
+      - Strategy C: Novel adaptation combining insights from multiple sources
+   d. Select the most promising strategy based on:
+      - Integration elegance with existing method (prefer clean fusion over bolting on)
+      - Expected improvement magnitude
+      - Implementation cost (prefer quick wins for early rounds, deeper changes for later rounds)
+
+3. **If root cause was addressed before**: Check what worked/didn't in prior rounds (`AUTO_REVIEW.md`). Don't repeat failed approaches.
+
+4. Proceed to Phase C with the selected strategy (which may be more ambitious than the reviewer's minimal suggestion).
 
 #### Phase C: Implement Fixes (if not stopping)
 

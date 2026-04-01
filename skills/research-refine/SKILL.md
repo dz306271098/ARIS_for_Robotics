@@ -179,6 +179,18 @@ Then decide:
 
 If both routes are weak, rethink the framing instead of combining them into a larger system by default.
 
+### Technique Fusion Analysis
+
+After identifying the technical gap and choosing the sharpest route:
+
+1. **Survey adjacent domains**: Search for techniques from related fields that address similar gaps (e.g., for inertial odometry: techniques from SLAM, VIO, signal processing, state estimation, deep learning for time series, physics-informed neural networks).
+2. **Evaluate each candidate technique**:
+   - Does it address the core bottleneck or just a symptom?
+   - Can it be elegantly integrated (not bolted on)?
+   - Does combining it with the main method create synergy ("1+1>2")?
+3. **Design the method as a fusion** of the most compatible techniques. The fusion should feel natural, not forced.
+4. **Explicitly articulate the synergy**: Why is the combination better than either technique alone? What does each technique contribute that the other cannot?
+
 #### Step 1.4: Concretize the Method First
 
 The proposal must answer "how would we actually build this?" Prefer method detail over broad experimentation and prefer reuse over invention.
@@ -352,7 +364,7 @@ mcp__codex__codex:
 
     2. **Method Specificity**: Are the interfaces, representations, losses, training stages, and inference path concrete enough that an engineer could start implementing?
 
-    3. **Contribution Quality**: Is there one dominant mechanism-level contribution with real novelty, good parsimony, and no obvious contribution sprawl?
+    3. **Contribution Quality** (25%): Does the method represent a genuine contribution? Is the technique fusion elegant (1+1>2) rather than mechanical stacking? Does removing any component degrade performance significantly?
 
     4. **Frontier Leverage**: Does the proposal use current foundation-model-era primitives appropriately when they are the right tool, instead of defaulting to old-school module stacking?
 

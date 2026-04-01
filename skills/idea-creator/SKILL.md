@@ -32,7 +32,12 @@ Map the research area to understand what exists and where the gaps are.
 1. **Scan local paper library first**: Check `papers/` and `literature/` in the project directory for existing PDFs. Read first 3 pages of relevant papers to build a baseline understanding before searching online. This avoids re-discovering what the user already knows.
 
 2. **Search recent literature** using WebSearch:
-   - Top venues in the last 2 years (NeurIPS, ICML, ICLR, ACL, EMNLP, etc.)
+   - Top venues in last 2 years:
+     - ML conferences: NeurIPS, ICML, ICLR, ACL, EMNLP, CVPR, etc.
+     - Robotics venues (when topic involves robotics, navigation, odometry, SLAM, IMU):
+       RAL, ICRA, IROS, TRO, CoRL, RSS, Science Robotics
+     - Signal processing venues (when topic involves sensor signals, IMU, time series):
+       IEEE TSP, IEEE SPL, ICASSP
    - Recent arXiv preprints (last 6 months)
    - Use 5+ different query formulations
    - Read abstracts and introductions of the top 10-15 papers
@@ -208,6 +213,15 @@ Write a structured report to `IDEA_REPORT.md` in the project root:
 - [ ] Scale up Idea 1 to full experiment (multi-seed, full dataset)
 - [ ] If confirmed, invoke /auto-review-loop for full iteration
 ```
+
+## Web Resilience Rules
+
+Web operations (WebSearch, WebFetch) can hang and block the pipeline. Apply strictly:
+
+1. **Prefer API tools over WebSearch**: Use `python tools/arxiv_fetch.py search "query"` and `python tools/semantic_scholar_fetch.py search "query"` instead of WebSearch whenever possible. They are faster and more reliable.
+2. **Timeout discipline**: If WebSearch/WebFetch does not respond within ~60 seconds, abandon it immediately. Do NOT retry the same query — reformulate or skip.
+3. **Never block the pipeline**: Phase 1 (Landscape Survey) MUST complete even if all web searches fail. Fall back to: local papers → arXiv API → Semantic Scholar API → proceed with whatever information is available.
+4. **Batch, don't serialize**: When doing multiple searches, alternate between tools (arXiv API, S2 API, WebSearch). If one hangs, the others likely still work.
 
 ## Key Rules
 

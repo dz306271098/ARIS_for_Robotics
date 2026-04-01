@@ -103,6 +103,35 @@ Final-check implications:
 - Confirm the correct `\documentclass` option (`[conference]`, not `[journal]`).
 - Some conferences require IEEE copyright notice — check submission portal for specific requirements.
 
+## IEEE RA-L (Robotics and Automation Letters)
+
+RA-L is a hybrid: journal quality, letter format, with optional ICRA/IROS presentation.
+
+Planning implications:
+
+- **Page limit**: 6-8 pages TOTAL (including references, figures, everything). Regular paper: 6 pages base + up to 2 extra pages with overlength charge.
+- **NOT anonymous** — include full author names, affiliations, and IEEE membership status from submission.
+- Use `\documentclass[journal]{IEEEtran}` with `\cite{}` (numeric citations via `cite` package). Do NOT use `natbib`.
+- References **count toward the page limit**. Budget accordingly — typically 0.5-0.8 pages for references.
+- Include `\begin{IEEEkeywords}` block immediately after the abstract.
+- Bibliography style: `IEEEtran.bst` (numeric `[1]` style).
+- Multimedia attachments (videos) are strongly encouraged, 10 MB limit. Reference in text: "The accompanying video demonstrates..."
+- RA-L papers can opt-in for presentation at ICRA or IROS. Mention in cover letter, not in the paper itself.
+
+Final-check implications:
+
+- Technical quality and rigor are paramount — RA-L reviewers expect depth.
+- Experimental validation: real-world experiments strongly preferred; simulation acceptable if well-justified.
+- Quantitative comparison on standard benchmarks/datasets with recent baselines (within 2 years).
+- Statistical analysis: mean ± std across multiple runs/sequences.
+- Runtime/latency analysis if real-time claims are made.
+- Ablation studies demonstrating the contribution of each component.
+- Failure case analysis is expected by RA-L reviewers.
+- Verify total page count including references is within 6-8 pages.
+- Check that all figures meet IEEE quality requirements: 300 dpi minimum, readable in grayscale.
+- Verify no `\citep` or `\citet` commands — IEEE uses `\cite{}` only.
+- Author biography (`\begin{IEEEbiography}`) is optional but recommended for camera-ready.
+
 ## Minimal Submission Checklist
 
 Before submission, verify:

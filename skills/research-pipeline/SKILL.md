@@ -14,6 +14,7 @@ End-to-end autonomous research workflow for: **$ARGUMENTS**
 - **AUTO_PROCEED = true** — When `true`, Gate 1 auto-selects the top-ranked idea (highest pilot signal + novelty confirmed) and continues to implementation. When `false`, always waits for explicit user confirmation before proceeding.
 - **ARXIV_DOWNLOAD = false** — When `true`, `/research-lit` downloads the top relevant arXiv PDFs during literature survey. When `false` (default), only fetches metadata via arXiv API. Passed through to `/idea-discovery` → `/research-lit`.
 - **HUMAN_CHECKPOINT = false** — When `true`, the auto-review loops (Stage 4) pause after each round's review to let you see the score and provide custom modification instructions before fixes are implemented. When `false` (default), loops run fully autonomously. Passed through to `/auto-review-loop`.
+- **DEEP_INNOVATION = false** — When `true`, Stage 4 uses `/deep-innovation-loop` (40+ rounds of deep research-innovation cycles: diagnose root cause → research literature → design innovative variants → implement → evaluate → reflect → evolve) instead of the standard `/auto-review-loop` (4 rounds of review-fix). Use this for projects that require genuine methodological innovation, not just iterative polishing. Passed through to Stage 4.
 
 > 💡 Override via argument, e.g., `/research-pipeline "topic" — AUTO_PROCEED: false, human checkpoint: true`.
 
@@ -109,9 +110,29 @@ Deploy the full-scale experiments:
 
 Wait for experiments to complete. Collect results.
 
-### Stage 4: Auto Review Loop (Workflow 2 — Part 2)
+### Stage 4: Method Evolution (Workflow 2 — Part 2)
 
-Once initial results are in, start the autonomous improvement loop:
+Once initial results are in, start the improvement loop.
+
+**If DEEP_INNOVATION = true** (for projects requiring genuine methodological innovation):
+
+```
+/deep-innovation-loop "$ARGUMENTS — [chosen idea title]" — baseline: [PRIMARY_BASELINE], venue: [VENUE]
+```
+
+**What this does (40+ rounds):**
+1. GPT-5.4 xhigh diagnoses root causes (not just symptoms)
+2. Claude Code researches literature for techniques addressing root causes
+3. GPT-5.4 proposes innovative method variants with "1+1>2" fusion design
+4. Claude Code implements the best variant, runs experiments
+5. Both reflect on results, update technique library and evolution log
+6. Repeat until score ≥ 8/10 or convergence plateau
+
+**Output:** `innovation-logs/FINAL_METHOD.md`, `innovation-logs/EVOLUTION_LOG.md`, `innovation-logs/TECHNIQUE_LIBRARY.md`
+
+After deep-innovation-loop completes, optionally run `/auto-review-loop` for 2-3 rounds of final paper-level polish.
+
+**If DEEP_INNOVATION = false** (default — quick iterative polishing):
 
 ```
 /auto-review-loop "$ARGUMENTS — [chosen idea title]"
@@ -142,6 +163,7 @@ After the auto-review loop completes, write a final status report:
 - Implementation: [brief description of what was built]
 - Experiments: [number of GPU experiments, total compute time]
 - Review rounds: N/4, final score: X/10
+- [If DEEP_INNOVATION=true] Innovation rounds: N, method evolution: v0 → vN, techniques explored: M, final vs baseline improvement: [metrics]
 
 ## Final Status
 - [ ] Ready for submission / [ ] Needs manual follow-up

@@ -168,6 +168,39 @@ If `semantic_scholar_fetch.py` is not found, skip silently.
 - If the S2 match has no venue (still just a preprint indexed by S2): keep the arXiv version as-is.
 - S2 results without `externalIds.ArXiv` are **venue-only papers** not on arXiv — these are the unique value of this source.
 
+### Domain-Specific Search: Robotics & Inertial Navigation
+
+When the research topic involves robotics, inertial navigation, odometry, IMU, or sensor fusion:
+
+**Priority Venues** (via Semantic Scholar):
+- IEEE RA-L (Robotics and Automation Letters)
+- ICRA (International Conference on Robotics and Automation)
+- IROS (International Conference on Intelligent Robots and Systems)
+- IEEE TRO (Transactions on Robotics)
+- CoRL (Conference on Robot Learning)
+- RSS (Robotics: Science and Systems)
+
+**Key Search Terms** (combine and vary):
+- Inertial odometry, neural inertial navigation, IMU odometry
+- Pedestrian dead reckoning, inertial measurement unit
+- Deep inertial odometry, learning-based inertial navigation
+- IMU preintegration, inertial sensor fusion
+- Attitude estimation, orientation tracking
+- Specific baselines: AIR-IO, TLIO, RoNIN, RINS-W, IONet, MotionTransformer
+
+**arXiv Categories**:
+- cs.RO (Robotics)
+- cs.CV (when combined with visual-inertial)
+- eess.SP (Signal Processing, for IMU denoising)
+
+**Dataset-Specific Search**:
+- RIDI dataset, OxIOD, RoNIN dataset, KITTI IMU
+- EuRoC MAV dataset (IMU component)
+- TUM-VI dataset
+
+When using Semantic Scholar, filter by venues:
+`— sources: semantic-scholar, venues: "IEEE Robotics and Automation Letters,ICRA,IROS"`
+
 **Optional PDF download** (only when `ARXIV_DOWNLOAD = true`):
 
 After all sources are searched and papers are ranked by relevance:
@@ -210,6 +243,42 @@ If Zotero BibTeX was exported, include a `references.bib` snippet for direct use
 - Save paper PDFs to `literature/` or `papers/`
 - Update related work notes in project memory
 - If Obsidian is available, optionally create a literature review note in the vault
+
+## Web Resilience Rules
+
+Web operations (WebSearch, WebFetch) can hang indefinitely and block the entire pipeline. Apply these rules strictly:
+
+1. **Prefer Bash `curl` with timeout over raw WebFetch for critical paths**:
+   ```bash
+   # Use curl with --max-time instead of WebFetch when fetching a known URL
+   curl -sL --max-time 30 "https://arxiv.org/abs/XXXX.XXXXX" | head -200
+   ```
+
+2. **Batch web searches**: Do NOT launch many sequential WebSearch calls. Batch 3-5 queries, and if any individual search hangs for more than ~60 seconds, abandon it and move on to the next.
+
+3. **Hard rule — never block on web**: If WebSearch or WebFetch appears stuck (no response within ~60 seconds), immediately:
+   - Abandon the current fetch
+   - Log: `"[SKIP] WebSearch/WebFetch timed out for query: [query]"`
+   - Continue with whatever results have already been collected
+   - Do NOT retry the same URL/query — try an alternative query formulation or skip
+
+4. **Graceful degradation priority**: If all web searches fail, the skill MUST still produce output using:
+   - Local papers in `papers/` and `literature/` directories
+   - Zotero/Obsidian results (if available)
+   - arXiv API via `python tools/arxiv_fetch.py` (more reliable than WebSearch)
+   - Semantic Scholar API via `python tools/semantic_scholar_fetch.py` (more reliable than WebSearch)
+   - State clearly in the output: "Web search was unavailable; results based on local/API sources only"
+
+5. **Prefer API tools over web scraping**: For arXiv and Semantic Scholar, ALWAYS prefer the dedicated Python tools (`tools/arxiv_fetch.py`, `tools/semantic_scholar_fetch.py`) over WebSearch/WebFetch. These are faster, more reliable, and have built-in error handling:
+   ```bash
+   # arXiv — reliable, structured results
+   python tools/arxiv_fetch.py search "inertial odometry"
+   
+   # Semantic Scholar — reliable, published venue papers
+   python tools/semantic_scholar_fetch.py search "inertial odometry" --year 2024-2026
+   ```
+
+6. **Sub-agent timeout**: When launching an Agent for web research, keep the scope narrow (one specific query, not "search everything"). Broad agents are more likely to hang.
 
 ## Key Rules
 - Always include paper citations (authors, year, venue)

@@ -28,6 +28,8 @@ refine-logs/FINAL_PROPOSAL.md
 - **MAX_PARALLEL_RUNS = 4** — Maximum number of experiments to deploy in parallel (limited by available GPUs).
 - **BASE_REPO = false** — GitHub repo URL to use as base codebase. When set, clone the repo first and implement experiments on top of it. When `false` (default), write code from scratch or reuse existing project files.
 - **COMPACT = false** — When `true`, (1) read `IDEA_CANDIDATES.md` instead of full `IDEA_REPORT.md` if available, (2) append experiment results to `EXPERIMENT_LOG.md` after collection.
+- **BASELINE_COMPARISON = ""** — When set (e.g., "AIR-IO"), automatically include this baseline in all comparison tables. Compute delta metrics (Δ = method - baseline) with significance indicators.
+- **ITERATIVE_VARIANTS = false** — When `true`, support testing multiple method variants within the same bridge session. Useful for rapid variant comparison during deep innovation loops.
 
 > Override: `/experiment-bridge "EXPERIMENT_PLAN.md" — compact: true, base repo: https://github.com/org/project`
 
@@ -237,6 +239,19 @@ As experiments complete:
 ## Next Step
 → /auto-review-loop "[topic]"
 ```
+
+### Baseline Comparison (when BASELINE_COMPARISON is set)
+
+After collecting results, automatically:
+1. Ensure baseline (e.g., AIR-IO) results are included in comparison
+2. If baseline results not available: run baseline evaluation first
+3. Compute delta metrics: Δ = (method - baseline) for each metric
+4. Add significance indicator: * for p < 0.05, ** for p < 0.01
+5. Format comparison table:
+   | Method | ATE (m) ↓ | RTE (m/s) ↓ | Drift (%) ↓ | vs Baseline |
+   |--------|-----------|-------------|-------------|-------------|
+   | [Baseline] | X.XX | X.XX | X.XX | — |
+   | Ours (vN) | X.XX | X.XX | X.XX | ΔX.XX (±X%) |
 
 ### Phase 5.5: Write Compact Log (when COMPACT = true)
 

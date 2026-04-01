@@ -34,8 +34,12 @@ For EACH core claim, search using ALL available sources:
    - Try at least 3 different query formulations per claim
    - Include year filters for 2024-2026
 
-2. **Known paper databases**: Check against:
-   - ICLR 2025/2026, NeurIPS 2025, ICML 2025/2026
+2. **Known paper databases**:
+   Check venue-appropriate conferences:
+   - ML: ICLR 2025/2026, NeurIPS 2025, ICML 2025/2026
+   - Robotics (when topic involves robotics/navigation/odometry/IMU/SLAM):
+     RAL 2024-2026, ICRA 2024-2026, IROS 2024-2025, CoRL 2024-2025,
+     RSS 2024-2025, TRO 2024-2026
    - Recent arXiv preprints (2025-2026)
 
 3. **Read abstracts**: For each potentially overlapping paper, WebFetch its abstract and related work section
@@ -77,6 +81,16 @@ Output a structured report:
 ### Suggested Positioning
 [How to frame the contribution to maximize novelty perception]
 ```
+
+### Web Resilience Rules
+
+WebSearch/WebFetch can hang and block the novelty check. Apply strictly:
+
+1. **Prefer API tools**: Use `python tools/arxiv_fetch.py search "query"` and `python tools/semantic_scholar_fetch.py search "query"` as PRIMARY search tools. They are faster and more reliable than WebSearch.
+2. **Timeout**: If WebSearch/WebFetch does not respond within ~60 seconds, abandon and move to the next query. Do NOT retry the same query.
+3. **For fetching abstracts**: Use `curl -sL --max-time 30 "URL"` instead of WebFetch for known URLs (arXiv abs pages, Semantic Scholar pages).
+4. **Never block**: The novelty check MUST produce a report even if some web searches fail. Mark any claims with incomplete search coverage as `[PARTIAL SEARCH — verify manually]`.
+5. **Graceful degradation**: If all web searches fail, produce the report based on Codex MCP cross-verification alone (Phase C), and flag: "Web search unavailable — novelty assessment based on reviewer knowledge only, manual verification recommended."
 
 ### Important Rules
 - Be BRUTALLY honest — false novelty claims waste months of research time

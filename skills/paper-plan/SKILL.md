@@ -12,8 +12,17 @@ Generate a structured, section-by-section paper outline from: **$ARGUMENTS**
 ## Constants
 
 - **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex MCP for outline review. Must be an OpenAI model.
-- **TARGET_VENUE = `ICLR`** — Default venue. User can override (e.g., `/paper-plan "topic" — venue: NeurIPS`). Supported: `ICLR`, `NeurIPS`, `ICML`, `CVPR`, `ACL`, `AAAI`, `ACM`, `IEEE_JOURNAL` (IEEE Transactions / Letters), `IEEE_CONF` (IEEE conferences).
+- **TARGET_VENUE = `ICLR`** — Default venue. User can override (e.g., `/paper-plan "topic" — venue: NeurIPS`). Supported: `ICLR`, `NeurIPS`, `ICML`, `CVPR`, `ACL`, `AAAI`, `ACM`, `RAL`, `IEEE_JOURNAL` (IEEE Transactions / Letters), `IEEE_CONF` (IEEE conferences).
 - **MAX_PAGES** — Page limit. For ML conferences: main body to Conclusion end (excluding references, appendix). ICLR=9, NeurIPS=9, ICML=8. **For IEEE venues: references ARE included in page count.** IEEE journal Transactions ≈ 12-14 pages total, Letters ≈ 4-5 pages total; IEEE conference ≈ 5-8 pages total (including references).
+  RAL = 8 pages total (including references). Budget allocation:
+  - Abstract + Keywords: 0.3 pages
+  - Introduction: 1.0-1.2 pages
+  - Related Work: 0.8-1.0 pages
+  - Method: 1.5-2.0 pages
+  - Experiments: 2.0-2.5 pages
+  - Conclusion: 0.3-0.5 pages
+  - References: 0.5-0.8 pages
+  Note: RA-L is tight — every sentence must earn its space. Prefer compact tables over verbose descriptions.
 
 ## Inputs
 
@@ -109,6 +118,14 @@ Theory papers should:
 5. Ablation / Analysis (1 page)
 6. Conclusion (0.5 pages)
 ```
+
+### RAL-Specific Structure Notes
+- RA-L papers should be self-contained within 6-8 pages
+- Video supplementary is strongly encouraged for robotics results
+- Include a "System Overview" figure early (Figure 1 as architecture diagram)
+- Benchmark comparison table must include recent baselines (within 2 years)
+- Include runtime/latency analysis for real-time claims
+- Failure case analysis is expected by RA-L reviewers
 
 ### Step 3: Section-by-Section Planning
 
