@@ -88,8 +88,12 @@ Two outputs: `PASTE_READY.txt` (exact char count, paste to venue) + `REBUTTAL_DR
 
 ## 📢 What's New
 
+- **2026-04-01** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) 🔬 **[`deep-innovation-loop`](skills/deep-innovation-loop/SKILL.md)** — autonomous 40+ round method evolution: Diagnose → Research → Innovate → Implement → Reflect, with 3 macro phases (EXPLORE → REFINE → POLISH). Unlike `/auto-review-loop` (symptom-fixing), this drives genuine methodological innovation. Integrated into `/research-pipeline` via `DEEP_INNOVATION: true`. 🔧 **`RESEARCH_DRIVEN_FIX`** for `/auto-review-loop` — root-cause analysis + literature-informed fix strategies instead of minimal patches. 📚 **`research-lit` web resilience** — API-first approach with timeout rules, graceful degradation. 📖 **[Inertial Odometry Guide (CN)](docs/INERTIAL_ODOMETRY_GUIDE_CN.md)** — domain-specific ARIS usage guide
 - **2026-03-30** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) 🔥 **Auto-debug & exhaust-before-surrender** — experiment-bridge now auto-diagnoses failures (OOM, import, path, CUDA, NaN) and retries up to 3× before giving up. auto-review-loop must try 2+ solution paths before conceding any reviewer concern. Inspired by [PUA](https://github.com/tanweai/pua)
 - **2026-03-30** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) ☁️ **[Vast.ai GPU rental](skills/vast-gpu/SKILL.md)** — no GPU? `gpu: vast` in CLAUDE.md, ARIS auto-rents cheapest GPU, runs experiment, destroys when done. Community contribution by [@YIHONG-JIN](https://github.com/YIHONG-JIN). 🔧 **MiniMax M2.7 upgrade** — API URL fix + model upgrade + tests. By [@octo-patch](https://github.com/octo-patch)
+<details>
+<summary>Updates from 2026-03-19 — 2026-03-27 (10 entries)</summary>
+
 - **2026-03-27** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) 📄 **IEEE venue support** — `IEEE_JOURNAL` (TPAMI/TIP/TNNLS) + `IEEE_CONF` (ICC/GLOBECOM/INFOCOM/ICASSP). Official IEEEtran templates. **9 venue families now.** 🔎 **[Semantic Scholar](skills/semantic-scholar/SKILL.md)** — search published venue papers beyond arXiv (`— sources: semantic-scholar`). Community contributions by [@ypd666](https://github.com/ypd666)
 - **2026-03-26** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) 📄 **Document-based input** — drop a `RESEARCH_BRIEF.md` in your project, `/idea-discovery` and `/research-pipeline` auto-detect it. No more squeezing complex research directions into one line. [Template](templates/RESEARCH_BRIEF_TEMPLATE.md)
 - **2026-03-24** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) 📝 **[Workflow 4: `/rebuttal`](skills/rebuttal/SKILL.md)** — post-submission rebuttal pipeline. Parse reviews → atomize → strategy → draft → safety check → GPT-5.4 stress test → finalize (strict + rich versions) → follow-up rounds. 3 safety gates (no fabrication, no overpromise, full coverage). `quick mode` for analysis only. `auto experiment` for supplementary experiments. Designed from 5 successful rebuttal case studies + 3 rounds GPT-5.4 xhigh design review
@@ -100,6 +104,8 @@ Two outputs: `PASTE_READY.txt` (exact char count, paste to venue) + `REBUTTAL_DR
 - **2026-03-20** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) 🖥️ **[Trae adaptation guide](docs/TRAE_ARIS_RUNBOOK_EN.md)** — use ARIS skills in [Trae](https://www.trae.ai/) (ByteDance AI IDE), EN + CN guides. Community contribution by [@Prometheus-cotigo](https://github.com/Prometheus-cotigo). 🔢 **[`formula-derivation`](skills/formula-derivation/SKILL.md)** — research formula development and verification. Community contribution by [@Falling-Flower](https://github.com/Falling-Flower)
 - **2026-03-19** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) 🖼️ **[`paper-poster`](skills/paper-poster/SKILL.md)** — Conference poster (tcbposter → A0/A1 PDF + PPTX + SVG). Venue colors, visual review, Codex review. Community contribution by [@dengzhe-hou](https://github.com/dengzhe-hou)
 - **2026-03-19** — ![NEW](https://img.shields.io/badge/NEW-red?style=flat-square) 🔗 **Workflow 1.5 upgraded** — `/experiment-bridge` now includes **GPT-5.4 cross-model code review** before GPU deployment (`code review: true` by default). 📊 **W&B fix** — real `wandb.Api()` calls
+
+</details>
 <details>
 <summary>Earlier updates (2026-03-12 — 2026-03-18, 12 entries)</summary>
 
@@ -160,6 +166,7 @@ claude
 > | `gpu` | `local` | GPU target: `local` (default), `remote` (SSH server), or `vast` (rent on-demand from [Vast.ai](https://vast.ai) — auto-provision, auto-destroy) |
 > | `compact` | `false` | Generate compact summary files (`IDEA_CANDIDATES.md`, `findings.md`, `EXPERIMENT_LOG.md`) for short-context models and session recovery |
 > | `ref paper` | `false` | Reference paper to build on (PDF path or arXiv URL). Summarized first, then ideas extend/improve it. Combine with `base repo` for paper+code workflows |
+> | `DEEP_INNOVATION` | `false` | Use `/deep-innovation-loop` (40+ round method evolution) in Stage 4 instead of `/auto-review-loop` (4 rounds). For `/research-pipeline` only |
 >
 > ```
 > /research-pipeline "your topic" — AUTO_PROCEED: false                          # pause at idea selection gate
@@ -179,10 +186,11 @@ See [full setup guide](#%EF%B8%8F-setup) for details and [alternative model comb
 
 ## ✨ Features
 
-- 📊 **31 composable skills** — mix and match, or chain into full pipelines (`/idea-discovery`, `/auto-review-loop`, `/paper-writing`, `/research-pipeline`)
+- 📊 **43 composable skills** — mix and match, or chain into full pipelines (`/idea-discovery`, `/auto-review-loop`, `/paper-writing`, `/research-pipeline`)
 - 🔍 **Literature & novelty** — multi-source paper search (**[Zotero](#-zotero-integration-optional)** + **[Obsidian](#-obsidian-integration-optional)** + **local PDFs** + arXiv/Scholar) + cross-model novelty verification
 - 💡 **Idea discovery** — literature survey → brainstorm 8-12 ideas → novelty check → GPU pilot experiments → ranked report
 - 🔄 **Auto review loop** — 4-round autonomous review, 5/10 → 7.5/10 overnight with 20+ GPU experiments
+- 🔬 **Deep innovation loop** — 40+ round autonomous method evolution: diagnose root cause → research literature → design variants → implement → evaluate → reflect. Goes beyond review-fix into genuine methodological innovation
 - 📝 **Paper writing** — narrative → outline → figures → LaTeX → PDF → auto-review (4/10 → 8.5/10), one command. Anti-hallucination citations via [DBLP](https://dblp.org)/[CrossRef](https://www.crossref.org)
 - 🤖 **Cross-model collaboration** — Claude Code executes, GPT-5.4 xhigh reviews. Adversarial, not self-play
 - 📝 **Peer review** — review others' papers as a conference reviewer, with structured scoring and meta-review
@@ -305,9 +313,11 @@ These skills compose into a full research lifecycle. The four workflows can be u
 ### Full Pipeline 🚀
 
 ```
-/research-lit → /idea-creator → /novelty-check → /research-refine → /experiment-bridge → /auto-review-loop → /paper-writing → submit → /rebuttal → accept! 🎉
-  (survey)      (brainstorm)    (verify novel)   (refine method)   (implement+deploy)  (review & fix)      (write paper)   (send)   (reply to reviewers)
-  ├────────────── Workflow 1: Idea Discovery ──────────────┤ ├ Workflow 1.5 ─┤ ├── Workflow 2 ──┤ ├── Workflow 3 ──┤         ├── Workflow 4 ──┤
+/research-lit → /idea-creator → /novelty-check → /research-refine → /experiment-bridge → /auto-review-loop  → /paper-writing → submit → /rebuttal → accept! 🎉
+  (survey)      (brainstorm)    (verify novel)   (refine method)   (implement+deploy)   (review & fix)        (write paper)   (send)   (reply to reviewers)
+  ├────────────── Workflow 1: Idea Discovery ──────────────┤ ├ Workflow 1.5 ─┤  ├── Workflow 2 ──┤  ├── Workflow 3 ──┤         ├── Workflow 4 ──┤
+                                                                               or /deep-innovation-loop
+                                                                                  (method evolution, 40+ rounds)
 ```
 
 📝 **Blog post:** [梦中科研全流程开源](http://xhslink.com/o/2iV33fYoc7Q)
@@ -484,8 +494,11 @@ Already have an experiment plan (from Workflow 1 or your own)? `/experiment-brid
 - 🪞 **No hiding weaknesses** — explicit rule: "Do NOT hide weaknesses to game a positive score"
 - 🔧 **Fix before re-review** — must actually implement fixes before resubmitting; no empty promises
 - 💾 **Compact recovery** — persists state (`REVIEW_STATE.json`) after each round. If the context window fills up and auto-compacts mid-loop, the workflow reads the state file and resumes from where it left off — no human intervention needed
+- 🔬 **Research-driven fixes** (`RESEARCH_DRIVEN_FIX: true`) — instead of minimal patches, classify weaknesses as symptom vs. root cause, search literature for techniques, and propose 2-3 research-informed fix strategies. Off by default
 
 > ⚙️ MAX_ROUNDS, score threshold, and GPU limits are configurable — see [Customization](#%EF%B8%8F-customization).
+
+> 🔬 **Need deeper innovation?** `/auto-review-loop` fixes symptoms over 4 rounds. For genuine method evolution (root-cause diagnosis, literature research, variant design), use [`/deep-innovation-loop`](skills/deep-innovation-loop/SKILL.md) directly or set `DEEP_INNOVATION: true` in `/research-pipeline` to swap Stage 4.
 
 📝 **Blog post:** [开源 | 睡觉 Claude 自动跑实验改文](http://xhslink.com/o/5cBMTDigNXz)
 
@@ -665,7 +678,7 @@ Got reviews back? `/rebuttal` parses them, builds a strategy, and drafts a venue
 
 | Skill | Description | Codex MCP? |
 |-------|-------------|:---:|
-| 🏗️ [`research-pipeline`](skills/research-pipeline/SKILL.md) | **End-to-end**: Workflow 1 → 1.5 → 2 → 3, from research direction to submission | Yes |
+| 🏗️ [`research-pipeline`](skills/research-pipeline/SKILL.md) | **End-to-end**: Workflow 1 → 1.5 → 2 → 3. `DEEP_INNOVATION: true` swaps Stage 4 to `/deep-innovation-loop` (40+ rounds) | Yes |
 
 ### 🔍 Workflow 1: Idea Discovery & Method Refinement
 
@@ -700,6 +713,8 @@ Got reviews back? `/rebuttal` parses them, builds a strategy, and drafts a venue
 | ├ 📊 [`analyze-results`](skills/analyze-results/SKILL.md) | Analyze experiment results, compute statistics, generate insights | No |
 | └ 👀 [`monitor-experiment`](skills/monitor-experiment/SKILL.md) | Monitor running experiments, check progress, collect results | No |
 | 🔁 [`auto-review-loop-llm`](skills/auto-review-loop-llm/SKILL.md) | Same as above, but uses any OpenAI-compatible API via [`llm-chat`](mcp-servers/llm-chat/) MCP server | No |
+| 🔁 [`auto-review-loop-minimax`](skills/auto-review-loop-minimax/SKILL.md) | Same as above, but uses MiniMax API instead of Codex MCP | No |
+| 🔬 [`deep-innovation-loop`](skills/deep-innovation-loop/SKILL.md) | 40+ round autonomous method evolution — root-cause diagnosis → literature → innovative variants → implement → reflect. Alternative to `auto-review-loop` (`DEEP_INNOVATION: true`) | Yes |
 
 ### 📝 Workflow 3: Paper Writing
 
@@ -727,6 +742,10 @@ Got reviews back? `/rebuttal` parses them, builds a strategy, and drafts a venue
 | 🔎 [`semantic-scholar`](skills/semantic-scholar/SKILL.md) | Search published venue papers (IEEE, ACM, Springer) via Semantic Scholar API. Citation counts, venue metadata, TLDR | No |
 | 🎨 [`pixel-art`](skills/pixel-art/SKILL.md) | Generate pixel art SVG illustrations for READMEs, docs, or slides | No |
 | 📱 [`feishu-notify`](skills/feishu-notify/SKILL.md) | [Feishu/Lark](#-feishulark-integration-optional) push (webhook) or interactive (bidirectional). Off by default | No |
+| 📊 [`training-check`](skills/training-check/SKILL.md) | WandB health monitoring — catch NaN, loss divergence, idle GPUs during training | No |
+| ✅ [`result-to-claim`](skills/result-to-claim/SKILL.md) | Experiment results → paper claims gate. Codex evaluates what claims results support | Yes |
+| 🔬 [`ablation-planner`](skills/ablation-planner/SKILL.md) | Reviewer-perspective ablation study design. Codex designs, Claude Code reviews feasibility | Yes |
+| 🖥️ [`system-profile`](skills/system-profile/SKILL.md) | GPU/memory/interconnect profiling and performance bottleneck analysis | No |
 
 ---
 
@@ -1226,6 +1245,7 @@ Skills are plain Markdown files. Fork and customize:
 | `COMPACT` | false | Generate compact summary files for short-context models and session recovery | → all workflows |
 | `REF_PAPER` | false | Reference paper (PDF path or URL) to base ideas on. Summarized first, then used as context | → `idea-discovery` |
 | `ILLUSTRATION` | `gemini` | AI illustration: `gemini` (default), `mermaid` (free), or `false` (skip) | → `paper-writing` |
+| `DEEP_INNOVATION` | `false` | Use `/deep-innovation-loop` (40+ round method evolution) instead of `/auto-review-loop` (4 rounds) in Stage 4 | → Stage 4 |
 
 Override inline: `/research-pipeline "topic" — auto proceed: false, illustration: mermaid`
 
@@ -1236,6 +1256,21 @@ Override inline: `/research-pipeline "topic" — auto proceed: false, illustrati
 | `MAX_ROUNDS` | 4 | Maximum review→fix→re-review iterations |
 | `POSITIVE_THRESHOLD` | 6/10 | Score at which the loop stops (submission-ready) |
 | `> 4 GPU-hour skip` | 4h | Experiments exceeding this are flagged for manual follow-up |
+| `RESEARCH_DRIVEN_FIX` | `false` | Root-cause classification + literature-informed fix strategies instead of minimal patches. Adds Phase B.5 |
+
+### Deep Innovation Loop (`deep-innovation-loop`)
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `MAX_ROUNDS` | 50 | Hard upper limit on innovation rounds |
+| `PATIENCE_EXPLORE` | 5 | No improvement for 5 rounds → shift to refine phase |
+| `PATIENCE_REFINE` | 4 | No improvement for 4 rounds → shift to polish phase |
+| `PATIENCE_POLISH` | 3 | No improvement for 3 rounds → terminate |
+| `TARGET_SCORE` | 8 | Stop when GPT-5.4 review score reaches this threshold |
+| `HUMAN_CHECKPOINT` | false | Pause after each round for user input |
+| `VENUE` | RAL | Target venue for review scoring |
+
+Override inline: `/deep-innovation-loop "improve method X" — baseline: AIR-IO, venue: RAL, max rounds: 40, human checkpoint: true`
 
 ### Idea Discovery (`idea-discovery` / `idea-creator`)
 
