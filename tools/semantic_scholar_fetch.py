@@ -7,9 +7,12 @@ metadata (citations, venue, fieldsOfStudy, TLDR).
 
 Commands
 --------
-search       Relevance search for papers (offset pagination, max 100).
-search-bulk  Bulk search with token-based pagination (max 1000).
-paper        Fetch one paper by Semantic Scholar paper ID, DOI, CorpusId, ArXiv ID, etc.
+search        Relevance search for papers (offset pagination, max 100).
+search-bulk   Bulk search with token-based pagination (max 1000).
+paper         Fetch one paper by Semantic Scholar paper ID, DOI, CorpusId, ArXiv ID, etc.
+citations     Papers that cite a given paper (forward citation graph).
+references    Papers cited by a given paper (backward citation graph).
+author-papers Search for an author by name and list their papers.
 
 Filter flags (shared by search and search-bulk)
 -----------------------------------------------
@@ -37,6 +40,13 @@ python3 tools/semantic_scholar_fetch.py search-bulk "semantic communication" --m
 # Fetch a single paper by DOI or arXiv ID
 python3 tools/semantic_scholar_fetch.py paper "10.1109/JSAC.2021.3126077"
 python3 tools/semantic_scholar_fetch.py paper "ARXIV:2006.10685"
+
+# Citation graph traversal (snowball search)
+python3 tools/semantic_scholar_fetch.py citations "ARXIV:2301.07041" --max 20
+python3 tools/semantic_scholar_fetch.py references "ARXIV:2301.07041" --max 20
+
+# Author search — find papers by a specific researcher
+python3 tools/semantic_scholar_fetch.py author-papers "Yann LeCun" --max 20
 
 # NOTE: --venue requires exact venue name (e.g. "IEEE Transactions on Signal Processing"),
 # not partial match like "IEEE". Prefer --publication-types + --fields-of-study instead.
@@ -268,6 +278,72 @@ def get_paper(paper_id: str, fields: str = _DEFAULT_FIELDS) -> dict[str, Any]:
     return _parse_paper(payload)
 
 
+_CITING_FIELDS = (
+    "title,abstract,year,venue,publicationDate,url,authors,"
+    "externalIds,citationCount,fieldsOfStudy"
+)
+
+
+def get_citations(
+    paper_id: str, max_results: int = 20, fields: str = _CITING_FIELDS,
+) -> dict[str, Any]:
+    """Get papers that cite the given paper (forward citations)."""
+    encoded_id = urllib.parse.quote(paper_id, safe="")
+    params = {"fields": fields, "limit": max_results}
+    url = f"{_API_BASE}/paper/{encoded_id}/citations?{urllib.parse.urlencode(params)}"
+    payload = _request_json(url)
+    data = payload.get("data") or []
+    papers = [_parse_paper(item["citingPaper"]) for item in data if item.get("citingPaper")]
+    return {"mode": "citations", "seed": paper_id, "returned": len(papers), "data": papers}
+
+
+def get_references(
+    paper_id: str, max_results: int = 20, fields: str = _CITING_FIELDS,
+) -> dict[str, Any]:
+    """Get papers cited by the given paper (backward references)."""
+    encoded_id = urllib.parse.quote(paper_id, safe="")
+    params = {"fields": fields, "limit": max_results}
+    url = f"{_API_BASE}/paper/{encoded_id}/references?{urllib.parse.urlencode(params)}"
+    payload = _request_json(url)
+    data = payload.get("data") or []
+    papers = [_parse_paper(item["citedPaper"]) for item in data if item.get("citedPaper")]
+    return {"mode": "references", "seed": paper_id, "returned": len(papers), "data": papers}
+
+
+def search_author(query: str, limit: int = 5) -> dict[str, Any]:
+    """Search for authors by name."""
+    params = {"query": query, "limit": limit}
+    url = f"{_API_BASE}/author/search?{urllib.parse.urlencode(params)}"
+    payload = _request_json(url)
+    data = payload.get("data") or []
+    authors = []
+    for a in data:
+        authors.append({
+            "authorId": a.get("authorId"),
+            "name": _clean_text(a.get("name")),
+            "paperCount": a.get("paperCount"),
+            "citationCount": a.get("citationCount"),
+            "hIndex": a.get("hIndex"),
+        })
+    return {"mode": "author-search", "total": payload.get("total"), "data": authors}
+
+
+def get_author_papers(
+    author_id: str, max_results: int = 20, fields: str = _CITING_FIELDS,
+) -> dict[str, Any]:
+    """Get papers by a specific author."""
+    params = {"fields": fields, "limit": max_results}
+    url = f"{_API_BASE}/author/{author_id}/papers?{urllib.parse.urlencode(params)}"
+    payload = _request_json(url)
+    data = payload.get("data") or []
+    return {
+        "mode": "author-papers",
+        "authorId": author_id,
+        "returned": len(data),
+        "data": [_parse_paper(item) for item in data],
+    }
+
+
 def _add_filter_args(parser: argparse.ArgumentParser) -> None:
     """Add shared filtering arguments to a search sub-parser."""
     parser.add_argument(
@@ -376,6 +452,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Comma-separated response fields to request.",
     )
 
+    cite_parser = subparsers.add_parser("citations", help="Papers that cite a given paper")
+    cite_parser.add_argument("id", help="Paper ID (S2 ID, DOI, ARXIV:..., etc.)")
+    cite_parser.add_argument("--max", type=int, default=20, metavar="N", help="Max results (default: 20).")
+    cite_parser.add_argument("--fields", default=_CITING_FIELDS, help="Response fields.")
+
+    ref_parser = subparsers.add_parser("references", help="Papers cited by a given paper")
+    ref_parser.add_argument("id", help="Paper ID (S2 ID, DOI, ARXIV:..., etc.)")
+    ref_parser.add_argument("--max", type=int, default=20, metavar="N", help="Max results (default: 20).")
+    ref_parser.add_argument("--fields", default=_CITING_FIELDS, help="Response fields.")
+
+    author_parser = subparsers.add_parser("author-papers", help="Search author and list their papers")
+    author_parser.add_argument("name", help="Author name to search for.")
+    author_parser.add_argument("--max", type=int, default=20, metavar="N", help="Max papers to return (default: 20).")
+    author_parser.add_argument("--fields", default=_CITING_FIELDS, help="Response fields.")
+
     return parser
 
 
@@ -421,6 +512,28 @@ def main(argv: list[str] | None = None) -> int:
                 paper_id=args.id,
                 fields=args.fields,
             )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if args.command == "citations":
+            result = get_citations(paper_id=args.id, max_results=args.max, fields=args.fields)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if args.command == "references":
+            result = get_references(paper_id=args.id, max_results=args.max, fields=args.fields)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if args.command == "author-papers":
+            authors = search_author(query=args.name, limit=3)
+            if not authors.get("data"):
+                print(json.dumps({"mode": "author-papers", "error": "No authors found", "query": args.name}, ensure_ascii=False, indent=2))
+                return 0
+            top_author = authors["data"][0]
+            result = get_author_papers(author_id=top_author["authorId"], max_results=args.max, fields=args.fields)
+            result["author"] = top_author
+            result["all_matches"] = authors["data"]
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
 

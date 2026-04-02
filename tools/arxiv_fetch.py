@@ -8,9 +8,21 @@ Commands
 search    Search arXiv and print results as JSON.
 download  Download a paper PDF by arXiv ID.
 
+Field-specific search flags (search command)
+---------------------------------------------
+--title TEXT        Search in title only (ti:)
+--abstract TEXT     Search in abstract only (abs:)
+--author TEXT       Search by author name (au:)
+--category CAT      Filter by arXiv category, e.g. cs.RO, cs.LG (cat:)
+--sort-by FIELD     Sort by: relevance (default), lastUpdatedDate, submittedDate
+--sort-order ORDER  Sort order: descending (default), ascending
+
 Examples
 --------
 python3 tools/arxiv_fetch.py search "attention mechanism" --max 10
+python3 tools/arxiv_fetch.py search "inertial odometry" --category cs.RO --max 30
+python3 tools/arxiv_fetch.py search "transformer" --title "IMU" --max 20
+python3 tools/arxiv_fetch.py search "deep learning" --sort-by submittedDate --max 30
 python3 tools/arxiv_fetch.py search "id:2301.07041" --max 1
 python3 tools/arxiv_fetch.py download 2301.07041 --dir papers
 """
@@ -57,7 +69,41 @@ def _looks_like_arxiv_id(value: str) -> bool:
     return bool(_NEW_STYLE_ID_RE.match(value) or _OLD_STYLE_ID_RE.match(value))
 
 
-def _api_url(query: str, max_results: int, start: int) -> str:
+def _build_search_query(
+    query: str,
+    *,
+    title: str | None = None,
+    abstract: str | None = None,
+    author: str | None = None,
+    category: str | None = None,
+) -> str:
+    """Build a composite arXiv search_query with field prefixes and AND operators."""
+    parts: list[str] = []
+    if query:
+        parts.append(f"all:{query}")
+    if title:
+        parts.append(f"ti:{title}")
+    if abstract:
+        parts.append(f"abs:{abstract}")
+    if author:
+        parts.append(f"au:{author}")
+    if category:
+        parts.append(f"cat:{category}")
+    return "+AND+".join(parts) if parts else query
+
+
+def _api_url(
+    query: str,
+    max_results: int,
+    start: int,
+    *,
+    title: str | None = None,
+    abstract: str | None = None,
+    author: str | None = None,
+    category: str | None = None,
+    sort_by: str = "relevance",
+    sort_order: str = "descending",
+) -> str:
     """Build the arXiv API URL for a search query or specific ID lookup."""
     query = query.strip()
     if query.startswith("id:"):
@@ -65,12 +111,15 @@ def _api_url(query: str, max_results: int, start: int) -> str:
     elif _looks_like_arxiv_id(query):
         params = {"id_list": _normalize_id(query)}
     else:
+        search_query = _build_search_query(
+            query, title=title, abstract=abstract, author=author, category=category,
+        )
         params = {
-            "search_query": query,
+            "search_query": search_query,
             "start": start,
             "max_results": max_results,
-            "sortBy": "relevance",
-            "sortOrder": "descending",
+            "sortBy": sort_by,
+            "sortOrder": sort_order,
         }
     return f"{_API_BASE}?{urllib.parse.urlencode(params)}"
 
@@ -112,9 +161,24 @@ def _parse_entry(entry: ET.Element) -> dict:
     }
 
 
-def search(query: str, max_results: int = 10, start: int = 0) -> list[dict]:
+def search(
+    query: str,
+    max_results: int = 10,
+    start: int = 0,
+    *,
+    title: str | None = None,
+    abstract: str | None = None,
+    author: str | None = None,
+    category: str | None = None,
+    sort_by: str = "relevance",
+    sort_order: str = "descending",
+) -> list[dict]:
     """Search arXiv and return a list of paper dictionaries."""
-    url = _api_url(query, max_results=max_results, start=start)
+    url = _api_url(
+        query, max_results=max_results, start=start,
+        title=title, abstract=abstract, author=author, category=category,
+        sort_by=sort_by, sort_order=sort_order,
+    )
     root = _fetch_atom(url)
     return [_parse_entry(entry) for entry in root.findall(f"{{{_ATOM_NS}}}entry")]
 
@@ -191,6 +255,32 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Start offset for pagination (default: 0).",
     )
+    search_parser.add_argument(
+        "--title", default=None, metavar="TEXT",
+        help="Filter: search in title only (ti: prefix).",
+    )
+    search_parser.add_argument(
+        "--abstract", default=None, metavar="TEXT",
+        help="Filter: search in abstract only (abs: prefix).",
+    )
+    search_parser.add_argument(
+        "--author", default=None, metavar="TEXT",
+        help="Filter: search by author name (au: prefix).",
+    )
+    search_parser.add_argument(
+        "--category", default=None, metavar="CAT",
+        help="Filter: arXiv category, e.g. cs.RO, cs.LG, cs.AI (cat: prefix).",
+    )
+    search_parser.add_argument(
+        "--sort-by", default="relevance",
+        choices=["relevance", "lastUpdatedDate", "submittedDate"],
+        help="Sort field (default: relevance).",
+    )
+    search_parser.add_argument(
+        "--sort-order", default="descending",
+        choices=["ascending", "descending"],
+        help="Sort order (default: descending).",
+    )
 
     download_parser = subparsers.add_parser("download", help="Download a paper PDF by arXiv ID")
     download_parser.add_argument(
@@ -217,7 +307,12 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     if args.command == "search":
-        results = search(args.query, max_results=args.max, start=args.start)
+        results = search(
+            args.query, max_results=args.max, start=args.start,
+            title=args.title, abstract=args.abstract,
+            author=args.author, category=args.category,
+            sort_by=args.sort_by, sort_order=args.sort_order,
+        )
         print(json.dumps(results, ensure_ascii=False, indent=2))
         return 0
 

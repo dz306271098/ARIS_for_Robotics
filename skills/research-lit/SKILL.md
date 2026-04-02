@@ -16,15 +16,18 @@ Research topic: $ARGUMENTS
   2. `literature/` in the current project directory
   3. Custom path specified by user in `CLAUDE.md` under `## Paper Library`
 - **MAX_LOCAL_PAPERS = 20** — Maximum number of local PDFs to scan (read first 3 pages each). If more are found, prioritize by filename relevance to the topic.
+- **API_MAX_PER_QUERY = 30** — Maximum results per API query (arXiv, Semantic Scholar). Higher values catch papers that rank lower but are still relevant. Applies per query variant.
 - **ARXIV_DOWNLOAD = false** — When `true`, download top 3-5 most relevant arXiv PDFs to PAPER_LIBRARY after search. When `false` (default), only fetch metadata (title, abstract, authors) via arXiv API — no files are downloaded.
 - **ARXIV_MAX_DOWNLOAD = 5** — Maximum number of PDFs to download when `ARXIV_DOWNLOAD = true`.
+- **SNOWBALL = true** — When `true`, perform citation graph traversal (forward + backward) on top 3-5 most relevant papers found. Catches papers using different terminology but in the same citation lineage. Set `false` to skip for faster search.
 
 > 💡 Overrides:
 > - `/research-lit "topic" — paper library: ~/my_papers/` — custom local PDF path
 > - `/research-lit "topic" — sources: zotero, local` — only search Zotero + local PDFs
 > - `/research-lit "topic" — sources: zotero` — only search Zotero
 > - `/research-lit "topic" — sources: web` — only search the web (skip all local)
-> - `/research-lit "topic" — sources: web, semantic-scholar` — also search Semantic Scholar for published venue papers (IEEE, ACM, etc.)
+> - `/research-lit "topic" — no-s2` — exclude Semantic Scholar from default search
+> - `/research-lit "topic" — snowball: false` — skip citation graph expansion for faster search
 > - `/research-lit "topic" — arxiv download: true` — download top relevant arXiv PDFs
 > - `/research-lit "topic" — arxiv download: true, max download: 10` — download up to 10 PDFs
 
@@ -36,18 +39,19 @@ This skill checks multiple sources **in priority order**. All are optional — i
 
 Parse `$ARGUMENTS` for a `— sources:` directive:
 - **If `— sources:` is specified**: Only search the listed sources (comma-separated). Valid values: `zotero`, `obsidian`, `local`, `web`, `semantic-scholar`, `all`.
-- **If not specified**: Default to `all` — search every available source in priority order (`semantic-scholar` is **excluded** from `all`; it must be explicitly listed).
+- **If not specified**: Default to `all` — search every available source in priority order, **including Semantic Scholar**.
+- **To exclude Semantic Scholar**: Use `— no-s2` or `— sources: zotero, local, web`.
 
 Examples:
 ```
-/research-lit "diffusion models"                                    → all (default, no S2)
-/research-lit "diffusion models" — sources: all                     → all (default, no S2)
+/research-lit "diffusion models"                                    → all (includes S2)
+/research-lit "diffusion models" — sources: all                     → all (includes S2)
+/research-lit "diffusion models" — no-s2                            → all except Semantic Scholar
 /research-lit "diffusion models" — sources: zotero                  → Zotero only
 /research-lit "diffusion models" — sources: zotero, web             → Zotero + web
 /research-lit "diffusion models" — sources: local                   → local PDFs only
-/research-lit "topic" — sources: obsidian, local, web               → skip Zotero
-/research-lit "topic" — sources: web, semantic-scholar              → web + S2 API (IEEE/ACM venue papers)
-/research-lit "topic" — sources: all, semantic-scholar              → all + S2 API
+/research-lit "topic" — sources: obsidian, local, web               → skip Zotero + S2
+/research-lit "topic" — sources: web, semantic-scholar              → web + S2 API only
 ```
 
 ### Source Table
@@ -58,7 +62,7 @@ Examples:
 | 2 | **Obsidian** (via MCP) | `obsidian` | Try calling any `mcp__obsidian-vault__*` tool — if unavailable, skip | Research notes, paper summaries, tagged references, wikilinks |
 | 3 | **Local PDFs** | `local` | `Glob: papers/**/*.pdf, literature/**/*.pdf` | Raw PDF content (first 3 pages) |
 | 4 | **Web search** | `web` | Always available (WebSearch) | arXiv, Semantic Scholar, Google Scholar |
-| 5 | **Semantic Scholar API** | `semantic-scholar` | `tools/semantic_scholar_fetch.py` exists | Published venue papers (IEEE, ACM, Springer) with structured metadata: citation counts, venue info, TLDR. **Only runs when explicitly requested** via `— sources: semantic-scholar` or `— sources: web, semantic-scholar` |
+| 5 | **Semantic Scholar API** | `semantic-scholar` | `tools/semantic_scholar_fetch.py` exists | Published venue papers (IEEE, ACM, Springer) with structured metadata: citation counts, venue info, TLDR. **Runs by default** as part of `all`. Skip with `— no-s2` |
 
 > **Graceful degradation**: If no MCP servers are configured, the skill works exactly as before (local PDFs + web search). Zotero and Obsidian are pure additions.
 
@@ -122,11 +126,24 @@ Before searching online, check if the user already has relevant papers locally:
 
 > 📚 If no local papers are found, skip to Step 1. If the user has a comprehensive local collection, the external search can be more targeted (focus on what's missing).
 
+### Step 0.5: Query Expansion (generate search variants)
+
+Before any external API call, generate **3-5 query variants** to maximize coverage. Different papers use different terminology for the same concept — a single query misses many relevant papers.
+
+1. **Original phrase**: The user's exact topic (e.g., "inertial odometry")
+2. **Synonym rephrasing**: Alternative terminology (e.g., "IMU-based positioning", "dead reckoning")
+3. **Broader term**: Wider scope to catch related work (e.g., "learning-based navigation")
+4. **Narrower/method-specific**: Core technique name (e.g., "transformer IMU trajectory estimation")
+5. **Baseline/dataset name**: If domain-specific section below applies, include key baselines (e.g., "AIR-IO", "TLIO")
+
+Store these as `QUERY_VARIANTS` — Step 1 will loop through each variant for every API source.
+
+> 💡 This pattern is proven — `/novelty-check` uses 3-5 query formulations per claim for the same reason.
+
 ### Step 1: Search (external)
-- Use WebSearch to find recent papers on the topic
-- Check arXiv, Semantic Scholar, Google Scholar
+- Search arXiv API, Semantic Scholar API, and WebSearch using **each query variant**
 - Focus on papers from last 2 years unless studying foundational work
-- **De-duplicate**: Skip papers already found in Zotero, Obsidian, or local library
+- **De-duplicate**: Skip papers already found in Zotero, Obsidian, or local library. De-duplicate across query variants by arXiv ID / S2 paperId
 
 **arXiv API search** (always runs, no download by default):
 
@@ -136,30 +153,44 @@ Locate the fetch script and search arXiv directly:
 SCRIPT=$(find tools/ -name "arxiv_fetch.py" 2>/dev/null | head -1)
 # If not found, check ARIS install
 [ -z "$SCRIPT" ] && SCRIPT=$(find ~/.claude/skills/arxiv/ -name "arxiv_fetch.py" 2>/dev/null | head -1)
-
-# Search arXiv API for structured results (title, abstract, authors, categories)
-python3 "$SCRIPT" search "QUERY" --max 10
 ```
 
-If `arxiv_fetch.py` is not found, fall back to WebSearch for arXiv (same as before).
+**Multi-query search** — run arXiv API for **each query variant** from Step 0.5:
+```bash
+# For each QUERY_VARIANT:
+python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY
+
+# If domain is known, add category filter to at least one variant:
+python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY --category cs.RO
+
+# For one variant, use date-sorted to catch newest papers:
+python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY --sort-by submittedDate
+```
+
+De-duplicate results across variants by arXiv ID. If `arxiv_fetch.py` is not found, fall back to WebSearch.
 
 The arXiv API returns structured metadata (title, abstract, full author list, categories, dates) — richer than WebSearch snippets. Merge these results with WebSearch findings and de-duplicate.
 
-**Semantic Scholar API search** (only when `semantic-scholar` is in sources):
-
-When the user explicitly requests `— sources: semantic-scholar` (or `— sources: web, semantic-scholar`), search for published venue papers beyond arXiv:
+**Semantic Scholar API search** (runs by default as part of `all`):
 
 ```bash
 S2_SCRIPT=$(find tools/ -name "semantic_scholar_fetch.py" 2>/dev/null | head -1)
 [ -z "$S2_SCRIPT" ] && S2_SCRIPT=$(find ~/.claude/skills/semantic-scholar/ -name "semantic_scholar_fetch.py" 2>/dev/null | head -1)
-
-# Search for published CS/Engineering papers with quality filters
-python3 "$S2_SCRIPT" search "QUERY" --max 10 \
-  --fields-of-study "Computer Science,Engineering" \
-  --publication-types "JournalArticle,Conference"
 ```
 
-If `semantic_scholar_fetch.py` is not found, skip silently.
+**Multi-query search** — run S2 API for **each query variant**:
+```bash
+# For each QUERY_VARIANT:
+python3 "$S2_SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY \
+  --fields-of-study "Computer Science,Engineering" \
+  --publication-types "JournalArticle,Conference"
+
+# For one variant, also search recent papers sorted by date:
+python3 "$S2_SCRIPT" search-bulk "VARIANT" --max $API_MAX_PER_QUERY \
+  --sort publicationDate:desc --year "2024-"
+```
+
+De-duplicate results across variants by S2 paperId. If `semantic_scholar_fetch.py` is not found, skip silently.
 
 **Why use Semantic Scholar?** Many IEEE/ACM journal papers are NOT on arXiv. S2 fills the gap for published venue-only papers with citation counts and venue metadata.
 
@@ -213,6 +244,32 @@ python3 "$SCRIPT" download ARXIV_ID --dir papers/
 - 1-second delay between downloads (rate limiting)
 - Verify each PDF > 10 KB
 
+### Step 1.5: Citation Graph Expansion (snowball search)
+
+**Skip this step if `SNOWBALL = false`.**
+
+From all papers found in Step 1, select the **top 3-5 most relevant** papers (by title/abstract match to the research topic). For each seed paper:
+
+```bash
+# Forward citations — who cited this paper? (finds newer related work)
+python3 "$S2_SCRIPT" citations "PAPER_ID_OR_ARXIV_ID" --max 20
+
+# Backward references — what did this paper cite? (finds foundational work)
+python3 "$S2_SCRIPT" references "PAPER_ID_OR_ARXIV_ID" --max 20
+```
+
+For paper IDs, use `ARXIV:XXXX.XXXXX` format if arXiv ID is available, otherwise use S2 paperId or DOI.
+
+**De-duplicate** all newly found papers against the existing result pool (match by arXiv ID, S2 paperId, or title).
+
+**Why snowball?** Papers using different terminology but in the same intellectual lineage are connected via citations. A paper that matches none of your keyword queries will still appear as a reference of, or citation to, a known-relevant paper. This is the single most effective technique for catching "unknown unknowns."
+
+**Optional — Author expansion**: If the results so far reveal that 2-3 key researchers dominate the field (appear as authors on 3+ papers), fetch their recent work:
+```bash
+python3 "$S2_SCRIPT" author-papers "Author Name" --max 20
+```
+This catches papers where the title uses novel terminology that no keyword query would find.
+
 ### Step 2: Analyze Each Paper
 For each relevant paper (from all sources), extract:
 - **Problem**: What gap does it address?
@@ -220,6 +277,21 @@ For each relevant paper (from all sources), extract:
 - **Results**: Key numbers/claims
 - **Relevance**: How does it relate to our work?
 - **Source**: Where we found it (Zotero/Obsidian/local/web) — helps user know what they already have vs what's new
+
+### Step 2.5: Gap-Driven Expansion (one round)
+
+After analyzing the initial batch, check if the collected papers reveal **terminology, methods, or sub-topics** that were NOT in the original QUERY_VARIANTS. For example, if multiple papers mention "equivariant neural networks for IMU" but that phrase was not in any original query, it represents a gap.
+
+**If significant gaps are found** (distinct term clusters covering ≥3 papers not in your original variants):
+1. Generate up to 3 new targeted queries from the discovered terminology
+2. Run one additional round of arXiv + S2 search with these queries (`--max $API_MAX_PER_QUERY` each)
+3. De-duplicate against all existing results
+4. Add unique papers to the analysis pool
+
+**Bounds** (to prevent runaway):
+- Maximum 1 expansion round
+- Maximum 3 new queries
+- Only triggers if genuinely distinct terminology is found — do NOT repeat variants of existing queries
 
 ### Step 3: Synthesize
 - Group papers by approach/theme
