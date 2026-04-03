@@ -294,6 +294,42 @@ After main experiments (M2) complete with positive results, invoke `/ablation-pl
 
 If `/ablation-planner` is not available, skip silently — the existing EXPERIMENT_PLAN.md ablation blocks (if any) remain unchanged.
 
+### Phase 5.7: Principle-Guided Diagnosis (when main results are negative)
+
+**Skip entirely if main results are positive.**
+
+When the main method produces negative or inconclusive results, consult literature for inspiration before handing off:
+
+1. **Diagnose the failure**: What specific metric fell short? On which data splits or scenarios?
+
+2. **Identify the root cause**: Why did the method underperform? Trace from the symptom to the underlying mathematical, physical, or architectural reason.
+
+3. **Quick literature scan**: Search for techniques addressing this specific root cause:
+   ```bash
+   python tools/arxiv_fetch.py search "[root cause keywords]" --max 10
+   python tools/semantic_scholar_fetch.py search "[root cause keywords]" --max 10 --year "2024-"
+   ```
+   **Web resilience**: If searches hang (~60s), abandon and skip. This phase is advisory, not blocking.
+
+4. **Extract principles** (not methods): For the 2-3 most relevant papers found, apply the Principle Extraction Protocol from `../shared-references/principle-extraction.md`:
+   - Layer 2: What is the underlying principle? (WHY does this work, one sentence, no paper nouns)
+   - Layer 4: How does this principle adapt to our problem?
+   - Layer 5: What must NOT be copied?
+
+5. **Document in results summary**: Append a `## Failure Diagnosis and Principles for Retry` section:
+   ```markdown
+   ## Failure Diagnosis and Principles for Retry
+   
+   - **Symptom**: [what went wrong]
+   - **Root cause**: [why]
+   - **Relevant principles from literature**:
+     1. [Principle name]: [one-sentence generalized insight] — adaptation: [how it could help our method]
+     2. [Principle name]: [one-sentence generalized insight] — adaptation: [how it could help our method]
+   - **Suggested next step**: /auto-review-loop or /deep-innovation-loop with these principles as starting context
+   ```
+
+This provides actionable principle-based intelligence for the downstream review loop rather than a bare "results were negative" handoff.
+
 ### Phase 6: Handoff
 
 Present final status:

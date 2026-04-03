@@ -155,7 +155,7 @@ claude
 > |-----------|---------|-------------|
 > | `AUTO_PROCEED` | `true` | Auto-continue at idea selection gate. Set `false` to manually pick which idea to pursue before committing GPU time |
 > | `human checkpoint` | `false` | Pause after each review round so you can read the score, give custom modification instructions, skip specific fixes, or stop early |
-> | `sources` | `all` | Which literature sources to search: `zotero`, `obsidian`, `local`, `web`, `semantic-scholar`, or `all`. Note: `semantic-scholar` must be explicitly listed — not included in `all` |
+> | `sources` | `all` | Which literature sources to search: `zotero`, `obsidian`, `local`, `web`, `semantic-scholar`, or `all`. `all` includes Semantic Scholar by default. Use `— no-s2` to exclude |
 > | `arxiv download` | `false` | Download top relevant arXiv PDFs during literature survey. When `false`, only fetches metadata (title, abstract, authors) |
 > | `DBLP_BIBTEX` | `true` | Fetch real BibTeX from [DBLP](https://dblp.org)/[CrossRef](https://www.crossref.org) instead of LLM-generated entries. Eliminates hallucinated citations. Zero install |
 > | `code review` | `true` | GPT-5.4 xhigh reviews experiment code before GPU deployment. Set `false` to skip |
@@ -494,7 +494,7 @@ Already have an experiment plan (from Workflow 1 or your own)? `/experiment-brid
 - 🪞 **No hiding weaknesses** — explicit rule: "Do NOT hide weaknesses to game a positive score"
 - 🔧 **Fix before re-review** — must actually implement fixes before resubmitting; no empty promises
 - 💾 **Compact recovery** — persists state (`REVIEW_STATE.json`) after each round. If the context window fills up and auto-compacts mid-loop, the workflow reads the state file and resumes from where it left off — no human intervention needed
-- 🔬 **Research-driven fixes** (`RESEARCH_DRIVEN_FIX: true`) — instead of minimal patches, classify weaknesses as symptom vs. root cause, search literature for techniques, and propose 2-3 research-informed fix strategies. Off by default
+- 🔬 **Research-driven fixes** (`RESEARCH_DRIVEN_FIX: true`, default) — instead of minimal patches, classify weaknesses as symptom vs. root cause, search literature, extract distilled principles (not raw methods), and propose 2-3 principle-inspired fix strategies
 
 > ⚙️ MAX_ROUNDS, score threshold, and GPU limits are configurable — see [Customization](#%EF%B8%8F-customization).
 
@@ -1256,7 +1256,7 @@ Override inline: `/research-pipeline "topic" — auto proceed: false, illustrati
 | `MAX_ROUNDS` | 4 | Maximum review→fix→re-review iterations |
 | `POSITIVE_THRESHOLD` | 6/10 | Score at which the loop stops (submission-ready) |
 | `> 4 GPU-hour skip` | 4h | Experiments exceeding this are flagged for manual follow-up |
-| `RESEARCH_DRIVEN_FIX` | `false` | Root-cause classification + literature-informed fix strategies instead of minimal patches. Adds Phase B.5 |
+| `RESEARCH_DRIVEN_FIX` | `true` | Root-cause classification + principle-distilled fix strategies instead of minimal patches. Phase B.5 extracts generalizable principles from literature before designing fixes. Set `false` for minimal reviewer-suggested fixes only |
 
 ### Deep Innovation Loop (`deep-innovation-loop`)
 
@@ -1304,11 +1304,13 @@ Override inline: `/experiment-bridge — base repo: https://github.com/org/proje
 |----------|---------|-------------|
 | `PAPER_LIBRARY` | `papers/`, `literature/` | Local directories to scan for PDFs before searching online |
 | `MAX_LOCAL_PAPERS` | 20 | Max local PDFs to scan (first 3 pages each) |
-| `SOURCES` | `all` | Which sources to search: `zotero`, `obsidian`, `local`, `web`, `semantic-scholar`, or `all`. `semantic-scholar` must be explicitly listed |
+| `SOURCES` | `all` | Which sources to search: `zotero`, `obsidian`, `local`, `web`, `semantic-scholar`, or `all`. `all` includes Semantic Scholar. Use `— no-s2` to exclude |
+| `API_MAX_PER_QUERY` | 30 | Max results per API query (arXiv, Semantic Scholar). Applies per query variant |
+| `SNOWBALL` | true | Citation graph traversal on top 3-5 papers (forward + backward). Set `false` for faster search |
 | `ARXIV_DOWNLOAD` | false | When `true`, download top relevant arXiv PDFs to PAPER_LIBRARY after search |
 | `ARXIV_MAX_DOWNLOAD` | 5 | Maximum number of PDFs to download when `ARXIV_DOWNLOAD = true` |
 
-Override inline: `/research-lit "topic" — sources: zotero, web`, `/research-lit "topic" — arxiv download: true, max download: 10`
+Override inline: `/research-lit "topic" — sources: zotero, web`, `/research-lit "topic" — snowball: false`, `/research-lit "topic" — arxiv download: true, max download: 10`
 
 ### Paper Writing (`paper-write`)
 

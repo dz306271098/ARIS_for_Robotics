@@ -301,7 +301,7 @@ Save to `innovation-logs/round-NN/diagnosis.md`.
 
    **Web Resilience**: If ANY web operation hangs, abandon it immediately and continue with already-collected results. Phase B must NEVER block the pipeline. If all searches fail, proceed to Phase C using existing `TECHNIQUE_LIBRARY.md` knowledge and note `[WEB SEARCH UNAVAILABLE]` in the round's research log.
 
-3. **Extract and catalog**: For each relevant technique found:
+3. **Extract, distill, and catalog**: For each relevant technique found, first apply the Principle Extraction Protocol from `../shared-references/principle-extraction.md`, then catalog:
 
    ```markdown
    ## [Technique Name] — [Source Field]
@@ -311,11 +311,15 @@ Save to `innovation-logs/round-NN/diagnosis.md`.
    - **Mechanism**: [1-2 sentence technical description]
    - **Mathematical formulation**: [key equations if applicable]
    - **Reported improvement**: [quantitative, with dataset/benchmark caveats]
+   - **Distilled principle**: [1-2 sentences — WHY this works, abstracted from all implementation details. No paper-specific nouns. Must pass the one-sentence test from principle-extraction.md]
+   - **Generalized form**: [domain-agnostic formulation of the principle]
+   - **Adaptation for our problem**: [how this principle applies to our specific research context]
+   - **DO NOT copy**: [specific elements from this paper to avoid transplanting]
    - **Integration cost**: LOW (config/loss change) / MEDIUM (new module) / HIGH (architecture change)
    - **Compatibility with current architecture**: [specific notes]
    - **Status**: UNTESTED
    - **Tested in round(s)**: []
-   - **Synergy potential**: [which other techniques it could combine with, and why]
+   - **Synergy potential**: [which other techniques/principles it could combine with, and why]
    ```
 
 4. **Add to `TECHNIQUE_LIBRARY.md`**. De-duplicate: if a technique is already in the library, update its entry with new information.
@@ -373,8 +377,11 @@ mcp__codex__codex-reply:
     Root causes from diagnosis:
     [paste key findings from Phase A]
     
-    Available techniques from our library:
-    [paste relevant TECHNIQUE_LIBRARY.md entries — prioritize UNTESTED and TESTED-MIXED]
+    Available techniques and DISTILLED PRINCIPLES from our library:
+    [paste relevant TECHNIQUE_LIBRARY.md entries — prioritize UNTESTED and TESTED-MIXED.
+     For each entry, emphasize the "Distilled principle", "Generalized form", and 
+     "Adaptation for our problem" fields. These principles — not the surface methods — 
+     should drive your variant designs.]
     
     Current best method (v{best_round}, score {best_score}/10):
     [complete description]
@@ -396,6 +403,10 @@ mcp__codex__codex-reply:
     3. MECHANISM: Exactly what changes from current best method
     4. TECHNIQUE FUSION: Which techniques from the library are combined?
     5. WHY 1+1>2: Why does combining these techniques create synergy?
+    5.5. PRINCIPLE GROUNDING: Which distilled principle(s) from the library 
+         inspired this variant? State the principle, not the paper's method.
+         Verify: does this variant's design look different from the source 
+         paper's implementation while embodying the same principle?
        (e.g., "Technique A provides gravity-aware features, which makes 
        Technique B's attention mechanism focus on motion-relevant signals 
        instead of sensor noise, amplifying both effects")
