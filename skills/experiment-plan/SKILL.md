@@ -25,7 +25,8 @@ The goal is not to generate a giant benchmark wishlist. The goal is to turn a pr
 - **MAX_PRIMARY_CLAIMS = 2** — Prefer one dominant claim plus one supporting claim.
 - **MAX_CORE_BLOCKS = 5** — Keep the must-run experimental story compact.
 - **MAX_BASELINE_FAMILIES = 3** — Prefer a few strong baselines over many weak ones.
-- **DEFAULT_SEEDS = 3** — Use 3 seeds when stochastic variance matters and budget allows.
+- **DEFAULT_SEEDS = 3** — Use 3 seeds when stochastic variance matters and budget allows. Report mean ± std. For close comparisons: require significance test (paired t-test or Wilcoxon, p < 0.05).
+- **HPARAM_SEARCH = true** — Plan hyperparameter sensitivity analysis for each novel component. Default method: small grid (3-5 values per parameter) on reduced dataset. For REFINE-phase experiments: expand to finer grid or random search.
 
 ## Workflow
 
@@ -89,6 +90,8 @@ For every kept block, fully specify:
 - **Compared systems**: strongest baselines, ablations, and variants only
 - **Metrics**: decisive metrics first, secondary metrics second
 - **Setup details**: backbone, frozen vs trainable parts, key hyperparameters, training budget, seeds
+- **Hyperparameter sensitivity** (when HPARAM_SEARCH=true): list 2-3 key hyperparameters to sweep, range for each (e.g., "LR: {1e-4, 3e-4, 1e-3}"), method (grid/random), dataset for sweep (smallest available)
+- **Statistical protocol**: number of seeds, what to report (mean ± std, CI, p-value for close comparisons), error bar type
 - **Success criterion**: what outcome would count as convincing evidence?
 - **Failure interpretation**: if the result is negative, what does it mean?
 - **Table / figure target**: where this result should appear in the paper

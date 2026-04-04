@@ -132,9 +132,21 @@ mcp__codex__codex:
        baselines cherry-picked to make our method look better?
     3. Are the evaluation metrics standard for this field? Would a 
        different metric tell a different story?
-    4. Is the comparison fair (same hyperparameter tuning budget, same 
-       data augmentation, same compute)?
-    5. Are there enough runs/seeds for statistical significance?
+    4. BASELINE FAIRNESS AUDIT — for each baseline, verify ALL of:
+       a. Hyperparameter parity: was the baseline given the same tuning budget as the proposed method?
+       b. Training schedule alignment: same epochs/steps, same LR schedule type, same warmup?
+       c. Data parity: identical train/val/test splits, same preprocessing, same data augmentation?
+       d. Compute parity: same model size class (param count within 2x), same hardware for timing?
+       e. Code provenance: official code or re-implemented? If re-implemented, validated against published numbers?
+       f. Recency: are baselines from the last 2 years? Cite the strongest known result.
+       For each violation: classify as CRITICAL (invalidates comparison) or MINOR (document in paper).
+    5. STATISTICAL RIGOR CHECK:
+       - Are there >= 3 seeds for all stochastic experiments?
+       - Does the evaluation code compute mean ± std?
+       - For the main comparison: does it compute 95% confidence intervals?
+       - For close results (delta < 2× std): is a significance test implemented (paired t-test or Wilcoxon)?
+       - Do plotting scripts include error bars/shaded regions?
+       - Is the error bar type documented (std, SEM, or CI)?
     6. What is the most likely way a reviewer would attack this 
        experimental setup?
 

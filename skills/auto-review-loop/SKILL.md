@@ -14,7 +14,13 @@ Autonomously iterate: review → implement fixes → re-review, until the extern
 ## Constants
 
 - **MAX_ROUNDS = 4** — Maximum number of review iterations. Override via argument, e.g., `— max rounds: 20`.
-- POSITIVE_THRESHOLD: score >= 6/10, or verdict contains "accept", "sufficient", "ready for submission"
+- POSITIVE_THRESHOLD — venue-specific (overall score is weighted average of 5 dimensions):
+  - RAL/TRO: overall >= 7/10 AND no BLOCKING weaknesses AND Experimental Rigor >= 7
+  - ICRA: overall >= 7/10 AND no BLOCKING weaknesses AND Technical Soundness >= 7
+  - CVPR/ICCV/ECCV: overall >= 7/10 AND no BLOCKING weaknesses AND Novelty >= 7
+  - NeurIPS/ICML/ICLR: overall >= 7/10 AND no BLOCKING weaknesses
+  - Default: overall >= 7/10 AND no BLOCKING weaknesses
+  Or verdict contains "accept" or "ready for submission"
 - REVIEW_DOC: `AUTO_REVIEW.md` in project root (cumulative log)
 - REVIEWER_MODEL = `gpt-5.4` — Model used via Codex MCP. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`)
 - **HUMAN_CHECKPOINT = false** — When `true`, pause after each round's review (Phase B) and present the score + weaknesses to the user. Wait for user input before proceeding to Phase C. The user can: approve the suggested fixes, provide custom modification instructions, skip specific fixes, or stop the loop early. When `false` (default), the loop runs fully autonomously.
@@ -78,12 +84,29 @@ mcp__codex__codex:
     [Full research context: claims, methods, results, known weaknesses]
     [Changes since last round, if any]
 
-    Please act as a senior ML reviewer (NeurIPS/ICML level).
+    Please act as a senior reviewer at [TARGET_VENUE — default NeurIPS/ICML level].
 
-    1. Score this work 1-10 for a top venue
-    2. List remaining critical weaknesses (ranked by severity)
-    3. For each weakness, specify the MINIMUM fix (experiment, analysis, or reframing)
-    4. State clearly: is this READY for submission? Yes/No/Almost
+    Score each dimension 1-10, then compute the overall score:
+
+    | Dimension | Weight | Score |
+    |-----------|--------|-------|
+    | Novelty / Originality | 20% | ?/10 |
+    | Technical Soundness | 25% | ?/10 |
+    | Experimental Rigor (baselines, ablations, statistical significance) | 25% | ?/10 |
+    | Clarity / Writing Quality | 15% | ?/10 |
+    | Significance / Impact | 15% | ?/10 |
+
+    Overall = weighted average (cap at 10)
+
+    For each dimension scoring <= 6:
+    - State the specific deficiency
+    - Specify the MINIMUM fix (experiment, analysis, or reframing)
+    - Classify fix as: BLOCKING (must fix before submission) or STRENGTHENING (improves but not fatal)
+
+    Then provide:
+    1. Ranked list of ALL weaknesses (BLOCKING first, then STRENGTHENING)
+    2. Verdict: READY / ALMOST / NOT READY
+    3. For ALMOST: list the 1-3 specific changes that would flip to READY
 
     Be brutally honest. If the work is ready, say so clearly.
 ```
@@ -95,11 +118,14 @@ If this is round 2+, use `mcp__codex__codex-reply` with the saved threadId to ma
 **CRITICAL: Save the FULL raw response** from the external reviewer verbatim (store in a variable for Phase E). Do NOT discard or summarize — the raw text is the primary record.
 
 Then extract structured fields:
-- **Score** (numeric 1-10)
+- **Dimension scores** (5 dimensions, each 1-10)
+- **Overall score** (weighted average)
 - **Verdict** ("ready" / "almost" / "not ready")
-- **Action items** (ranked list of fixes)
+- **BLOCKING weaknesses** (must fix before submission)
+- **STRENGTHENING weaknesses** (improve but not fatal)
+- **Action items** (ranked list of fixes, BLOCKING first)
 
-**STOP CONDITION**: If score >= 6 AND verdict contains "ready" or "almost" → stop loop, document final state.
+**STOP CONDITION**: If overall score meets POSITIVE_THRESHOLD for TARGET_VENUE AND no BLOCKING weaknesses remain → stop loop, document final state. If verdict contains "ready" → also stop.
 
 #### Human Checkpoint (if enabled)
 
@@ -175,27 +201,95 @@ When `RESEARCH_DRIVEN_FIX = true` (default), for each critical weakness identifi
 
 4. Proceed to Phase C with the selected strategy (which may be more ambitious than the reviewer's minimal suggestion).
 
-#### Phase C: Implement Fixes (if not stopping)
+#### Phase C: Implement and Validate Fixes (if not stopping)
 
-For each action item (highest priority first):
+**Step C.1: Implement** — for each action item (highest priority first):
+- Write/modify experiment scripts, model code, analysis scripts
+- Self-review: does implementation match the selected strategy from Phase B.5?
 
-1. **Code changes**: Write/modify experiment scripts, model code, analysis scripts
-2. **Run experiments**: Deploy to GPU server via SSH + screen/tmux
-3. **Analysis**: Run evaluation, collect results, update figures/tables
-4. **Documentation**: Update project notes and review document
+**Step C.2: Quick hyperparameter sensitivity** — for the changed component:
+- Identify the 2-3 key hyperparameters affected by the fix (e.g., learning rate, loss weight, hidden dimension)
+- Test 3 configurations: default, 0.5×, 2× of each key parameter
+- Run on smallest dataset (1 seed, reduced epochs) to select best config
+- Can run in parallel if multiple GPUs available
+
+**Step C.3: Deploy with multiple seeds**
+- Deploy best configuration from C.2 with **>= 3 seeds** for statistical validity
+- Monitor remote sessions for completion
+- **Training quality check** — if W&B is configured, invoke `/training-check` to verify training health
+
+**Step C.4: Wait and collect**
+- Collect results from ALL seeds
+- Compute **mean ± std** for all metrics
+- If W&B not available, collect from output files/logs directly
 
 Prioritization rules:
-- Skip fixes requiring excessive compute (flag for manual follow-up)
-- Skip fixes requiring external data/models not available
 - Prefer reframing/analysis over new experiments when both address the concern
 - Always implement metric additions (cheap, high impact)
+- Skip fixes requiring external data/models not available
+- For expensive fixes: run hyperparameter check first (C.2) before committing to full deployment
 
-#### Phase D: Wait for Results
+#### Phase C.5: Fix Validation (before re-review)
 
-If experiments were launched:
-- Monitor remote sessions for completion
-- Collect results from output files and logs
-- **Training quality check** — if W&B is configured, invoke `/training-check` to verify training was healthy (no NaN, no divergence, no plateau). If W&B not available, skip silently. Flag any quality issues in the next review round.
+**Do NOT proceed to next review round until this validation passes.**
+
+1. **Statistical significance check**: For the main comparison vs previous round:
+   - Compute mean ± std across seeds
+   - For close comparisons (delta < 2× std): run paired t-test or Wilcoxon
+   - If improvement is NOT statistically significant (p >= 0.05): the fix may not be real
+
+2. **Root-cause verification**: Does the fix actually address the diagnosed weakness?
+   - If reviewer said "accuracy drops on long sequences" → check if THAT specific metric improved (not just overall mean)
+   - If reviewer said "missing ablation for component X" → verify the ablation was added and results are meaningful
+   - If the targeted metric did NOT improve despite overall improvement: the fix likely addresses a different issue
+
+3. **Decision gate**:
+   - Fix is significant AND addresses root cause → proceed to Phase E (document), then next review round
+   - Fix is NOT significant OR doesn't address root cause → try next strategy from Phase B.5 (Strategy B or C) before re-review
+   - All strategies exhausted without validated improvement → escalate to **Phase C.6 (Collaborative)**
+
+#### Phase C.6: Collaborative Escalation (when all strategies fail)
+
+**Trigger**: All 2-3 fix strategies from Phase B.5 failed validation in Phase C.5. See `../shared-references/collaborative-protocol.md` for the full protocol.
+
+Switch from adversarial to collaborative mode — Claude and GPT-5.4 jointly solve the problem:
+
+```
+mcp__codex__codex-reply:
+  threadId: [saved — GPT has full review context + knows what was tried]
+  prompt: |
+    [COLLABORATIVE MODE — Joint Problem Solving]
+    
+    We're stuck. Here's the situation:
+    - Root cause diagnosed: [from Phase B.5]
+    - Strategy A tried: [what was implemented, result, why validation failed]
+    - Strategy B tried: [what was implemented, result, why validation failed]
+    - Strategy C tried: [what was implemented, result, why validation failed]
+    - Code/data evidence from implementation: [what Claude observed]
+    - Practical constraints discovered: [things not apparent from theory alone]
+    
+    I need your help — not as a reviewer, but as a collaborator.
+    
+    1. Given my implementation evidence, does the root cause diagnosis still hold?
+    2. What theoretical insight might we both be missing?
+    3. Can you propose a NEW approach that accounts for the practical 
+       constraints I discovered during implementation?
+    
+    Let's solve this together.
+```
+
+Multi-turn dialogue (up to 6 turns):
+- Claude shares implementation evidence → GPT revises theoretical analysis → Claude evaluates feasibility → GPT refines → converge on joint solution
+
+After collaborative session:
+1. Implement the jointly-designed solution (repeat Phase C steps C.1-C.4)
+2. Validate with Phase C.5 (significance + root-cause check)
+3. If validated → proceed to Phase E, then next review round
+4. If still fails → document as `[COLLABORATIVE IMPASSE]` in AUTO_REVIEW.md, proceed to next round
+
+Log collaborative dialogue to AUTO_REVIEW.md with `[COLLABORATIVE SESSION]` tag.
+
+> The adversarial review ALWAYS gets the final word — the jointly-designed solution is validated through the normal review cycle in the next round.
 
 #### Phase E: Document Round
 

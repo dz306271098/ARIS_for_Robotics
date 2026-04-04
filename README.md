@@ -1254,7 +1254,7 @@ Override inline: `/research-pipeline "topic" — auto proceed: false, illustrati
 | Constant | Default | Description |
 |----------|---------|-------------|
 | `MAX_ROUNDS` | 4 | Maximum review→fix→re-review iterations |
-| `POSITIVE_THRESHOLD` | 6/10 | Score at which the loop stops (submission-ready) |
+| `POSITIVE_THRESHOLD` | 7/10 | Venue-specific: overall >= 7 + no BLOCKING weaknesses. Uses 5-dimension rubric (Novelty, Technical Soundness, Experimental Rigor, Clarity, Significance) |
 | `> 4 GPU-hour skip` | 4h | Experiments exceeding this are flagged for manual follow-up |
 | `RESEARCH_DRIVEN_FIX` | `true` | Root-cause classification + principle-distilled fix strategies instead of minimal patches. Phase B.5 extracts generalizable principles from literature before designing fixes. Set `false` for minimal reviewer-suggested fixes only |
 

@@ -176,6 +176,35 @@ Repeat until a stopping condition is met.
 
 This is the critical differentiator from `auto-review-loop`. Instead of asking "what's wrong," ask "**why** is it wrong."
 
+**Collaborative Root-Cause Reanalysis** (see `../shared-references/collaborative-protocol.md`):
+
+If `patience_counter >= 3` (no improvement for 3+ rounds), the current diagnosis may be WRONG. Before running the normal Phase A, trigger a collaborative reanalysis:
+
+```
+mcp__codex__codex-reply:
+  threadId: [saved — GPT has full history of failed rounds]
+  prompt: |
+    [COLLABORATIVE MODE — Joint Root-Cause Reanalysis]
+    
+    We've been stuck for {patience_counter} rounds with no improvement.
+    
+    Your previous diagnosis: [root cause from last Phase A]
+    What I've tried based on that diagnosis: [list of attempted variants and results]
+    What I observe in the training logs/metrics/code: [specific evidence]
+    
+    The diagnosis may be wrong, or the root cause may have shifted.
+    
+    1. Given my implementation evidence, do you still believe [root cause] is correct?
+    2. What alternative root causes could explain the persistent plateau?
+    3. Is there a deeper structural issue we're both missing?
+    
+    Let's re-diagnose together before spending more rounds on the wrong problem.
+```
+
+Claude responds with code/data evidence → GPT revises analysis → up to 4 turns. If a NEW root cause is identified, update the diagnosis and proceed to Phase B/C with the revised understanding. If the diagnosis holds, proceed normally but with a broader search strategy (more cross-domain literature in Phase B).
+
+Log to `innovation-logs/round-NN/collaborative-reanalysis.md`.
+
 Always use `config: {"model_reasoning_effort": "xhigh"}`.
 
 **Round 1** — start a new Codex thread:
@@ -466,6 +495,34 @@ Only select from variants that **survived** GPT-5.4's adversarial challenge (i.e
 
 If GPT-5.4 killed all variants: request new proposals in the same thread, incorporating the critique.
 
+**Collaborative Variant Design** (escalation — see `../shared-references/collaborative-protocol.md`):
+
+If adversarial challenge kills ALL proposed variants for **2 consecutive rounds**, switch from adversarial to collaborative mode:
+
+```
+mcp__codex__codex-reply:
+  threadId: [saved — GPT has full adversarial context]
+  prompt: |
+    [COLLABORATIVE MODE — Joint Variant Design]
+    
+    We've hit a wall. You've killed all variants for 2 consecutive rounds.
+    
+    Your recurring objections: [list the main flaws cited across killed variants]
+    My implementation evidence: [what Claude observed trying to implement past variants]
+    Practical constraints: [what's actually feasible given codebase, data, compute]
+    
+    Let's design something together instead of the propose-kill cycle.
+    
+    1. What theoretical property MUST the solution have to avoid your objections?
+    2. Given my implementation constraints, what form could that take?
+    3. Propose a variant that satisfies BOTH your theoretical concerns 
+       and my practical constraints.
+```
+
+Then Claude responds with feasibility feedback → GPT refines → up to 6 turns total (see collaborative-protocol.md). The jointly-designed variant proceeds to Phase D implementation, then **returns to adversarial mode** for validation — GPT reviews the implementation as usual.
+
+Log the full collaborative session to `innovation-logs/round-NN/collaborative-design.md`.
+
 **Anti-circle check**: Before implementing, compare the selected variant against the last 5 variants in `EVOLUTION_LOG.md`. If the proposed change is essentially identical to a previously tried variant (same technique combination, same integration point), reject it and request a different proposal.
 
 Save to `innovation-logs/round-NN/innovation.md` (include both proposals AND adversarial critique).
@@ -530,28 +587,65 @@ mcp__codex__codex-reply:
   3. Fix and re-run
   4. Still failing after 3 attempts → record failure, revert to best variant, skip to Phase E
 
-**Step 3: Full evaluation**
-- Deploy via `/run-experiment [experiment command]`
+**Step 2.5: Hyperparameter sensitivity** (after sanity passes)
+- Identify the 2-3 key hyperparameters of the new variant (learning rate, loss weights, architectural dimensions)
+- Run a small-scale sweep on the smallest dataset: 3-5 configurations per parameter (default, 0.5×, 2×, and optionally 0.1×, 5×)
+- Can run configurations in parallel if multiple GPUs available
+- Select the best configuration based on the primary metric
+- Log sweep results to `innovation-logs/round-NN/hparam-sweep.md`
+- If ALL configurations fail or significantly worsen: abort variant, skip to Phase E with HPARAM_FAIL flag
+
+**Step 3: Multi-seed full evaluation**
+- Deploy the best configuration from Step 2.5 via `/run-experiment`
+- **Run with >= 3 seeds** (fixed seeds, e.g., 42, 123, 456) for statistical validity
 - Monitor via `/monitor-experiment` (or direct log checking)
 - If W&B configured: invoke `/training-check` to verify training health
-- Wait for completion
+- Wait for ALL seeds to complete
 
-**Step 4: Collect and compare results**
-- Parse output files (JSON/CSV/logs)
-- Build comparison table:
+**Step 3.5: Early stopping check** (optional, for expensive experiments)
+- After the first seed completes ~30% of training: check loss trajectory
+- If loss is clearly diverging OR > 3× worse than baseline at the same training step: abort remaining seeds and training
+- Skip to Phase E with EARLY_STOP flag — saves compute on obviously-bad variants
+- If loss trajectory looks promising or ambiguous: continue all seeds to completion
+
+**Step 4: Collect and compare results with statistical rigor**
+- Parse output files from ALL seeds (JSON/CSV/logs)
+- Compute **mean ± std** across seeds for every metric
+- For main comparison vs baseline: compute **95% confidence interval** and **p-value** (paired t-test or Wilcoxon signed-rank, depending on normality)
+- For comparison vs current best: same statistical protocol
+- Build comparison table with statistical rigor:
 
   ```markdown
-  | Method | Seq1 ATE | Seq2 ATE | ... | Mean ATE ↓ | Mean RTE ↓ | vs Baseline | vs Best |
-  |--------|----------|----------|-----|-----------|-----------|-------------|---------|
-  | [PRIMARY_BASELINE] | ... | ... | ... | X.XX | X.XX | — | — |
-  | Best (v{best_round}) | ... | ... | ... | X.XX | X.XX | ΔX% | — |
-  | Current (v{N}) | ... | ... | ... | X.XX | X.XX | ΔX% | ΔX% |
+  | Method | Mean ATE ↓ | ± std | Mean RTE ↓ | ± std | vs Baseline | p-value | Sig |
+  |--------|-----------|-------|-----------|-------|-------------|---------|-----|
+  | [PRIMARY_BASELINE] | X.XX | ±X.XX | X.XX | ±X.XX | — | — | — |
+  | Best (v{best_round}) | X.XX | ±X.XX | X.XX | ±X.XX | ΔX% | p=X.XX | ** |
+  | Current (v{N}) | X.XX | ±X.XX | X.XX | ±X.XX | ΔX% | p=X.XX | * |
   ```
+  Significance: * p<0.05, ** p<0.01, *** p<0.001, NS = not significant
 
 - Record per-sequence breakdown (important for inertial odometry — different motion types)
 - Append to `score-history.csv`
+- **Flag non-significant improvements as "NS"** — Phase E should treat NS improvements as "tied", not "improved"
 
 Save to `innovation-logs/round-NN/results.md`.
+
+### Phase D.5: Loss Function Experimentation (triggered on plateau)
+
+**Skip entirely unless**: `patience_counter >= 2` AND no improvement in last 2 rounds. This phase fires when the method architecture seems sound but training isn't converging optimally — the loss function itself may be the bottleneck.
+
+1. **Analyze current loss**: What loss function is being used? What are its known limitations for this problem type?
+
+2. **Generate 2-3 loss variants** via Codex MCP:
+   - **Variant L1**: Current loss + regularization term (e.g., L2 on key parameters, spectral normalization, consistency regularization, smoothness penalty)
+   - **Variant L2**: Alternative loss family (e.g., Huber loss vs MSE for robustness to outliers, focal loss vs CE for class imbalance, contrastive auxiliary loss for representation quality)
+   - **Variant L3**: Principled modification inspired by `TECHNIQUE_LIBRARY.md` distilled principles (e.g., if principle says "exploit known conservation laws" → add physics-informed loss term)
+
+3. **Quick comparison** (1 seed, smallest dataset, reduced epochs): run all loss variants and current loss
+4. **Select best**: if any variant improves primary metric by > 1 std → adopt for next round's full evaluation
+5. **Log**: save loss comparison to `innovation-logs/round-NN/loss-experiment.md`
+
+> 💡 Loss function changes often unlock plateaus that architectural changes cannot. This step is the equivalent of "try a different optimizer" but more principled.
 
 ---
 
@@ -567,11 +661,11 @@ Save to `innovation-logs/round-NN/results.md`.
 
 **Step 2: Improvement check**
 
-| Result | Action |
-|--------|--------|
-| **Improved** over current best | Update `best_variant`, `best_score`, `best_round`, `best_metrics`. Reset `patience_counter` to 0. Reset `regression_counter` to 0. |
-| **Tied** (within noise margin) | Increment `patience_counter`. Keep current best. |
-| **Slightly worse** | Increment `patience_counter`. Keep current best. |
+| Result | Condition | Action |
+|--------|-----------|--------|
+| **Improved** | mean better AND p < 0.05 (statistically significant) | Update `best_variant`, `best_score`, `best_round`, `best_metrics`. Reset `patience_counter` to 0. Reset `regression_counter` to 0. **Run inline ablation** (Step 2.5 below). |
+| **Tied** | mean better but p >= 0.05 (NOT statistically significant), OR within noise margin | Increment `patience_counter`. Keep current best. Log as "NS improvement — insufficient evidence." |
+| **Slightly worse** | mean worse but within 1 std | Increment `patience_counter`. Keep current best. |
 | **Significantly worse** | Increment `regression_counter`. If `regression_counter >= REGRESSION_TOLERANCE`: revert code to best variant and reset regression_counter. |
 
 **Threshold guidance** (adapt to your domain):
@@ -579,6 +673,18 @@ Save to `innovation-logs/round-NN/results.md`.
 - **Tied**: Primary metric changes by less than noise range in either direction.
 - **Slightly worse**: Primary metric regresses within 5% relative, or only on a minority of sequences.
 - **Significantly worse**: Primary metric regresses by > 5% relative, or regresses on a majority of sequences.
+
+**Step 2.5: Inline ablation** (only when variant IMPROVED over best)
+
+When a variant is declared "Improved" (statistically significant), immediately verify it's NOT a confound:
+1. **Remove the novel component** from the variant, keeping everything else (architecture, hyperparameters, training schedule)
+2. **Quick run** (1 seed, smallest dataset): does improvement disappear?
+3. **Interpret**:
+   - Improvement disappears → **Confirmed causal contribution**. Proceed normally.
+   - Improvement persists without novel component → **Confound detected**. The improvement comes from something else (hyperparameter change, data preprocessing, lucky configuration). Downgrade to "Tied" in EVOLUTION_LOG. Investigate what actually helped.
+4. Log ablation result in `innovation-logs/round-NN/inline-ablation.md`
+
+> This catches confounds DURING optimization, not just at paper-writing time. Skipping this step risks building on a false foundation for 20+ subsequent rounds.
 
 **Step 3: Technique library update**
 - For each technique used in this round's variant:

@@ -62,11 +62,23 @@ Key follow-up patterns:
 - "Please write a mock NeurIPS/ICML review with scores"
 - "Give me a results-to-claims matrix for possible experimental outcomes"
 
-### Step 4: Convergence
+### Step 4: Convergence (Adversarial → Collaborative transition)
+
+**Agreement Checkpoint** (after round 3): Pause and explicitly list:
+- What both Claude and GPT-5.4 **agree** on (settled claims, validated evidence)
+- What remains **contested** (disagreements on methodology, scope, claims)
+- What is **unknown** (needs experiments to resolve)
+
+If contested items remain after 5 turns: switch to **Collaborative Compromise Mode** (see `../shared-references/collaborative-protocol.md`):
+- Frame each disagreement as: "GPT believes X because [theory]. Claude believes Y because [implementation evidence]."
+- Jointly design a resolution: "What experiment or analysis would settle this disagreement?"
+- Produce a **joint deliverable**: experiment roadmap co-designed by both, with each contested item mapped to a specific experiment
+
 Stop iterating when:
 - Both sides agree on the core claims and their evidence requirements
-- A concrete experiment plan is established
+- A concrete experiment plan is established (jointly designed, not one-sided)
 - The narrative structure is settled
+- All contested items have a resolution path (experiment, analysis, or agreed compromise)
 
 ### Step 5: Document Everything
 Save the full interaction and conclusions to a review document in the project root:

@@ -202,11 +202,23 @@ Before drafting the front matter, re-read the one-sentence contribution from `PA
 - Then ablations and analysis
 - Every claim from the introduction must have supporting evidence here
 - For each major experiment, make explicit what claim it supports and what the reader should notice
+- **Statistical reporting**: mean ± std across seeds, significance indicators (* p<0.05, ** p<0.01) for close comparisons
+- **Failure case analysis** (required for robotics/CV venues, recommended for all):
+  - Include 2-3 specific failure cases with qualitative examples (figures if applicable)
+  - For each: describe input, expected output, actual output, and hypothesis for why it failed
+  - Position as honest assessment AND motivation for future work
 - Target: 2.5-3 pages
 
 **§5 Conclusion:**
 - Summarize contributions (NOT copy-paste from intro — rephrase)
-- Limitations (be honest — reviewers appreciate this)
+- **Limitations** — MUST address each applicable category (reviewers expect specificity, not vagueness):
+  1. **Scope**: scenarios, domains, or data types NOT tested on
+  2. **Scalability**: computational bottlenecks, does it work at larger scale?
+  3. **Assumptions**: what assumptions may not hold in practice?
+  4. **Failure modes**: under what conditions does the method fail? (include specific examples if available)
+  5. **Comparison gaps**: baselines or datasets not included and why
+  6. **Generalization**: confidence that results transfer to other settings
+  Each limitation: 1-2 sentences with specific details. "Future work will address limitations" is insufficient.
 - Future work (1-2 concrete directions)
 - Ethics statement and reproducibility statement (if venue requires)
 - Target: 0.5 pages

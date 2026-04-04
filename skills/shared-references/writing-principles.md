@@ -374,6 +374,47 @@ Stronger alternatives are often:
 
 This is not about mechanical substitution. It is about how wording changes a reviewer's intuition about whether the work is a real contribution.
 
+### AI-Generated Writing Detection Patterns
+
+Reviewers and automated detectors flag these patterns. Avoid them systematically during the De-AI Polish pass.
+
+**Tier 1: High-confidence AI tells** (replace or restructure immediately)
+
+| Pattern | Fix |
+|---------|-----|
+| delve, delve into | examine, investigate, analyze |
+| pivotal | important, critical, central, key |
+| landscape (as metaphor) | the field of X, current work on X |
+| tapestry | remove entirely |
+| underscore (as verb) | highlight, demonstrate, show |
+| leverage (as verb) | use, employ, apply, exploit |
+| utilize | use |
+| harness | use, apply, take advantage of |
+| nuanced | specific, detailed, fine-grained |
+| multifaceted | complex, varied, diverse |
+| in the realm of | in |
+| a testament to | evidence of, shows that |
+| it is worth noting that | (delete — state the thing directly) |
+| notably, importantly | (delete — if it matters, it's already clear from context) |
+
+**Tier 2: Structural patterns** (harder to detect, higher impact)
+
+| Pattern | Fix |
+|---------|-----|
+| Starting 3+ consecutive paragraphs with "We" | Vary openings: lead with context, result, or comparison |
+| Lists of exactly three ("X, Y, and Z") appearing 3+ times per page | Break the pattern: use two items, four items, or restructure |
+| "In this section, we..." before every section | Delete or replace with substantive topic sentence |
+| "This work opens exciting new avenues" | Replace with 1-2 concrete future directions |
+| Topic sentences that could fit any paper ("X is important") | Replace with paper-specific claims |
+| Excessive hedging chains ("may potentially be able to") | Choose one hedge or remove if supported |
+| Paired antonyms repeated ("not only X but also Y") | Use once per paper at most |
+
+**Tier 3: Frequency checks** (run before submission)
+
+- Count "Furthermore," / "Moreover," / "Additionally," — if > 3 total, replace most with direct connectives
+- Check for "significant" used without statistical significance testing — replace with "substantial" or "large"
+- Check consecutive sentences starting with "This" or "The" — vary if > 2 in a row
+
 ## Mathematical Writing
 
 ### Core Principle

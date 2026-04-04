@@ -1,4 +1,4 @@
-# Venue Checklists for ICLR, NeurIPS, ICML, and IEEE
+# Venue Checklists for ICLR, NeurIPS, ICML, CVPR, IEEE, and Robotics Venues
 
 Use this reference near the end of `paper-plan` and during the final checks in `paper-write`.
 
@@ -131,6 +131,81 @@ Final-check implications:
 - Check that all figures meet IEEE quality requirements: 300 dpi minimum, readable in grayscale.
 - Verify no `\citep` or `\citet` commands — IEEE uses `\cite{}` only.
 - Author biography (`\begin{IEEEbiography}`) is optional but recommended for camera-ready.
+
+## CVPR (also ICCV, ECCV)
+
+Planning implications:
+
+- Use the CVPR LaTeX template (`cvpr.sty`). Double-column, 10pt, letterpaper.
+- **Double-blind review** — anonymous submission required. No author names, acknowledgments, project URLs, or funding identifiers.
+- Main body: 8 pages maximum (excluding references). References do NOT count toward the page limit.
+- CVPR reviewers weight **visual quality** heavily. Plan a strong Figure 1 (architecture or teaser results).
+- **Novelty expectations are high** — "combining existing methods on a new dataset" is insufficient for acceptance.
+- Quantitative comparison on **standard benchmarks** is mandatory, not optional.
+- Ablation studies demonstrating each component's contribution are expected in all method papers.
+- Include training cost (GPU-hours, hardware) in the experiments section.
+- For generative/visual results: include **failure cases** alongside successes.
+
+Final-check implications:
+
+- Confirm strict anonymization: no author names, no GitHub links, no self-citing "our previous work [Author, Year]".
+- Verify figure quality: 300 dpi minimum, vector graphics preferred, readable at two-column width.
+- Supplementary material (if any) must also be anonymized.
+- Comparison with state-of-the-art methods published within the last 2 years on standard benchmarks.
+- Ablation studies present and each architectural choice justified.
+- Statistical reporting: mean ± std across seeds, significance indicators for close comparisons.
+- Reproducibility: hyperparameters, random seeds, compute details documented.
+
+## IEEE TRO (Transactions on Robotics)
+
+TRO is a premium IEEE journal for robotics. Longer format, higher rigor bar than conference papers.
+
+Planning implications:
+
+- **NOT anonymous** — include full author names, affiliations, IEEE membership.
+- Use `\documentclass[journal]{IEEEtran}` with `\cite{}` (numeric, via `cite` package).
+- Typical length: 12-16 pages including references. No strict page limit, but reviewers expect concise writing.
+- References count toward the total length.
+- TRO **requires real-world experiments** or extremely strong justification for simulation-only work.
+- Quantitative comparison against state-of-the-art on standard benchmarks with full statistical reporting (mean ± std, number of trials).
+- Include **runtime/computational complexity analysis**.
+- Cover letter should position the contribution relative to any prior conference version.
+
+Final-check implications:
+
+- Verify real-world experiments are present or the simulation gap is explicitly addressed.
+- Statistical reporting: mean ± std across multiple trials, significance tests for close comparisons.
+- Ablation studies for each novel component.
+- **Failure case analysis** is expected — show where the method breaks and discuss why.
+- Runtime analysis must be present if any efficiency claims are made.
+- Figures meet IEEE quality: 300 dpi, readable in grayscale, vector graphics preferred.
+- Verify `\bibliographystyle{IEEEtran}` and no `\citep`/`\citet` commands.
+- Include multimedia/video reference if applicable.
+- Author biographies (`\begin{IEEEbiography}`) required for camera-ready.
+
+## ICRA (Standalone Submission)
+
+ICRA is a top robotics conference with its own review process separate from RA-L.
+
+Planning implications:
+
+- **Double-blind review** for ICRA standalone papers (unlike RA-L which is NOT anonymous).
+- Use `\documentclass[conference]{IEEEtran}` with `\cite{}` (numeric).
+- Page limit: 6 pages of technical content + 1 page for references only. Total 7 pages maximum.
+- References are on a separate (7th) page and do NOT count toward the 6-page technical limit.
+- ICRA reviewers value: (1) real-robot validation, (2) clear system description, (3) fair baselines, (4) reproducibility.
+- Plan a system overview figure early (architecture, pipeline, or robot setup).
+- Include video supplementary — virtually expected for manipulation, locomotion, and navigation papers.
+
+Final-check implications:
+
+- Confirm anonymization: no author names, no lab identifiers, no self-citing "our robot" or "our lab".
+- Verify technical content fits in 6 pages. References on page 7 only.
+- Experiments include real-world validation or strong sim-to-real transfer analysis.
+- Statistical reporting: mean ± std across trials, number of trials stated.
+- **Failure case analysis** strengthens the paper significantly.
+- Comparison with recent baselines (within 2 years) on recognized benchmarks.
+- Verify `\bibliographystyle{IEEEtran}` and correct `[conference]` document class.
 
 ## Minimal Submission Checklist
 
