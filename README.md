@@ -1305,12 +1305,15 @@ Override inline: `/experiment-bridge — base repo: https://github.com/org/proje
 | `PAPER_LIBRARY` | `papers/`, `literature/` | Local directories to scan for PDFs before searching online |
 | `MAX_LOCAL_PAPERS` | 20 | Max local PDFs to scan (first 3 pages each) |
 | `SOURCES` | `all` | Which sources to search: `zotero`, `obsidian`, `local`, `web`, `semantic-scholar`, or `all`. `all` includes Semantic Scholar. Use `— no-s2` to exclude |
-| `API_MAX_PER_QUERY` | 30 | Max results per API query (arXiv, Semantic Scholar). Applies per query variant |
+| `API_MAX_PER_QUERY` | 100 | Max results per API query (arXiv, Semantic Scholar). Applies per query variant. Uses `search-bulk` for S2 |
+| `MAX_TOTAL_PAPERS` | 500 | Overall cap on unique papers across all sources/variants/snowball. Set lower (e.g., 100) for faster search |
+| `WEB_SEARCH_ALWAYS` | true | WebSearch runs on EVERY search regardless of source selection. Set `false` to disable |
+| `CROSS_DOMAIN` | true | Generate cross-domain queries (math, signal processing, physics, adjacent ML). Finds foundational work from other fields |
 | `SNOWBALL` | true | Citation graph traversal on top 3-5 papers (forward + backward). Set `false` for faster search |
 | `ARXIV_DOWNLOAD` | false | When `true`, download top relevant arXiv PDFs to PAPER_LIBRARY after search |
-| `ARXIV_MAX_DOWNLOAD` | 5 | Maximum number of PDFs to download when `ARXIV_DOWNLOAD = true` |
+| `ARXIV_MAX_DOWNLOAD` | 500 | Maximum number of PDFs to download when `ARXIV_DOWNLOAD = true`. Downloads all relevant papers found |
 
-Override inline: `/research-lit "topic" — sources: zotero, web`, `/research-lit "topic" — snowball: false`, `/research-lit "topic" — arxiv download: true, max download: 10`
+Override inline: `/research-lit "topic" — cross domain: false, max total: 100` (faster), `/research-lit "topic" — snowball: false`, `/research-lit "topic" — arxiv download: true, max download: 10`
 
 ### Paper Writing (`paper-write`)
 

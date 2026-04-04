@@ -16,9 +16,12 @@ Research topic: $ARGUMENTS
   2. `literature/` in the current project directory
   3. Custom path specified by user in `CLAUDE.md` under `## Paper Library`
 - **MAX_LOCAL_PAPERS = 20** — Maximum number of local PDFs to scan (read first 3 pages each). If more are found, prioritize by filename relevance to the topic.
-- **API_MAX_PER_QUERY = 30** — Maximum results per API query (arXiv, Semantic Scholar). Higher values catch papers that rank lower but are still relevant. Applies per query variant.
+- **API_MAX_PER_QUERY = 100** — Maximum results per API query (arXiv, Semantic Scholar). Applies per query variant. Use `search-bulk` for S2 when requesting > 100.
+- **MAX_TOTAL_PAPERS = 500** — Overall cap on unique papers collected across all sources, query variants, and snowball expansion. The search continues adding papers until this cap is reached or all queries are exhausted. Set lower (e.g., 100) for faster search.
+- **WEB_SEARCH_ALWAYS = true** — WebSearch runs on EVERY literature search regardless of `— sources:` selection. Even if user specifies `— sources: zotero, local`, WebSearch still runs as a supplementary source. Set `false` to disable.
+- **CROSS_DOMAIN = true** — Generate cross-domain query variants covering foundational fields (mathematics, signal processing, physics, adjacent ML subfields). Dramatically increases coverage of non-obvious related work from other disciplines.
 - **ARXIV_DOWNLOAD = false** — When `true`, download top 3-5 most relevant arXiv PDFs to PAPER_LIBRARY after search. When `false` (default), only fetch metadata (title, abstract, authors) via arXiv API — no files are downloaded.
-- **ARXIV_MAX_DOWNLOAD = 5** — Maximum number of PDFs to download when `ARXIV_DOWNLOAD = true`.
+- **ARXIV_MAX_DOWNLOAD = 500** — Maximum number of PDFs to download when `ARXIV_DOWNLOAD = true`. Downloads all relevant papers found, up to this cap.
 - **SNOWBALL = true** — When `true`, perform citation graph traversal (forward + backward) on top 3-5 most relevant papers found. Catches papers using different terminology but in the same citation lineage. Set `false` to skip for faster search.
 
 > 💡 Overrides:
@@ -128,22 +131,36 @@ Before searching online, check if the user already has relevant papers locally:
 
 ### Step 0.5: Query Expansion (generate search variants)
 
-Before any external API call, generate **3-5 query variants** to maximize coverage. Different papers use different terminology for the same concept — a single query misses many relevant papers.
+Before any external API call, generate **8-10 query variants** to maximize coverage across domains. Different papers — even in different fields — may address the same fundamental problem using completely different terminology.
 
+**Domain-specific variants** (5):
 1. **Original phrase**: The user's exact topic (e.g., "inertial odometry")
 2. **Synonym rephrasing**: Alternative terminology (e.g., "IMU-based positioning", "dead reckoning")
 3. **Broader term**: Wider scope to catch related work (e.g., "learning-based navigation")
 4. **Narrower/method-specific**: Core technique name (e.g., "transformer IMU trajectory estimation")
 5. **Baseline/dataset name**: If domain-specific section below applies, include key baselines (e.g., "AIR-IO", "TLIO")
 
-Store these as `QUERY_VARIANTS` — Step 1 will loop through each variant for every API source.
+**Cross-domain variants** (3-5, when `CROSS_DOMAIN = true`):
+Identify the **fundamental mathematical/physical problem** underlying the research topic, then generate queries targeting foundational fields:
 
-> 💡 This pattern is proven — `/novelty-check` uses 3-5 query formulations per claim for the same reason.
+6. **Mathematics**: What mathematical structures or theories underpin this problem? (e.g., "Lie group integration SO(3)", "stochastic differential equations on manifolds", "information geometry Fisher metric", "optimal transport trajectory", "differential geometry rotation estimation")
+7. **Signal processing**: What signal processing techniques address similar data characteristics? (e.g., "Kalman filter IMU bias estimation", "wavelet denoising accelerometer", "adaptive filtering non-stationary signals", "spectral analysis periodic motion")
+8. **ML/DL foundations**: What ML paradigms address the same structural challenge? (e.g., "state space models sequential data", "equivariant neural networks SE(3)", "physics-informed neural networks dynamics", "contrastive learning temporal sequences")
+9. **Physics/mechanics**: What physical laws or models constrain this problem? (e.g., "rigid body dynamics quaternion", "inertial navigation error propagation", "conservation laws motion estimation")
+10. **Adjacent application domains**: Where else is the same fundamental problem solved? (e.g., "visual odometry drift correction" for inertial odometry, "speech enhancement" for sensor denoising, "protein folding SE(3)" for rotation estimation)
+
+**How to generate cross-domain variants**: Decompose the research problem into its fundamental components (e.g., "inertial odometry" = rotation estimation + translation integration + drift correction + noise handling). For each component, ask: "What field has the deepest theory for this sub-problem?" Generate one query per field.
+
+Store ALL variants as `QUERY_VARIANTS` — Step 1 will loop through each variant for every API source.
+
+> 💡 This cross-domain approach is how breakthroughs happen — many advances in ML came from importing ideas from physics (diffusion models ← thermodynamics), information theory (VAEs ← coding theory), and optimal transport (Wasserstein GANs ← mathematics).
 
 ### Step 1: Search (external)
-- Search arXiv API, Semantic Scholar API, and WebSearch using **each query variant**
-- Focus on papers from last 2 years unless studying foundational work
-- **De-duplicate**: Skip papers already found in Zotero, Obsidian, or local library. De-duplicate across query variants by arXiv ID / S2 paperId
+- Search arXiv API, Semantic Scholar API, and **WebSearch** using **each query variant**
+- **WebSearch is MANDATORY** (`WEB_SEARCH_ALWAYS = true`): Even if user specifies `— sources: zotero`, WebSearch still runs as supplementary. WebSearch catches papers from Google Scholar, conference proceedings, personal pages, and repositories not indexed by arXiv/S2.
+- Focus on papers from last 2 years unless studying foundational work or CROSS_DOMAIN queries (which may find older foundational papers)
+- **De-duplicate**: Skip papers already found in Zotero, Obsidian, or local library. De-duplicate across query variants by arXiv ID / S2 paperId / title match
+- **Accumulation**: Keep adding unique papers until `MAX_TOTAL_PAPERS` (default 500) is reached or all queries are exhausted. Track running count.
 
 **arXiv API search** (always runs, no download by default):
 
@@ -157,7 +174,7 @@ SCRIPT=$(find tools/ -name "arxiv_fetch.py" 2>/dev/null | head -1)
 
 **Multi-query search** — run arXiv API for **each query variant** from Step 0.5:
 ```bash
-# For each QUERY_VARIANT:
+# For each QUERY_VARIANT (domain-specific):
 python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY
 
 # If domain is known, add category filter to at least one variant:
@@ -165,9 +182,19 @@ python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY --category cs.RO
 
 # For one variant, use date-sorted to catch newest papers:
 python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY --sort-by submittedDate
+
+# For cross-domain variants (math, signal processing, physics):
+# Use broader categories or no category filter to avoid missing foundational work
+python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY --category math.OC   # optimization
+python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY --category eess.SP   # signal processing
+python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY --category stat.ML   # statistical ML
+
+# If a single query returns exactly API_MAX_PER_QUERY results, there may be more — paginate:
+python3 "$SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY --start 100  # page 2
 ```
 
 De-duplicate results across variants by arXiv ID. If `arxiv_fetch.py` is not found, fall back to WebSearch.
+Stop accumulating when total unique papers reach MAX_TOTAL_PAPERS.
 
 The arXiv API returns structured metadata (title, abstract, full author list, categories, dates) — richer than WebSearch snippets. Merge these results with WebSearch findings and de-duplicate.
 
@@ -180,17 +207,27 @@ S2_SCRIPT=$(find tools/ -name "semantic_scholar_fetch.py" 2>/dev/null | head -1)
 
 **Multi-query search** — run S2 API for **each query variant**:
 ```bash
-# For each QUERY_VARIANT:
-python3 "$S2_SCRIPT" search "VARIANT" --max $API_MAX_PER_QUERY \
+# For each domain-specific QUERY_VARIANT:
+python3 "$S2_SCRIPT" search-bulk "VARIANT" --max $API_MAX_PER_QUERY \
   --fields-of-study "Computer Science,Engineering" \
   --publication-types "JournalArticle,Conference"
 
 # For one variant, also search recent papers sorted by date:
 python3 "$S2_SCRIPT" search-bulk "VARIANT" --max $API_MAX_PER_QUERY \
   --sort publicationDate:desc --year "2024-"
+
+# For CROSS-DOMAIN variants: remove field filter to catch math, physics, signal processing papers:
+python3 "$S2_SCRIPT" search-bulk "VARIANT" --max $API_MAX_PER_QUERY \
+  --publication-types "JournalArticle,Conference"
+# (No --fields-of-study filter: allows Mathematics, Physics, Engineering, etc.)
+
+# For high-impact foundational work: sort by citation count:
+python3 "$S2_SCRIPT" search-bulk "VARIANT" --max 50 \
+  --sort citationCount:desc
 ```
 
 De-duplicate results across variants by S2 paperId. If `semantic_scholar_fetch.py` is not found, skip silently.
+Stop accumulating when total unique papers reach MAX_TOTAL_PAPERS.
 
 **Why use Semantic Scholar?** Many IEEE/ACM journal papers are NOT on arXiv. S2 fills the gap for published venue-only papers with citation counts and venue metadata.
 
@@ -198,6 +235,68 @@ De-duplicate results across variants by S2 paperId. If `semantic_scholar_fetch.p
 - If a paper appears in both: check S2's `venue`/`publicationVenue` — if it has been published in a journal/conference (e.g. IEEE TWC, JSAC), use S2's metadata (venue, citationCount, DOI) as the authoritative version, since the published version supersedes the preprint. Keep the arXiv PDF link for download.
 - If the S2 match has no venue (still just a preprint indexed by S2): keep the arXiv version as-is.
 - S2 results without `externalIds.ArXiv` are **venue-only papers** not on arXiv — these are the unique value of this source.
+
+**WebSearch** (MANDATORY — runs for ALL query variants regardless of source selection):
+
+For each query variant, also run WebSearch to catch:
+- Google Scholar results not indexed by arXiv/S2
+- Conference workshop papers and extended abstracts
+- Technical reports and theses
+- Papers from non-CS venues (math journals, physics journals, signal processing conferences)
+- Pre-print servers other than arXiv (SSRN, HAL, bioRxiv for bio-inspired methods)
+
+```
+WebSearch: "VARIANT" site:scholar.google.com OR site:ieeexplore.ieee.org OR site:dl.acm.org
+```
+
+Batch 3-5 WebSearch queries at a time. If any hangs > 60 seconds, abandon and continue.
+
+### Step 1.1: Cross-Domain Deep Search (when `CROSS_DOMAIN = true`)
+
+**Skip if `CROSS_DOMAIN = false`.**
+
+After the main domain search, run dedicated searches in foundational fields. The goal is to find theories, methods, and mathematical frameworks from OTHER disciplines that address the same fundamental problem structure.
+
+**Identify fundamental sub-problems**: Decompose the research topic into its mathematical/physical components. For example, "inertial odometry" decomposes into:
+- Rotation estimation → Lie group theory, quaternion algebra, differential geometry on SO(3)
+- Translation integration → stochastic calculus, error propagation theory
+- Drift correction → Kalman filtering, factor graphs, optimization on manifolds
+- Noise modeling → stochastic processes, Bayesian estimation, signal denoising theory
+- Sequential modeling → state space models, recurrent dynamics, temporal point processes
+
+For each sub-problem, search targeted foundational queries:
+
+```bash
+# Mathematics foundations:
+python3 "$SCRIPT" search "MATH_QUERY" --max $API_MAX_PER_QUERY --category math.OC
+python3 "$SCRIPT" search "MATH_QUERY" --max $API_MAX_PER_QUERY --category math.DG
+python3 "$S2_SCRIPT" search-bulk "MATH_QUERY" --max $API_MAX_PER_QUERY --fields-of-study "Mathematics"
+
+# Signal processing:
+python3 "$SCRIPT" search "SP_QUERY" --max $API_MAX_PER_QUERY --category eess.SP
+python3 "$S2_SCRIPT" search-bulk "SP_QUERY" --max $API_MAX_PER_QUERY --fields-of-study "Engineering"
+
+# Statistical ML / theoretical ML:
+python3 "$SCRIPT" search "ML_THEORY_QUERY" --max $API_MAX_PER_QUERY --category stat.ML
+python3 "$S2_SCRIPT" search-bulk "ML_THEORY_QUERY" --max $API_MAX_PER_QUERY --fields-of-study "Computer Science,Mathematics"
+
+# Physics / mechanics:
+python3 "$SCRIPT" search "PHYSICS_QUERY" --max $API_MAX_PER_QUERY --category physics.data-an
+python3 "$S2_SCRIPT" search-bulk "PHYSICS_QUERY" --max $API_MAX_PER_QUERY --fields-of-study "Physics"
+
+# Adjacent application domains (where the same math is applied differently):
+WebSearch: "ADJACENT_QUERY" — e.g., "protein structure prediction SE(3) equivariance" for rotation problems
+```
+
+De-duplicate against ALL previously collected papers. Add unique papers to the candidate pool.
+
+**Cross-domain relevance filter**: Not all cross-domain papers are relevant. For each paper found, assess:
+- Does the mathematical framework or core technique address a sub-problem we actually face?
+- Is the theoretical insight transferable even if the application domain differs?
+- Would the principle extraction protocol (`../shared-references/principle-extraction.md`) yield a useful principle?
+Discard papers that are domain-relevant but principle-irrelevant.
+
+Continue until MAX_TOTAL_PAPERS is reached or all cross-domain queries are exhausted.
 
 ### Domain-Specific Search: Robotics & Inertial Navigation
 
