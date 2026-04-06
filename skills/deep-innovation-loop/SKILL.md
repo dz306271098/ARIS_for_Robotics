@@ -178,13 +178,23 @@ This is the critical differentiator from `auto-review-loop`. Instead of asking "
 
 **Collaborative Root-Cause Reanalysis** (see `../shared-references/collaborative-protocol.md`):
 
-If `patience_counter >= 3` (no improvement for 3+ rounds), the current diagnosis may be WRONG. Before running the normal Phase A, trigger a collaborative reanalysis:
+If `patience_counter >= 3` (no improvement for 3+ rounds), the current diagnosis may be WRONG. Before running the normal Phase A, trigger:
 
+**Step 0: Independent diagnosis from raw files** (Codex Plugin — GPT-5.4 reads everything directly):
+```
+/codex:rescue --effort xhigh "We've been stuck for {patience_counter} rounds with no improvement. Read the last 3 rounds of results in innovation-logs/, the TECHNIQUE_LIBRARY.md, score-history.csv, and EVOLUTION_LOG.md. Independently diagnose why we're stuck. Don't trust any prior summaries — read the raw files and form your own assessment."
+```
+
+Append rescue findings to the collaborative context below.
+
+**Step 1: Collaborative reanalysis** (MCP dialogue — multi-turn, with rescue findings as input):
 ```
 mcp__codex__codex-reply:
   threadId: [saved — GPT has full history of failed rounds]
   prompt: |
     [COLLABORATIVE MODE — Joint Root-Cause Reanalysis]
+    
+    [INDEPENDENT DIAGNOSIS from Codex rescue — paste verbatim]
     
     We've been stuck for {patience_counter} rounds with no improvement.
     
@@ -538,9 +548,20 @@ Save to `innovation-logs/round-NN/innovation.md` (include both proposals AND adv
 - Self-review: does the implementation match the design?
 - Code quality: proper seeding, logging, result saving
 
-**Step 1.5: Experiment Design + Code Review (Codex MCP)**
+**Step 1.5: Experiment Design + Code Review (Dual Channel)**
 
-Before deploying, submit the experiment design AND implementation to GPT-5.4 for review:
+Before deploying, run BOTH an independent file-based audit AND a dialogue-based design review:
+
+**Step 1.5a: Independent Code Audit** (Codex Plugin — GPT-5.4 reads actual code diff):
+```
+/codex:adversarial-review --base HEAD~1 --focus "Verify this variant implements the stated hypothesis correctly, baseline comparison is fair (same tuning budget, same data, same compute), no logic bugs, evaluation uses ground truth not model output, seeds are fixed"
+```
+
+If adversarial-review returns `needs-attention` with CRITICAL findings: Claude MUST fix them before proceeding. Do not skip.
+
+**Step 1.5b: Design Review** (MCP dialogue — for hypothesis/methodology discussion):
+
+Submit the experiment design AND implementation to GPT-5.4 for review:
 
 ```
 mcp__codex__codex-reply:
@@ -683,6 +704,11 @@ When a variant is declared "Improved" (statistically significant), immediately v
    - Improvement disappears → **Confirmed causal contribution**. Proceed normally.
    - Improvement persists without novel component → **Confound detected**. The improvement comes from something else (hyperparameter change, data preprocessing, lucky configuration). Downgrade to "Tied" in EVOLUTION_LOG. Investigate what actually helped.
 4. Log ablation result in `innovation-logs/round-NN/inline-ablation.md`
+5. **Independent verification** (Codex Plugin — GPT-5.4 reads ablation results directly):
+   ```
+   /codex:rescue --effort high "Read innovation-logs/round-NN/inline-ablation.md and the actual experiment output files. Verify: does the ablation correctly isolate the novel component? Is the conclusion (causal vs confound) supported by the data? Any methodological issues?"
+   ```
+   If rescue disagrees with Claude's conclusion → downgrade to "Tied" and log the disagreement.
 
 > This catches confounds DURING optimization, not just at paper-writing time. Skipping this step risks building on a false foundation for 20+ subsequent rounds.
 

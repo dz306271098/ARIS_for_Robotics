@@ -64,6 +64,17 @@ Key follow-up patterns:
 
 ### Step 4: Convergence (Adversarial → Collaborative transition)
 
+**Independent File-Based Audit** (after round 3, before agreement checkpoint):
+
+See `../shared-references/codex-context-integrity.md` for protocol.
+
+Before Claude compiles the agreement checkpoint, let GPT-5.4 form its own independent view from the raw project files:
+```
+/codex:rescue --effort xhigh "Read all project files: NARRATIVE_REPORT.md (or paper draft), experiment results, source code, EXPERIMENT_PLAN.md, and any review documents. Provide an independent critical review WITHOUT relying on any prior review dialogue. Score on 5 dimensions (Novelty, Technical Soundness, Experimental Rigor, Clarity, Significance). List specific weaknesses with file paths and evidence."
+```
+
+Append rescue findings to the agreement checkpoint below. This ensures the checkpoint reflects ground truth, not just the MCP dialogue narrative.
+
 **Agreement Checkpoint** (after round 3): Pause and explicitly list:
 - What both Claude and GPT-5.4 **agree** on (settled claims, validated evidence)
 - What remains **contested** (disagreements on methodology, scope, claims)

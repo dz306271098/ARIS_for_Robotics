@@ -73,7 +73,21 @@ Long-running loops may hit the context window limit, triggering automatic compac
 
 #### Phase A: Review
 
-Send comprehensive context to the external reviewer:
+**Step A.0: Independent File Audit** (Codex Plugin — GPT-5.4 reads files directly)
+
+Before compiling the review prompt, run an independent code/experiment audit so GPT-5.4 forms its own view from ground truth:
+
+```
+/codex:adversarial-review --scope working-tree --focus "Review current experiment code, results, and method implementation. Check for: unfair baseline comparisons, missing statistical tests, cherry-picked metrics, implementation bugs, overclaimed results"
+```
+
+Append the adversarial-review findings to the review context below. Claude CANNOT filter these findings — include them verbatim.
+
+See `../shared-references/codex-context-integrity.md` for channel selection and evidence rules.
+
+**Step A.1: Multi-turn Review** (MCP dialogue — multi-round scoring)
+
+Send comprehensive context to the external reviewer. Per `codex-context-integrity.md`, paste RAW file content for metrics, code diffs, and error logs — tag with `[FILE: path]`:
 
 ```
 mcp__codex__codex:
@@ -81,8 +95,13 @@ mcp__codex__codex:
   prompt: |
     [Round N/MAX_ROUNDS of autonomous review loop]
 
-    [Full research context: claims, methods, results, known weaknesses]
-    [Changes since last round, if any]
+    [INDEPENDENT AUDIT FINDINGS from Step A.0 — paste verbatim]
+
+    [Full research context — paste RAW file content per codex-context-integrity.md rules:
+     - [FILE: experiment results] raw metrics
+     - [FILE: git diff] code changes since last round
+     - [FILE: error logs] any failed experiments
+     - [FILE: AUTO_REVIEW.md last 2 rounds] previous reviewer feedback]
 
     Please act as a senior reviewer at [TARGET_VENUE — default NeurIPS/ICML level].
 
@@ -243,16 +262,33 @@ Prioritization rules:
    - If reviewer said "missing ablation for component X" → verify the ablation was added and results are meaningful
    - If the targeted metric did NOT improve despite overall improvement: the fix likely addresses a different issue
 
-3. **Decision gate**:
-   - Fix is significant AND addresses root cause → proceed to Phase E (document), then next review round
-   - Fix is NOT significant OR doesn't address root cause → try next strategy from Phase B.5 (Strategy B or C) before re-review
+3. **Independent verification** (Codex Plugin — GPT-5.4 reads actual changes):
+   ```
+   /codex:adversarial-review --base HEAD~1 --focus "Verify this fix is correctly implemented, statistically validated, and actually addresses the diagnosed weakness"
+   ```
+   Append findings. If adversarial-review flags CRITICAL issues Claude missed → the fix fails validation regardless of Claude's assessment.
+
+4. **Decision gate**:
+   - Fix is significant AND addresses root cause AND passes independent verification → proceed to Phase E (document), then next review round
+   - Fix is NOT significant OR doesn't address root cause OR independent review flags critical issues → try next strategy from Phase B.5 (Strategy B or C) before re-review
    - All strategies exhausted without validated improvement → escalate to **Phase C.6 (Collaborative)**
 
 #### Phase C.6: Collaborative Escalation (when all strategies fail)
 
 **Trigger**: All 2-3 fix strategies from Phase B.5 failed validation in Phase C.5. See `../shared-references/collaborative-protocol.md` for the full protocol.
 
-Switch from adversarial to collaborative mode — Claude and GPT-5.4 jointly solve the problem:
+**Step C.6.0: Independent Ground-Truth Investigation** (Codex Plugin — BEFORE collaborative dialogue)
+
+Let GPT-5.4 independently read ALL project files to form its own understanding of why fixes failed:
+```
+/codex:rescue --effort xhigh "All fix strategies for weakness [X] have failed. Read the experiment results, code changes (git log), error logs, and AUTO_REVIEW.md directly. Independently diagnose why the fixes didn't work and propose a solution based on ground truth. Do NOT rely on any prior summaries."
+```
+
+Append the rescue findings to the collaborative context below.
+
+**Step C.6.1: Collaborative Dialogue** (MCP — multi-turn joint solving)
+
+Switch from adversarial to collaborative mode — Claude and GPT-5.4 jointly solve the problem, with GPT-5.4 now having its own independent file-based analysis:
 
 ```
 mcp__codex__codex-reply:

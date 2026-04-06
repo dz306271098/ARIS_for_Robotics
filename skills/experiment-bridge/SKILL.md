@@ -108,7 +108,19 @@ For each milestone (in order), write the experiment scripts:
 
 **Skip this step if `CODE_REVIEW` is `false`.**
 
-Before deploying, send the experiment **design AND code** to GPT-5.4 xhigh for adversarial review:
+**Step 2.5a: Independent Code Audit** (Codex Plugin — GPT-5.4 reads actual code directly):
+
+See `../shared-references/codex-context-integrity.md` for channel selection rules.
+
+```
+/codex:adversarial-review --scope working-tree --focus "Review experiment implementation for: baseline fairness (same tuning budget, training schedule, data splits across all methods), statistical rigor (>= 3 seeds, mean +/- std, significance tests), correct ground truth usage (NOT another model's output), data leakage between train/test, fair hyperparameter tuning"
+```
+
+If adversarial-review returns `needs-attention` with CRITICAL findings: fix them before proceeding. Append ALL findings to the MCP review context below.
+
+**Step 2.5b: Design Review** (MCP dialogue — for methodology discussion):
+
+Send the experiment **design AND code** to GPT-5.4 xhigh for review:
 
 ```
 mcp__codex__codex:
@@ -277,6 +289,16 @@ After collecting results, automatically:
    |--------|-----------|-------------|-------------|-------------|
    | [Baseline] | X.XX | X.XX | X.XX | — |
    | Ours (vN) | X.XX | X.XX | X.XX | ΔX.XX (±X%) |
+
+### Phase 5.45: Independent Result Interpretation (Codex Plugin)
+
+Let GPT-5.4 independently read and interpret the raw experiment results:
+
+```
+/codex:rescue --effort high "Read the experiment results in refine-logs/EXPERIMENT_RESULTS.md and any raw output files (JSON/CSV). Independently assess: (1) Do results support the stated hypothesis? (2) Are there red flags (unusual variance, suspiciously perfect numbers, unfair comparisons)? (3) Are baseline comparisons valid? (4) What additional experiments would strengthen the evidence?"
+```
+
+Append rescue findings to the results summary. If rescue flags critical issues (e.g., unfair baselines, data leakage), these must be addressed before handoff.
 
 ### Phase 5.5: Write Compact Log (when COMPACT = true)
 
