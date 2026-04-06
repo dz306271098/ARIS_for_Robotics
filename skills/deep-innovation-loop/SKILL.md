@@ -241,13 +241,25 @@ Save the `threadId` from the Round 1 response. Use it for ALL subsequent rounds.
   prompt: |
     [Round N/MAX_ROUNDS — ROOT CAUSE DIAGNOSIS]
     
+    FILES TO READ (read these files directly from the project directory):
+    - innovation-logs/score-history.csv — full metrics progression
+    - innovation-logs/TECHNIQUE_LIBRARY.md — all explored techniques + distilled principles
+    - innovation-logs/BLACKLIST.md — failed approaches (do NOT suggest)
+    - innovation-logs/EVOLUTION_LOG.md — method evolution history (last 5 entries)
+    - innovation-logs/round-{N-1}/results.md — last round's detailed results
+    - innovation-logs/INNOVATION_STATE.json — current state (best score, phase, patience)
+    - src/ — current model source code (read key modules)
+    
+    Read these files yourself to form your own diagnosis.
+    Do NOT rely solely on the context I provide below.
+    
     Domain: [DOMAIN]
     Target venue: [VENUE]
     Primary baseline: [PRIMARY_BASELINE]
     
     Current method (v{N-1}): [complete method description]
     
-    Latest results:
+    Latest results (inline backup — verify against files above):
     [full metrics table — per-sequence breakdown]
     
     Results trend (last 5 rounds):
@@ -413,23 +425,25 @@ mcp__codex__codex-reply:
   prompt: |
     [Round N — INNOVATION DESIGN]
     
+    FILES TO READ (read these files directly):
+    - innovation-logs/TECHNIQUE_LIBRARY.md — all techniques + distilled principles
+    - innovation-logs/BLACKLIST.md — banned approaches
+    - innovation-logs/EVOLUTION_LOG.md — last 5 entries (method lineage)
+    - innovation-logs/FUSION_CANDIDATES.md — potential technique combinations
+    - src/ — current model source code (read key modules to understand implementation)
+    
+    Read these files yourself. Focus on "Distilled principle", "Generalized form", 
+    and "Adaptation for our problem" fields in TECHNIQUE_LIBRARY.md. 
+    Design variants from PRINCIPLES, not surface methods.
+    
     Root causes from diagnosis:
     [paste key findings from Phase A]
-    
-    Available techniques and DISTILLED PRINCIPLES from our library:
-    [paste relevant TECHNIQUE_LIBRARY.md entries — prioritize UNTESTED and TESTED-MIXED.
-     For each entry, emphasize the "Distilled principle", "Generalized form", and 
-     "Adaptation for our problem" fields. These principles — not the surface methods — 
-     should drive your variant designs.]
     
     Current best method (v{best_round}, score {best_score}/10):
     [complete description]
     
     Current method (v{N-1}) if different from best:
     [description and how it differs]
-    
-    BLACKLISTED approaches — do NOT propose anything similar:
-    [paste from BLACKLIST.md]
     
     Macro phase: {explore/refine/polish}
     Research Anchor: [paste frozen anchor]

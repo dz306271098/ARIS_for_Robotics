@@ -129,13 +129,19 @@ mcp__codex__codex:
     Review the following experiment DESIGN and IMPLEMENTATION for correctness.
     Act as a devil's advocate — find problems BEFORE we waste GPU hours.
 
-    ## Experiment Plan:
+    FILES TO READ (read these files directly from the project directory):
+    - refine-logs/EXPERIMENT_PLAN.md — full experiment plan
+    - refine-logs/FINAL_PROPOSAL.md — method description
+    - src/ — all experiment scripts and model code
+    - [path to data loading code]
+    - [path to evaluation script]
+    - [path to baseline implementation or config]
+    
+    Read these files yourself to verify the implementation matches the plan.
+    Do NOT rely solely on the excerpts I paste below.
+
+    ## Key Excerpts (inline backup):
     [paste key sections from EXPERIMENT_PLAN.md]
-
-    ## Method Description:
-    [paste from FINAL_PROPOSAL.md]
-
-    ## Implementation:
     [paste the experiment scripts]
 
     ## PART 1 — EXPERIMENT DESIGN REVIEW:

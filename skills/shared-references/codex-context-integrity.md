@@ -14,7 +14,7 @@ ARIS has three channels for GPT-5.4 interaction. Choose based on the task:
 
 | Channel | GPT-5.4 Reads Files? | Speed | Best For |
 |---------|---------------------|-------|----------|
-| `mcp__codex__codex` | **No** — sees only text Claude pastes | Fast | Multi-turn dialogue: review rounds, collaborative sessions, brainstorming, iterative refinement |
+| `mcp__codex__codex` | **Instructed** — prompt 中指定文件路径，要求 Codex 自行读取 + Claude 补充关键原文 | Fast | Multi-turn dialogue: review rounds, collaborative sessions, brainstorming, iterative refinement |
 | `/codex:adversarial-review` | **Yes** — reads git diff + source code directly | Medium | Code/experiment review at checkpoints: Phase 2.5 code review, Phase D review, post-fix validation |
 | `/codex:rescue --effort high` | **Yes** — full repo read access, autonomously explores | Slow | Deep independent investigation: failure diagnosis, result interpretation, stuck-point analysis |
 
@@ -36,28 +36,43 @@ Use independent channels at CRITICAL CHECKPOINTS to prevent information asymmetr
 
 ## Mandatory Evidence Rules (for MCP Dialogue Channel)
 
-When using `mcp__codex__codex` / `mcp__codex__codex-reply`, Claude MUST paste raw file content (not summaries) for critical evidence:
+When using `mcp__codex__codex` / `mcp__codex__codex-reply`:
 
-### What MUST be pasted verbatim:
-1. **Experiment results** — raw JSON/CSV/metrics tables from output files
-2. **Code changes** — `git diff` output, not Claude's description of changes
-3. **Error logs** — full traceback from failed experiments, not "it failed because..."
-4. **Previous reviewer feedback** — raw text from prior review rounds
-5. **Baseline comparison tables** — raw from results files
-6. **Score history** — raw from score-history.csv
+### Rule 1: Always specify files for Codex to read directly
 
-### How to tag pasted content:
+Every MCP prompt MUST include a `FILES TO READ` block listing the files Codex should read from the project directory:
+
+```
+FILES TO READ (read these files directly from the project directory):
+- src/model.py — current model implementation
+- experiments/eval_results.json — latest experiment results
+- innovation-logs/round-05/results.md — this round's results
+- AUTO_REVIEW.md — previous review history (last 2 rounds)
+- refine-logs/EXPERIMENT_PLAN.md — experiment plan
+
+Read these files yourself to verify the context I provide below.
+```
+
+This ensures Codex has direct access to ground truth and can cross-check Claude's narrative.
+
+### Rule 2: Paste critical raw evidence inline as backup
+
+In addition to the file read instructions, Claude MUST also paste the most critical raw content inline (in case Codex cannot read certain files):
+
+1. **Experiment results** — raw metrics table (key numbers)
+2. **Code changes** — `git diff` output for the current round
+3. **Error logs** — full traceback for any failed experiments
+
+Tag pasted content:
 ```
 [FILE: path/to/file, LINES: N-M]
 <actual file content here>
 [END FILE]
 ```
 
-This creates an audit trail — both Claude and GPT-5.4 know where each piece of evidence comes from.
-
-### What CAN be summarized:
+### Rule 3: What CAN be summarized
 - Background research context (research direction, prior art overview)
-- Method description (if GPT-5.4 already reviewed it in a prior round via threadId)
+- Method description (if Codex already reviewed it in a prior round via threadId)
 - Project setup information (GPU config, dataset locations)
 
 ## Anti-Framing Self-Check

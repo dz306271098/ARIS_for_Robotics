@@ -95,13 +95,24 @@ mcp__codex__codex:
   prompt: |
     [Round N/MAX_ROUNDS of autonomous review loop]
 
+    FILES TO READ (read these files directly from the project directory):
+    - AUTO_REVIEW.md — previous review rounds (read last 2 rounds)
+    - [path to latest experiment results JSON/CSV]
+    - [path to main model source code, e.g., src/model.py]
+    - [path to training script, e.g., src/train.py]
+    - [path to evaluation script, e.g., src/eval.py]
+    - NARRATIVE_REPORT.md or FINAL_PROPOSAL.md — method description
+    - refine-logs/EXPERIMENT_PLAN.md — experiment plan (if exists)
+    
+    Read these files yourself to form your own assessment. 
+    Do NOT rely solely on the context I provide below.
+
     [INDEPENDENT AUDIT FINDINGS from Step A.0 — paste verbatim]
 
-    [Full research context — paste RAW file content per codex-context-integrity.md rules:
+    [Key evidence (inline backup — verify against files above):
      - [FILE: experiment results] raw metrics
      - [FILE: git diff] code changes since last round
-     - [FILE: error logs] any failed experiments
-     - [FILE: AUTO_REVIEW.md last 2 rounds] previous reviewer feedback]
+     - [FILE: error logs] any failed experiments]
 
     Please act as a senior reviewer at [TARGET_VENUE — default NeurIPS/ICML level].
 
