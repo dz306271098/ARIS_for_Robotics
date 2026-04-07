@@ -217,6 +217,17 @@ When `RESEARCH_DRIVEN_FIX = true` (default), for each critical weakness identifi
 - Write/modify experiment scripts, model code, analysis scripts
 - Self-review: does implementation match the selected strategy from Phase B.5?
 
+**Step C.1.5: Mandatory Code Review** (every round, after ANY code change):
+
+After completing code changes, ALWAYS run an adversarial review before proceeding:
+```
+/codex:adversarial-review --scope working-tree --focus "Review code changes for: correctness, logic bugs, fair baseline comparison, proper seeding, evaluation metric accuracy, data leakage risk"
+```
+- If verdict = `needs-attention` with **critical** findings → fix immediately, re-run review
+- If verdict = `needs-attention` with only medium/low findings → document and proceed
+- If verdict = `approve` → proceed to Step C.2
+- **This step is NOT skippable** — every code change must pass adversarial review
+
 **Step C.2: Quick hyperparameter sensitivity** — for the changed component:
 - Identify the 2-3 key hyperparameters affected by the fix (e.g., learning rate, loss weight, hidden dimension)
 - Test 3 configurations: default, 0.5×, 2× of each key parameter

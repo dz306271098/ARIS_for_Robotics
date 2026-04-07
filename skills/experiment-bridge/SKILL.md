@@ -104,6 +104,17 @@ For each milestone (in order), write the experiment scripts:
    - Are results saved in a parseable format (JSON/CSV)?
    - Does the code match FINAL_PROPOSAL.md's method description?
 
+### Phase 2.3: Mandatory Code Review (every implementation round)
+
+After ANY code changes in Phase 2, ALWAYS run an adversarial review:
+```
+/codex:adversarial-review --scope working-tree --focus "Review experiment implementation for: correctness, logic bugs, proper seeding, result saving format, match with experiment plan"
+```
+- If verdict = `needs-attention` with **critical** findings → fix immediately, re-run review
+- If verdict = `needs-attention` with only medium/low → document, proceed to Phase 2.5
+- If verdict = `approve` → proceed to Phase 2.5
+- **This step is NOT skippable** — every code change must pass adversarial review
+
 ### Phase 2.5: Cross-Model Code Review (when CODE_REVIEW = true)
 
 **Skip this step if `CODE_REVIEW` is `false`.**

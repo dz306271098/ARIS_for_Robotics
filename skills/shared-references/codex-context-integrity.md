@@ -89,15 +89,34 @@ If any item cannot be checked (e.g., no failed experiments this round), explicit
 [NOTE: No experiments failed this round — all N runs completed successfully]
 ```
 
+## Mandatory Code Review Rule
+
+**Every code change MUST be reviewed before proceeding.** This is a universal rule across ALL skills:
+
+```
+After ANY code modification → /codex:adversarial-review --scope working-tree
+```
+
+- Critical findings → fix immediately, re-run review
+- Medium/low findings → document, proceed
+- Approve → proceed
+- **NOT skippable** — no code change enters experiments or next phase without adversarial review
+
+This rule is implemented as:
+- `auto-review-loop` Step C.1.5
+- `deep-innovation-loop` Step 1.1
+- `experiment-bridge` Phase 2.3
+
 ## When to Escalate to Independent Channel
 
 Switch from `codex exec` to `/codex:adversarial-review` or `/codex:rescue` when:
 
-1. **Critical checkpoint** — code review before GPU deployment, post-fix validation, result interpretation
-2. **Trust verification** — after Claude claims improvement, let GPT-5.4 independently verify from files
-3. **Stuck point** — all fix strategies failed, need fresh eyes on the raw data
-4. **Ablation verification** — after Claude claims causal contribution confirmed
-5. **Final pre-submission audit** — independent review before paper submission
+1. **Every code change** — mandatory adversarial review (see rule above)
+2. **Critical checkpoint** — code review before GPU deployment, post-fix validation, result interpretation
+3. **Trust verification** — after Claude claims improvement, let GPT-5.4 independently verify from files
+4. **Stuck point** — all fix strategies failed, need fresh eyes on the raw data
+5. **Ablation verification** — after Claude claims causal contribution confirmed
+6. **Final pre-submission audit** — independent review before paper submission
 
 ## Integration Points Across Skills
 

@@ -547,6 +547,17 @@ Save to `innovation-logs/round-NN/innovation.md` (include both proposals AND adv
 - Self-review: does the implementation match the design?
 - Code quality: proper seeding, logging, result saving
 
+**Step 1.1: Mandatory Code Review** (every round, after ANY code change):
+
+After implementing the variant, ALWAYS run an adversarial review:
+```
+/codex:adversarial-review --scope working-tree --focus "Review variant implementation for: correctness vs design spec, logic bugs, fair baseline comparison, proper seeding, evaluation metric accuracy"
+```
+- If verdict = `needs-attention` with **critical** findings → fix immediately, re-run review
+- If verdict = `needs-attention` with only medium/low findings → document in round log, proceed
+- If verdict = `approve` → proceed to Step 1.5
+- **This step is NOT skippable** — every code change must pass adversarial review before deployment
+
 **Step 1.5: Experiment Design + Code Review (Dual Channel)**
 
 Before deploying, run BOTH an independent file-based audit AND a dialogue-based design review:
