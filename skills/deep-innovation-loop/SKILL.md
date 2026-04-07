@@ -2,7 +2,7 @@
 name: deep-innovation-loop
 description: "Autonomous deep research innovation loop for ML methods. Iteratively diagnoses root causes, researches literature for solutions, synthesizes novel method variants, tests them, and evolves the approach over 40+ rounds. Unlike auto-review-loop (symptom-fixing), this skill drives genuine methodological innovation with cumulative knowledge. Use when user says \"deep innovation\", \"evolve method\", \"deep loop\", \"innovate\", \"方法进化\", \"深度创新\", or wants autonomous method evolution beyond simple review-fix cycles."
 argument-hint: [method-description-or-research-brief — baseline: AIR-IO, venue: RAL, domain: inertial odometry]
-allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, Skill, mcp__codex__codex, mcp__codex__codex-reply
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, Skill, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Deep Innovation Loop: Autonomous Method Evolution
@@ -189,20 +189,22 @@ Append rescue findings to the collaborative context below.
 
 **Step 1: Collaborative reanalysis** (MCP dialogue — multi-turn, with rescue findings as input):
 ```
-mcp__codex__codex-reply:
-  threadId: [saved — GPT has full history of failed rounds]
-  prompt: |
-    [COLLABORATIVE MODE — Joint Root-Cause Reanalysis]
-    
-    [INDEPENDENT DIAGNOSIS from Codex rescue — paste verbatim]
-    
-    We've been stuck for {patience_counter} rounds with no improvement.
-    
-    Your previous diagnosis: [root cause from last Phase A]
-    What I've tried based on that diagnosis: [list of attempted variants and results]
-    What I observe in the training logs/metrics/code: [specific evidence]
-    
-    The diagnosis may be wrong, or the root cause may have shifted.
+/codex:rescue --effort xhigh "
+[COLLABORATIVE MODE — Joint Root-Cause Reanalysis]
+
+Read these files directly:
+- innovation-logs/score-history.csv — full metrics history
+- innovation-logs/EVOLUTION_LOG.md — last 5+ entries with decisions
+- innovation-logs/TECHNIQUE_LIBRARY.md — all tested techniques
+- innovation-logs/round-{N-1}/results.md, round-{N-2}/results.md, round-{N-3}/results.md
+- src/ — current model source code
+
+We've been stuck for {patience_counter} rounds with no improvement.
+
+Previous diagnosis: [root cause from last Phase A]
+What was tried: [list of attempted variants and results]
+
+The diagnosis may be wrong, or the root cause may have shifted.
     
     1. Given my implementation evidence, do you still believe [root cause] is correct?
     2. What alternative root causes could explain the persistent plateau?
@@ -215,29 +217,12 @@ Claude responds with code/data evidence → GPT revises analysis → up to 4 tur
 
 Log to `innovation-logs/round-NN/collaborative-reanalysis.md`.
 
-Always use `config: {"model_reasoning_effort": "xhigh"}`.
+Always use `--effort xhigh` for maximum reasoning depth.
 
-**Round 1** — start a new Codex thread:
-```
-mcp__codex__codex:
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Round 1/MAX_ROUNDS — ROOT CAUSE DIAGNOSIS]
-```
+**Every round** — use a fresh `/codex:rescue` call (GPT-5.4 reads latest files directly; context accumulates in innovation-logs/ which GPT-5.4 reads):
 
-**Round 2+** — continue the existing thread (preserves full conversation history):
 ```
-mcp__codex__codex-reply:
-  threadId: [saved from Round 1]
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Round N/MAX_ROUNDS — ROOT CAUSE DIAGNOSIS]
-```
-
-Save the `threadId` from the Round 1 response. Use it for ALL subsequent rounds.
-
-**Prompt content (same for both)**:
-```
+/codex:rescue --effort xhigh "
   prompt: |
     [Round N/MAX_ROUNDS — ROOT CAUSE DIAGNOSIS]
     
@@ -401,7 +386,7 @@ Replace normal Phase C with a fusion-specific round:
    - Does technique A's strength compensate for technique B's weakness?
    - Are they architecturally compatible (no conflicting assumptions)?
    - Has this exact combination been tested before?
-4. Submit fusion candidates to GPT-5.4 for ranking via `mcp__codex__codex-reply`:
+4. Submit fusion candidates to GPT-5.4 for ranking via `/codex:rescue`:
    ```
    prompt: |
      [Round N — FUSION OPTIMIZATION]
@@ -416,33 +401,29 @@ Replace normal Phase C with a fusion-specific round:
    ```
 5. Claude Opus 4.6 (executor) selects and tests the top 1-2 fusion combinations based on GPT-5.4's ranking and available compute
 
-**Normal round — Innovation proposal via Codex MCP:**
+**Normal round — Innovation proposal via Codex Plugin:**
 
 ```
-mcp__codex__codex-reply:
-  threadId: [saved from Phase A]
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Round N — INNOVATION DESIGN]
-    
-    FILES TO READ (read these files directly):
-    - innovation-logs/TECHNIQUE_LIBRARY.md — all techniques + distilled principles
-    - innovation-logs/BLACKLIST.md — banned approaches
-    - innovation-logs/EVOLUTION_LOG.md — last 5 entries (method lineage)
-    - innovation-logs/FUSION_CANDIDATES.md — potential technique combinations
-    - src/ — current model source code (read key modules to understand implementation)
-    
-    Read these files yourself. Focus on "Distilled principle", "Generalized form", 
-    and "Adaptation for our problem" fields in TECHNIQUE_LIBRARY.md. 
-    Design variants from PRINCIPLES, not surface methods.
-    
-    Root causes from diagnosis:
-    [paste key findings from Phase A]
-    
-    Current best method (v{best_round}, score {best_score}/10):
-    [complete description]
-    
-    Current method (v{N-1}) if different from best:
+/codex:rescue --effort xhigh "
+[Round N — INNOVATION DESIGN]
+
+Read these files directly:
+- innovation-logs/TECHNIQUE_LIBRARY.md — all techniques + distilled principles
+- innovation-logs/BLACKLIST.md — banned approaches (do NOT propose anything similar)
+- innovation-logs/EVOLUTION_LOG.md — last 5 entries (method lineage)
+- innovation-logs/FUSION_CANDIDATES.md — potential technique combinations
+- src/ — current model source code (read key modules to understand implementation)
+
+Focus on 'Distilled principle', 'Generalized form', and 'Adaptation for our problem' 
+fields in TECHNIQUE_LIBRARY.md. Design variants from PRINCIPLES, not surface methods.
+
+Root causes from diagnosis:
+[paste key findings from Phase A]
+
+Current best method (v{best_round}, score {best_score}/10):
+[complete description]
+
+Current method (v{N-1}) if different from best:
     [description and how it differs]
     
     Macro phase: {explore/refine/polish}
@@ -481,16 +462,16 @@ mcp__codex__codex-reply:
 
 **Adversarial Challenge** (GPT-5.4 plays devil's advocate on the proposed variants):
 
-After receiving the variant proposals, immediately challenge them in the same thread:
+After receiving the variant proposals, immediately challenge them with a second rescue call:
 
 ```
-mcp__codex__codex-reply:
-  threadId: [saved]
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Round N — ADVERSARIAL CHALLENGE]
-    
-    You proposed these variants. Now play DEVIL'S ADVOCATE.
+/codex:rescue --effort xhigh "
+[Round N — ADVERSARIAL CHALLENGE]
+
+Read the variant proposals in innovation-logs/round-NN/innovation.md.
+Also read src/ to understand the current codebase.
+
+Play DEVIL'S ADVOCATE on the proposed variants.
     For EACH variant:
     
     1. FATAL FLAW: What is the single strongest reason this will NOT work?
@@ -524,12 +505,16 @@ If GPT-5.4 killed all variants: request new proposals in the same thread, incorp
 If adversarial challenge kills ALL proposed variants for **2 consecutive rounds**, switch from adversarial to collaborative mode:
 
 ```
-mcp__codex__codex-reply:
-  threadId: [saved — GPT has full adversarial context]
-  prompt: |
-    [COLLABORATIVE MODE — Joint Variant Design]
-    
-    We've hit a wall. You've killed all variants for 2 consecutive rounds.
+/codex:rescue --effort xhigh "
+[COLLABORATIVE MODE — Joint Variant Design]
+
+Read these files directly:
+- innovation-logs/EVOLUTION_LOG.md — full history of killed variants and why
+- innovation-logs/TECHNIQUE_LIBRARY.md — available techniques
+- innovation-logs/BLACKLIST.md — banned approaches
+- src/ — current codebase and constraints
+
+We've hit a wall. All variants killed for 2 consecutive rounds.
     
     Your recurring objections: [list the main flaws cited across killed variants]
     My implementation evidence: [what Claude observed trying to implement past variants]
@@ -573,18 +558,20 @@ Before deploying, run BOTH an independent file-based audit AND a dialogue-based 
 
 If adversarial-review returns `needs-attention` with CRITICAL findings: Claude MUST fix them before proceeding. Do not skip.
 
-**Step 1.5b: Design Review** (MCP dialogue — for hypothesis/methodology discussion):
+**Step 1.5b: Design Review** (Codex Plugin — reads code directly):
 
-Submit the experiment design AND implementation to GPT-5.4 for review:
+Submit the experiment design for review via rescue:
 
 ```
-mcp__codex__codex-reply:
-  threadId: [saved]
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Round N — EXPERIMENT DESIGN & CODE REVIEW]
-    
-    Variant: [name and description]
+/codex:rescue --effort xhigh "
+[Round N — EXPERIMENT DESIGN & CODE REVIEW]
+
+Read these files directly:
+- src/ — all modified source code for this variant
+- innovation-logs/round-NN/innovation.md — variant design spec
+- git diff HEAD~1 — exact code changes
+
+Variant: [name and description]
     Hypothesis: [what we expect to see]
     
     Experiment setup:
@@ -895,7 +882,7 @@ When the loop ends (by any stopping condition):
 ### Execution
 - Large file handling: If Write fails due to size, retry with Bash (`cat << 'EOF' > file`) silently — do not ask user for permission
 - ALWAYS use `config: {"model_reasoning_effort": "xhigh"}` for maximum reasoning depth
-- Save `threadId` from first Codex call, use `mcp__codex__codex-reply` for ALL subsequent rounds
+- Each round uses a fresh `/codex:rescue` call — GPT-5.4 reads the latest files directly. Context accumulates in innovation-logs/ which GPT-5.4 reads.
 - Work AUTONOMOUSLY — do not ask user for permission at each round (unless HUMAN_CHECKPOINT=true)
 - If experiment > 30 minutes, launch it and continue with other work while waiting
 

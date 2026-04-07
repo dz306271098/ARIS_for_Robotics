@@ -4,80 +4,78 @@ Use this reference whenever interacting with GPT-5.4 via any channel. Ensures GP
 
 ## When to Read
 
-- Read before every `mcp__codex__codex` call (MCP dialogue channel).
+- Read before invoking any `codex exec` command.
 - Read before invoking `/codex:adversarial-review` or `/codex:rescue`.
-- Read when deciding which channel to use for a given interaction.
+- Read when deciding which tool to use for a given interaction.
 
-## Three Channels — When to Use Each
+## Three Tools — When to Use Each
 
-ARIS has three channels for GPT-5.4 interaction. Choose based on the task:
+ARIS has three tools for GPT-5.4 interaction. Choose based on the task:
 
-| Channel | GPT-5.4 Reads Files? | Speed | Best For |
-|---------|---------------------|-------|----------|
-| `mcp__codex__codex` | **Instructed** — prompt 中指定文件路径，要求 Codex 自行读取 + Claude 补充关键原文 | Fast | Multi-turn dialogue: review rounds, collaborative sessions, brainstorming, iterative refinement |
-| `/codex:adversarial-review` | **Yes** — reads git diff + source code directly | Medium | Code/experiment review at checkpoints: Phase 2.5 code review, Phase D review, post-fix validation |
-| `/codex:rescue --effort high` | **Yes** — full repo read access, autonomously explores | Slow | Deep independent investigation: failure diagnosis, result interpretation, stuck-point analysis |
+| Tool | GPT-5.4 Reads Files? | Best For |
+|------|---------------------|----------|
+| `codex exec --sandbox read-only -m gpt-5.4` | **Yes** — full repo read access | Structured evaluations (`--output-schema`), visual review (`-i image`), git diff review (`review --base`) |
+| `codex exec resume --last` | **Yes** — continues previous session | Multi-turn refinement, follow-up rounds |
+| `/codex:rescue --effort xhigh` | **Yes** — autonomously explores | Deep investigation, collaborative sessions, brainstorming |
+| `/codex:adversarial-review` | **Yes** — reads git diff + source code | Code review at checkpoints: post-fix validation, pre-deployment audit |
 
 ### Decision Tree
 
 ```
-Need multi-turn back-and-forth? → mcp__codex__codex (paste raw evidence)
+Need structured evaluation?     → codex exec --output-schema --sandbox read-only -m gpt-5.4 "task"
+Need visual review?             → codex exec --sandbox read-only -m gpt-5.4 -i image.pdf "review task"
+Need git diff review?           → codex exec review --base main --sandbox read-only -m gpt-5.4
+Need multi-turn refinement?     → codex exec resume --last
 Need code diff review?          → /codex:adversarial-review --scope working-tree
-Need independent investigation? → /codex:rescue --effort high "task description"
+Need deep investigation?        → /codex:rescue --effort xhigh "task description"
 Need design-level challenge?    → /codex:adversarial-review --focus "specific concern"
+Need collaborative solving?     → /codex:rescue --effort xhigh "COLLABORATIVE MODE — [context]"
 ```
 
 ### Key Principle
 
-**`mcp__codex__codex` = conversational, Claude controls context.**
-**`/codex:adversarial-review` and `/codex:rescue` = independent, GPT-5.4 reads ground truth.**
+**ALL GPT-5.4 interactions use the three-tool architecture — GPT-5.4 always reads files directly.** No information asymmetry. No selective framing by Claude.
 
-Use independent channels at CRITICAL CHECKPOINTS to prevent information asymmetry. Use MCP dialogue for fast iteration between checkpoints.
+## Prompt Construction Rules
 
-## Mandatory Evidence Rules (for MCP Dialogue Channel)
+Every `codex exec` command and `/codex:rescue` prompt MUST instruct GPT-5.4 to read project files directly:
 
-When using `mcp__codex__codex` / `mcp__codex__codex-reply`:
+```bash
+# For codex exec:
+codex exec --sandbox read-only -m gpt-5.4 "Read the project files directly. [TASK DESCRIPTION]"
 
-### Rule 1: Always specify files for Codex to read directly
+# For codex exec with visual review:
+codex exec --sandbox read-only -m gpt-5.4 -i [file.pdf] "Review this [artifact]. Read the project files directly."
 
-Every MCP prompt MUST include a `FILES TO READ` block listing the files Codex should read from the project directory:
+# For codex exec with structured output:
+codex exec --output-schema '{"score": "number", "issues": "string[]"}' --sandbox read-only -m gpt-5.4 "Evaluate... Read the project files directly."
 
-```
-FILES TO READ (read these files directly from the project directory):
-- src/model.py — current model implementation
-- experiments/eval_results.json — latest experiment results
-- innovation-logs/round-05/results.md — this round's results
-- AUTO_REVIEW.md — previous review history (last 2 rounds)
-- refine-logs/EXPERIMENT_PLAN.md — experiment plan
+# For multi-turn follow-up:
+codex exec resume --last
 
-Read these files yourself to verify the context I provide below.
-```
+# For /codex:rescue:
+/codex:rescue --effort xhigh "
+[TASK DESCRIPTION]
 
-This ensures Codex has direct access to ground truth and can cross-check Claude's narrative.
+Read these files directly:
+- [list specific files GPT-5.4 should read for this task]
+- src/ — source code
+- [results files, logs, etc.]
 
-### Rule 2: Paste critical raw evidence inline as backup
-
-In addition to the file read instructions, Claude MUST also paste the most critical raw content inline (in case Codex cannot read certain files):
-
-1. **Experiment results** — raw metrics table (key numbers)
-2. **Code changes** — `git diff` output for the current round
-3. **Error logs** — full traceback for any failed experiments
-
-Tag pasted content:
-```
-[FILE: path/to/file, LINES: N-M]
-<actual file content here>
-[END FILE]
+[Additional context from Claude — implementation observations, practical constraints]
+"
 ```
 
-### Rule 3: What CAN be summarized
-- Background research context (research direction, prior art overview)
-- Method description (if Codex already reviewed it in a prior round via threadId)
-- Project setup information (GPU config, dataset locations)
+### What to include in the prompt:
+1. **Task description** — what GPT-5.4 should do (review, diagnose, propose, evaluate)
+2. **"Read the project files directly"** — always include this instruction
+3. **Claude's observations** — implementation evidence, practical constraints, what was tried
+   - This is supplementary to the files, NOT a replacement
+   - Claude's observations help GPT-5.4 understand context that isn't in files (e.g., "this approach failed because the GPU ran out of memory at batch size 32")
 
 ## Anti-Framing Self-Check
 
-Before EVERY `mcp__codex__codex` call, Claude MUST verify:
+Before EVERY `codex exec` or `/codex:rescue` call, Claude MUST verify:
 
 - [ ] **All experiments included** — not just successful ones; failed experiments listed with error info
 - [ ] **All metrics included** — not just improving ones; regressing metrics explicitly shown
@@ -93,7 +91,7 @@ If any item cannot be checked (e.g., no failed experiments this round), explicit
 
 ## When to Escalate to Independent Channel
 
-Switch from MCP dialogue to `/codex:adversarial-review` or `/codex:rescue` when:
+Switch from `codex exec` to `/codex:adversarial-review` or `/codex:rescue` when:
 
 1. **Critical checkpoint** — code review before GPU deployment, post-fix validation, result interpretation
 2. **Trust verification** — after Claude claims improvement, let GPT-5.4 independently verify from files

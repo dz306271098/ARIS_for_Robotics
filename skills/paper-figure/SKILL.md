@@ -2,7 +2,7 @@
 name: paper-figure
 description: "Generate publication-quality figures and tables from experiment results. Use when user says \"画图\", \"作图\", \"generate figures\", \"paper figures\", or needs plots for a paper."
 argument-hint: [figure-plan-or-data-path]
-allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, mcp__codex__codex, mcp__codex__codex-reply
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, Bash(codex*), Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Paper Figure: Publication-Quality Plots from Experiment Data
@@ -30,7 +30,7 @@ Generate all figures and tables for a paper based on: **$ARGUMENTS**
 - **COLOR_PALETTE = `tab10`** — Default matplotlib color cycle. Options: `tab10`, `Set2`, `colorblind` (deuteranopia-safe)
 - **FONT_SIZE = 10** — Base font size (matches typical conference body text)
 - **FIG_DIR = `figures/`** — Output directory for generated figures
-- **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex MCP for figure quality review.
+- **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex CLI for figure quality review.
 
 ## Inputs
 
@@ -199,23 +199,10 @@ Save all snippets to `figures/latex_includes.tex` for easy copy-paste into the p
 
 ### Step 7: Figure Quality Review with REVIEWER_MODEL
 
-Send figure descriptions and captions to GPT-5.4 for review:
+Send generated figures to GPT-5.4 for visual review:
 
-```
-mcp__codex__codex:
-  model: gpt-5.4
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    Review these figure/table plans for a [VENUE] submission.
-
-    For each figure:
-    1. Is the caption informative and self-contained?
-    2. Does the figure type match the data being shown?
-    3. Is the comparison fair and clear?
-    4. Any missing baselines or ablations?
-    5. Would a different visualization be more effective?
-
-    [list all figures with captions and descriptions]
+```bash
+codex exec --sandbox read-only -m gpt-5.4 -i [generated_figure.pdf] "Review this figure for publication quality: readability, colorblind safety, axis labels, font sizes, error bars. Read the project files directly to verify accuracy against source data."
 ```
 
 ### Step 8: Quality Checklist

@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": { "type": "string" },
+          "verdict": { "type": "string", "enum": ["supported", "partially_supported", "not_supported"] },
+          "confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+          "supporting_evidence": { "type": "string" },
+          "missing_evidence": { "type": "string" },
+          "suggested_revision": { "type": "string" }
+        },
+        "required": ["claim", "verdict", "confidence", "supporting_evidence"],
+        "additionalProperties": false
+      }
+    },
+    "overall_assessment": { "type": "string" },
+    "recommended_next_step": { "type": "string", "enum": ["proceed_to_paper", "supplement_experiments", "pivot_direction", "abandon_claim"] }
+  },
+  "required": ["claims", "overall_assessment", "recommended_next_step"],
+  "additionalProperties": false
+}

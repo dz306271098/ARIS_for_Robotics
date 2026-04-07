@@ -2,7 +2,7 @@
 name: training-check
 description: Periodically check WandB metrics during training to catch problems early (NaN, loss divergence, idle GPUs). Avoids wasting GPU hours on broken runs. Use when training is running and you want automated health checks.
 argument-hint: [wandb-run-path]
-allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, mcp__codex__codex, mcp__codex__codex-reply
+allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Bash(codex*), Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Training Check
@@ -15,7 +15,7 @@ Periodically read WandB metrics during training to catch problems early. Do not 
 
 - WANDB_ENTITY and WANDB_PROJECT: read from CLAUDE.md or passed as argument (format: `entity/project/run_id`)
 - CHECK_INTERVAL: starts at 10 minutes, then gradually increases if consistently healthy: 10 min → 20 min → 30 min → 60 min (cap)
-- REVIEWER_MODEL = `gpt-5.4` — used via Codex MCP for ambiguous cases only
+- REVIEWER_MODEL = `gpt-5.4` — used via Codex CLI for ambiguous cases only
 
 ## When to Use
 
@@ -63,24 +63,8 @@ Check these signals:
 
 Only escalate to Codex when the signal is ambiguous. For clearly good or clearly bad signals, act directly.
 
-```
-mcp__codex__codex:
-  config: {"model_reasoning_effort": "high"}
-  prompt: |
-    TRAINING HEALTH CHECK — need your judgment on ambiguous metrics.
-
-    Run: <entity>/<project>/<run_id>
-    Current epoch/step: X / Y total
-    Training loss (last 10 checkpoints): [values]
-    Eval metrics (last 3 evals): [values]
-    Baseline reference: [numbers from paper/reproduction]
-
-    What I'm unsure about: [specific concern]
-
-    Please respond with exactly one of:
-    - STOP: clearly problematic, should kill training
-    - CONTINUE: looks fine, check again next interval
-    - WAIT: not enough data to judge, check again sooner
+```bash
+codex exec --sandbox read-only -m gpt-5.4 "TRAINING HEALTH CHECK — need your judgment on ambiguous metrics. Read the project files directly for training logs and metrics. Respond with exactly one of: STOP, CONTINUE, or WAIT."
 ```
 
 ### Step 4: Act

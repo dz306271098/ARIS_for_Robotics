@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": { "type": "string", "enum": ["novel", "partially_novel", "not_novel"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "closest_existing_work": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "year": { "type": "integer" },
+          "venue": { "type": "string" },
+          "overlap_description": { "type": "string" },
+          "key_difference": { "type": "string" }
+        },
+        "required": ["title", "overlap_description", "key_difference"],
+        "additionalProperties": false
+      }
+    },
+    "novel_aspects": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "non_novel_aspects": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "recommendation": { "type": "string" }
+  },
+  "required": ["verdict", "confidence", "closest_existing_work", "novel_aspects", "recommendation"],
+  "additionalProperties": false
+}

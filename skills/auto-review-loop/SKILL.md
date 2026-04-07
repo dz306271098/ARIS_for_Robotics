@@ -2,7 +2,7 @@
 name: auto-review-loop
 description: Autonomous multi-round research review loop. Repeatedly reviews via Codex MCP, implements fixes, and re-reviews until positive assessment or max rounds reached. Use when user says "auto review loop", "review until it passes", or wants autonomous iterative improvement.
 argument-hint: [topic-or-scope]
-allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, Skill, mcp__codex__codex, mcp__codex__codex-reply
+allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, Skill, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Auto Review Loop: Autonomous Research Improvement
@@ -87,72 +87,52 @@ See `../shared-references/codex-context-integrity.md` for channel selection and 
 
 **Step A.1: Multi-turn Review** (MCP dialogue — multi-round scoring)
 
-Send comprehensive context to the external reviewer. Per `codex-context-integrity.md`, paste RAW file content for metrics, code diffs, and error logs — tag with `[FILE: path]`:
+Use `codex exec` with structured output schema — GPT-5.4 reads project files directly AND returns auto-parseable JSON:
 
-```
-mcp__codex__codex:
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Round N/MAX_ROUNDS of autonomous review loop]
+```bash
+SCHEMA_PATH=$(find ~/.claude/skills/shared-references/codex-schemas/ -name "review-5dim.schema.json" 2>/dev/null | head -1)
+[ -z "$SCHEMA_PATH" ] && SCHEMA_PATH="skills/shared-references/codex-schemas/review-5dim.schema.json"
 
-    FILES TO READ (read these files directly from the project directory):
-    - AUTO_REVIEW.md — previous review rounds (read last 2 rounds)
-    - [path to latest experiment results JSON/CSV]
-    - [path to main model source code, e.g., src/model.py]
-    - [path to training script, e.g., src/train.py]
-    - [path to evaluation script, e.g., src/eval.py]
-    - NARRATIVE_REPORT.md or FINAL_PROPOSAL.md — method description
-    - refine-logs/EXPERIMENT_PLAN.md — experiment plan (if exists)
-    
-    Read these files yourself to form your own assessment. 
-    Do NOT rely solely on the context I provide below.
+codex exec --sandbox read-only --output-schema "$SCHEMA_PATH" \
+  -o /tmp/aris-review-round-N.json \
+  -m gpt-5.4 \
+  "[Round N/MAX_ROUNDS of autonomous review loop]
 
-    [INDEPENDENT AUDIT FINDINGS from Step A.0 — paste verbatim]
+Read these project files directly to form your own assessment:
+- AUTO_REVIEW.md — previous review rounds
+- All experiment result files (JSON/CSV in results/ or refine-logs/)
+- Source code in src/ — model, training, evaluation scripts
+- NARRATIVE_REPORT.md or FINAL_PROPOSAL.md — method description
+- refine-logs/EXPERIMENT_PLAN.md — experiment plan (if exists)
+- git log and git diff — recent changes
 
-    [Key evidence (inline backup — verify against files above):
-     - [FILE: experiment results] raw metrics
-     - [FILE: git diff] code changes since last round
-     - [FILE: error logs] any failed experiments]
+Act as a senior reviewer at [TARGET_VENUE].
 
-    Please act as a senior reviewer at [TARGET_VENUE — default NeurIPS/ICML level].
+Score each dimension 1-10 (novelty, technical_soundness, experimental_rigor, clarity, significance).
+Compute overall = 0.20*novelty + 0.25*technical_soundness + 0.25*experimental_rigor + 0.15*clarity + 0.15*significance.
+List blocking_weaknesses (must fix) and strengthening_weaknesses (nice to have).
+Verdict: READY / ALMOST / NOT_READY.
 
-    Score each dimension 1-10, then compute the overall score:
-
-    | Dimension | Weight | Score |
-    |-----------|--------|-------|
-    | Novelty / Originality | 20% | ?/10 |
-    | Technical Soundness | 25% | ?/10 |
-    | Experimental Rigor (baselines, ablations, statistical significance) | 25% | ?/10 |
-    | Clarity / Writing Quality | 15% | ?/10 |
-    | Significance / Impact | 15% | ?/10 |
-
-    Overall = weighted average (cap at 10)
-
-    For each dimension scoring <= 6:
-    - State the specific deficiency
-    - Specify the MINIMUM fix (experiment, analysis, or reframing)
-    - Classify fix as: BLOCKING (must fix before submission) or STRENGTHENING (improves but not fatal)
-
-    Then provide:
-    1. Ranked list of ALL weaknesses (BLOCKING first, then STRENGTHENING)
-    2. Verdict: READY / ALMOST / NOT READY
-    3. For ALMOST: list the 1-3 specific changes that would flip to READY
-
-    Be brutally honest. If the work is ready, say so clearly.
+Be brutally honest. Read the actual files — do not rely on any summaries."
 ```
 
-If this is round 2+, use `mcp__codex__codex-reply` with the saved threadId to maintain conversation context.
+Read the structured JSON result from `/tmp/aris-review-round-N.json` — auto-parseable scores, verdict, and weakness lists.
+
+For Round 2+, use `codex exec resume --last` to continue the prior session with accumulated context:
+```bash
+codex exec resume --last --sandbox read-only \
+  --output-schema "$SCHEMA_PATH" -o /tmp/aris-review-round-N.json \
+  "[Round N update] Since last review: [actions taken]. Read latest files and re-score."
+```
 
 #### Phase B: Parse Assessment
 
-**CRITICAL: Save the FULL raw response** from the external reviewer verbatim (store in a variable for Phase E). Do NOT discard or summarize — the raw text is the primary record.
-
-Then extract structured fields:
-- **Dimension scores** (5 dimensions, each 1-10)
-- **Overall score** (weighted average)
-- **Verdict** ("ready" / "almost" / "not ready")
-- **BLOCKING weaknesses** (must fix before submission)
-- **STRENGTHENING weaknesses** (improve but not fatal)
+Read the structured JSON from `/tmp/aris-review-round-N.json` and extract:
+- **Dimension scores** — `dimensions.novelty`, `dimensions.technical_soundness`, etc.
+- **Overall score** — `overall_score`
+- **Verdict** — `verdict` (READY / ALMOST / NOT_READY)
+- **BLOCKING weaknesses** — `blocking_weaknesses[]`
+- **STRENGTHENING weaknesses** — `strengthening_weaknesses[]`
 - **Action items** (ranked list of fixes, BLOCKING first)
 
 **STOP CONDITION**: If overall score meets POSITIVE_THRESHOLD for TARGET_VENUE AND no BLOCKING weaknesses remain → stop loop, document final state. If verdict contains "ready" → also stop.
@@ -297,36 +277,37 @@ Let GPT-5.4 independently read ALL project files to form its own understanding o
 
 Append the rescue findings to the collaborative context below.
 
-**Step C.6.1: Collaborative Dialogue** (MCP — multi-turn joint solving)
+**Step C.6.1: Collaborative Problem Solving** (Codex Plugin — GPT-5.4 reads files + proposes solution)
 
-Switch from adversarial to collaborative mode — Claude and GPT-5.4 jointly solve the problem, with GPT-5.4 now having its own independent file-based analysis:
+GPT-5.4 already has the rescue findings from Step C.6.0. Now ask it to propose a collaborative solution:
 
 ```
-mcp__codex__codex-reply:
-  threadId: [saved — GPT has full review context + knows what was tried]
-  prompt: |
-    [COLLABORATIVE MODE — Joint Problem Solving]
-    
-    We're stuck. Here's the situation:
-    - Root cause diagnosed: [from Phase B.5]
-    - Strategy A tried: [what was implemented, result, why validation failed]
-    - Strategy B tried: [what was implemented, result, why validation failed]
-    - Strategy C tried: [what was implemented, result, why validation failed]
-    - Code/data evidence from implementation: [what Claude observed]
-    - Practical constraints discovered: [things not apparent from theory alone]
-    
-    I need your help — not as a reviewer, but as a collaborator.
-    
-    1. Given my implementation evidence, does the root cause diagnosis still hold?
-    2. What theoretical insight might we both be missing?
-    3. Can you propose a NEW approach that accounts for the practical 
-       constraints I discovered during implementation?
-    
-    Let's solve this together.
+/codex:rescue --effort xhigh "
+[COLLABORATIVE MODE — Joint Problem Solving]
+
+Read these files directly:
+- AUTO_REVIEW.md — full review history including all failed fix attempts
+- All source code in src/ — current implementation
+- All experiment results — what was tried and what failed
+- refine-logs/ — experiment plans and proposals
+
+Context from Claude (implementation evidence):
+- Root cause diagnosed: [from Phase B.5]
+- Strategy A tried: [result, why validation failed]
+- Strategy B tried: [result, why validation failed]  
+- Strategy C tried: [result, why validation failed]
+- Practical constraints discovered: [things not apparent from theory alone]
+
+I need your help — not as a reviewer, but as a collaborator.
+1. Based on the files you read, does the root cause diagnosis still hold?
+2. What theoretical insight might we both be missing?
+3. Propose a NEW approach that accounts for the practical constraints.
+
+Produce a CONCRETE implementation plan (specific code changes, expected outcome).
+"
 ```
 
-Multi-turn dialogue (up to 6 turns):
-- Claude shares implementation evidence → GPT revises theoretical analysis → Claude evaluates feasibility → GPT refines → converge on joint solution
+Claude evaluates the rescue proposal for feasibility. If adjustments needed, run a second `/codex:rescue` with Claude's feasibility feedback. Max 3 rounds of rescue calls.
 
 After collaborative session:
 1. Implement the jointly-designed solution (repeat Phase C steps C.1-C.4)
@@ -399,8 +380,8 @@ When loop ends (positive assessment or max rounds):
 
 - **Large file handling**: If the Write tool fails due to file size, immediately retry using Bash (`cat << 'EOF' > file`) to write in chunks. Do NOT ask the user for permission — just do it silently.
 
-- ALWAYS use `config: {"model_reasoning_effort": "xhigh"}` for maximum reasoning depth
-- Save threadId from first call, use `mcp__codex__codex-reply` for subsequent rounds
+- ALWAYS use `--effort xhigh` for `/codex:rescue` calls (maximum reasoning depth)
+- Each round is a fresh `/codex:rescue` call — GPT-5.4 reads the latest files directly. Context accumulates in AUTO_REVIEW.md.
 - **Anti-hallucination citations**: When adding references during fixes, NEVER fabricate BibTeX. Use the same DBLP → CrossRef → `[VERIFY]` chain as `/paper-write`: (1) `curl -s "https://dblp.org/search/publ/api?q=TITLE&format=json"` → get key → `curl -s "https://dblp.org/rec/{key}.bib"`, (2) if not found, `curl -sLH "Accept: application/x-bibtex" "https://doi.org/{doi}"`, (3) if both fail, mark with `% [VERIFY]`. Do NOT generate BibTeX from memory.
 - Be honest — include negative results and failed experiments
 - Do NOT hide weaknesses to game a positive score
@@ -410,23 +391,24 @@ When loop ends (positive assessment or max rounds):
 - Document EVERYTHING — the review log should be self-contained
 - Update project notes after each round, not just at the end
 
-## Prompt Template for Round 2+
+## Round 2+ Template
 
+Use `codex exec resume --last` to continue the review session with full context:
+
+```bash
+codex exec resume --last --sandbox read-only \
+  --output-schema "$SCHEMA_PATH" -o /tmp/aris-review-round-N.json \
+  "[Round N update — autonomous review loop]
+
+Read the latest files directly (AUTO_REVIEW.md, experiment results, source code, git diff).
+
+Since last review, we have:
+1. [Action 1]: [result]
+2. [Action 2]: [result]
+3. [Action 3]: [result]
+
+Re-score on the same 5 dimensions. Return structured JSON.
+"
 ```
-mcp__codex__codex-reply:
-  threadId: [saved from round 1]
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Round N update]
 
-    Since your last review, we have:
-    1. [Action 1]: [result]
-    2. [Action 2]: [result]
-    3. [Action 3]: [result]
-
-    Updated results table:
-    [paste metrics]
-
-    Please re-score and re-assess. Are the remaining concerns addressed?
-    Same format: Score, Verdict, Remaining Weaknesses, Minimum Fixes.
-```
+If `resume --last` fails (session expired), start a fresh `codex exec` with full prompt instead.

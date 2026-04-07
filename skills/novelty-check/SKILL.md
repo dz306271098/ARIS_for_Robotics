@@ -2,7 +2,7 @@
 name: novelty-check
 description: Verify research idea novelty against recent literature. Use when user says "查新", "novelty check", "有没有人做过", "check novelty", or wants to verify a research idea is novel before implementing.
 argument-hint: [method-or-idea-description]
-allowed-tools: WebSearch, WebFetch, Grep, Read, Glob, mcp__codex__codex
+allowed-tools: Bash(codex*), WebSearch, WebFetch, Grep, Read, Glob, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Novelty Check Skill
@@ -11,7 +11,7 @@ Check whether a proposed method/idea has already been done in the literature: **
 
 ## Constants
 
-- REVIEWER_MODEL = `gpt-5.4` — Model used via Codex MCP. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`)
+- REVIEWER_MODEL = `gpt-5.4` — Model used via Codex CLI. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`)
 
 ## Instructions
 
@@ -45,14 +45,18 @@ For EACH core claim, search using ALL available sources:
 3. **Read abstracts**: For each potentially overlapping paper, WebFetch its abstract and related work section
 
 ### Phase C: Cross-Model Verification
-Call REVIEWER_MODEL via Codex MCP (`mcp__codex__codex`) with xhigh reasoning:
+Call REVIEWER_MODEL via Codex CLI with structured output:
+```bash
+codex exec --output-schema skills/shared-references/codex-schemas/novelty-verdict.schema.json -o /tmp/aris-novelty.json --sandbox read-only -m gpt-5.4 "Read the project files directly. Cross-verify the novelty of the following proposed method against the papers found.
+
+Proposed method description:
+[The proposed method description]
+
+Papers found in Phase B:
+[All papers found in Phase B]
+
+Is this method novel? What is the closest prior work? What is the delta?"
 ```
-config: {"model_reasoning_effort": "xhigh"}
-```
-Prompt should include:
-- The proposed method description
-- All papers found in Phase B
-- Ask: "Is this method novel? What is the closest prior work? What is the delta?"
 
 ### Phase D: Novelty Report
 Output a structured report:
@@ -90,7 +94,7 @@ WebSearch/WebFetch can hang and block the novelty check. Apply strictly:
 2. **Timeout**: If WebSearch/WebFetch does not respond within ~60 seconds, abandon and move to the next query. Do NOT retry the same query.
 3. **For fetching abstracts**: Use `curl -sL --max-time 30 "URL"` instead of WebFetch for known URLs (arXiv abs pages, Semantic Scholar pages).
 4. **Never block**: The novelty check MUST produce a report even if some web searches fail. Mark any claims with incomplete search coverage as `[PARTIAL SEARCH — verify manually]`.
-5. **Graceful degradation**: If all web searches fail, produce the report based on Codex MCP cross-verification alone (Phase C), and flag: "Web search unavailable — novelty assessment based on reviewer knowledge only, manual verification recommended."
+5. **Graceful degradation**: If all web searches fail, produce the report based on Codex CLI cross-verification alone (Phase C), and flag: "Web search unavailable — novelty assessment based on reviewer knowledge only, manual verification recommended."
 
 ### Important Rules
 - Be BRUTALLY honest — false novelty claims waste months of research time

@@ -2,7 +2,7 @@
 name: research-review
 description: Get a deep critical review of research from GPT via Codex MCP. Use when user says "review my research", "help me review", "get external review", or wants critical feedback on research ideas, papers, or experimental results.
 argument-hint: [topic-or-scope]
-allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, mcp__codex__codex, mcp__codex__codex-reply
+allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Research Review via Codex MCP (xhigh reasoning)
@@ -17,38 +17,36 @@ Get a multi-round critical review of research work from an external LLM with max
 
 ## Prerequisites
 
-- **Codex MCP Server** configured in Claude Code:
-  ```bash
-  claude mcp add codex -s user -- codex mcp-server
-  ```
-- This gives Claude Code access to `mcp__codex__codex` and `mcp__codex__codex-reply` tools
+- **Codex Plugin** installed (provides `/codex:rescue` and `/codex:adversarial-review` — GPT-5.4 reads project files directly)
 
 ## Workflow
 
 ### Step 1: Gather Research Context
-Before calling the external reviewer, compile a comprehensive briefing:
-1. Read project narrative documents (e.g., STORY.md, README.md, paper drafts)
-2. Read any memory/notes files for key findings and experiment history
-3. Identify: core claims, methodology, key results, known weaknesses
+Before calling the external reviewer, compile a list of key project files GPT-5.4 should read.
 
 ### Step 2: Initial Review (Round 1)
-Send a detailed prompt with xhigh reasoning:
+Use Codex Plugin — GPT-5.4 reads all project files directly:
 
 ```
-mcp__codex__codex:
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Full research context + specific questions]
-    Please act as a senior ML reviewer (NeurIPS/ICML level). Identify:
-    1. Logical gaps or unjustified claims
-    2. Missing experiments that would strengthen the story
-    3. Narrative weaknesses
-    4. Whether the contribution is sufficient for a top venue
-    Please be brutally honest.
+/codex:rescue --effort xhigh "
+Read these project files directly to form your assessment:
+- NARRATIVE_REPORT.md or paper draft (main.tex, sections/)
+- All experiment results (JSON/CSV in results/ or refine-logs/)
+- Source code in src/ — model, training, evaluation
+- EXPERIMENT_PLAN.md — if exists
+- Any prior review documents (AUTO_REVIEW.md)
+
+Act as a senior ML reviewer (NeurIPS/ICML level). Identify:
+1. Logical gaps or unjustified claims
+2. Missing experiments that would strengthen the story
+3. Narrative weaknesses
+4. Whether the contribution is sufficient for a top venue
+Be brutally honest.
+"
 ```
 
 ### Step 3: Iterative Dialogue (Rounds 2-N)
-Use `mcp__codex__codex-reply` with the returned `threadId` to continue the conversation:
+Each round uses a fresh `/codex:rescue` call — GPT-5.4 reads the latest project state directly:
 
 For each round:
 1. **Respond** to criticisms with evidence/counterarguments

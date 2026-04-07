@@ -1,7 +1,7 @@
 ---
 name: experiment-plan
 description: 'Turn a refined research proposal or method idea into a detailed, claim-driven experiment roadmap. Use after `research-refine`, or when the user asks for a detailed experiment plan, ablation matrix, evaluation protocol, run order, compute budget, or paper-ready validation that supports the core problem, novelty, simplicity, and any LLM / VLM / Diffusion / RL-based contribution.'
-allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, mcp__codex__codex, mcp__codex__codex-reply
+allowed-tools: Bash(*), Bash(codex*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Experiment Plan: Claim-Driven, Paper-Oriented Validation
@@ -123,43 +123,33 @@ For each milestone, estimate:
 
 Separate **must-run** from **nice-to-have** experiments.
 
-### Phase 4.5: Adversarial Experiment Design Review (Codex MCP)
+### Phase 4.5: Adversarial Experiment Design Review (Codex CLI)
 
-Before writing the outputs, submit the complete experiment plan to GPT-5.4 via Codex MCP for adversarial review:
+Before writing the outputs, submit the complete experiment plan to GPT-5.4 via Codex CLI for adversarial review:
 
-```
-mcp__codex__codex:
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    You are a senior reviewer at [target venue]. I am submitting an experiment 
-    plan for review. Your job is to find WEAKNESSES — act as a devil's advocate.
+```bash
+codex exec --output-schema skills/shared-references/codex-schemas/design-review.schema.json -o /tmp/aris-plan-review.json --sandbox read-only -m gpt-5.4 "You are a senior reviewer at [target venue]. I am submitting an experiment plan for review. Your job is to find WEAKNESSES — act as a devil's advocate. Read the project files directly.
 
-    Method thesis: [one-sentence thesis]
-    
-    Claims to defend:
-    [paste claim map]
-    
-    Experiment blocks:
-    [paste all blocks with datasets, metrics, baselines, success criteria]
-    
-    Run order and milestones:
-    [paste milestone plan]
-    
-    TASK: Challenge this experiment plan adversarially.
-    
-    1. MISSING EXPERIMENTS: What experiments are missing that a reviewer 
-       would demand? What baselines are suspiciously absent?
-    2. WEAK CONTROLS: Are the success criteria too lenient? Are metrics 
-       cherry-picked? Would a different metric tell a different story?
-    3. UNFAIR COMPARISONS: Are baselines given the same hyperparameter 
-       tuning budget? Same data augmentation? Same compute?
-    4. CLAIM-EVIDENCE GAPS: Which claims lack convincing evidence even 
-       if all experiments succeed?
-    5. STATISTICAL RIGOR: Are there enough seeds/runs? Is the evaluation 
-       protocol standard for the field?
-    6. BLIND SPOTS: What could go wrong that the plan doesn't account for?
-    7. VERDICT: Rate this plan 1-10 for convincing a top-venue reviewer.
-       List the top 3 changes needed.
+Method thesis: [one-sentence thesis]
+
+Claims to defend:
+[paste claim map]
+
+Experiment blocks:
+[paste all blocks with datasets, metrics, baselines, success criteria]
+
+Run order and milestones:
+[paste milestone plan]
+
+TASK: Challenge this experiment plan adversarially.
+
+1. MISSING EXPERIMENTS: What experiments are missing that a reviewer would demand? What baselines are suspiciously absent?
+2. WEAK CONTROLS: Are the success criteria too lenient? Are metrics cherry-picked? Would a different metric tell a different story?
+3. UNFAIR COMPARISONS: Are baselines given the same hyperparameter tuning budget? Same data augmentation? Same compute?
+4. CLAIM-EVIDENCE GAPS: Which claims lack convincing evidence even if all experiments succeed?
+5. STATISTICAL RIGOR: Are there enough seeds/runs? Is the evaluation protocol standard for the field?
+6. BLIND SPOTS: What could go wrong that the plan doesn't account for?
+7. VERDICT: Rate this plan 1-10 for convincing a top-venue reviewer. List the top 3 changes needed."
 ```
 
 **After receiving feedback:**

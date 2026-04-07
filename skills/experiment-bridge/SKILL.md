@@ -2,7 +2,7 @@
 name: experiment-bridge
 description: "Workflow 1.5: Bridge between idea discovery and auto review. Reads EXPERIMENT_PLAN.md, implements experiment code, deploys to GPU, collects initial results. Use when user says \"实现实验\", \"implement experiments\", \"bridge\", \"从计划到跑实验\", \"deploy the plan\", or has an experiment plan ready to execute."
 argument-hint: [experiment-plan-path-or-topic]
-allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, Skill, mcp__codex__codex, mcp__codex__codex-reply
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, Skill, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Workflow 1.5: Experiment Bridge
@@ -123,26 +123,18 @@ If adversarial-review returns `needs-attention` with CRITICAL findings: fix them
 Send the experiment **design AND code** to GPT-5.4 xhigh for review:
 
 ```
-mcp__codex__codex:
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    Review the following experiment DESIGN and IMPLEMENTATION for correctness.
-    Act as a devil's advocate — find problems BEFORE we waste GPU hours.
+/codex:rescue --effort xhigh "
+Review the following experiment DESIGN and IMPLEMENTATION for correctness.
+Act as a devil's advocate — find problems BEFORE we waste GPU hours.
 
-    FILES TO READ (read these files directly from the project directory):
-    - refine-logs/EXPERIMENT_PLAN.md — full experiment plan
-    - refine-logs/FINAL_PROPOSAL.md — method description
-    - src/ — all experiment scripts and model code
-    - [path to data loading code]
-    - [path to evaluation script]
-    - [path to baseline implementation or config]
-    
-    Read these files yourself to verify the implementation matches the plan.
-    Do NOT rely solely on the excerpts I paste below.
+Read these files directly from the project directory:
+- refine-logs/EXPERIMENT_PLAN.md — full experiment plan
+- refine-logs/FINAL_PROPOSAL.md — method description
+- src/ — all experiment scripts and model code
+- All data loading, evaluation, and baseline scripts
+- git diff — recent code changes
 
-    ## Key Excerpts (inline backup):
-    [paste key sections from EXPERIMENT_PLAN.md]
-    [paste the experiment scripts]
+Verify the implementation matches the plan by reading BOTH.
 
     ## PART 1 — EXPERIMENT DESIGN REVIEW:
     1. Does the experiment actually test the stated claims?

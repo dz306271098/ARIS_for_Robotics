@@ -30,7 +30,7 @@ The adversarial review ALWAYS gets the last word — collaborative mode designs 
 
 ## Multi-Turn Collaborative Session Format
 
-Each session uses `mcp__codex__codex-reply` on the **same threadId** as the adversarial context, so GPT-5.4 has the full history of what was tried and why it failed.
+Each session uses `codex exec resume --last` to continue the previous adversarial context, so GPT-5.4 has the full history of what was tried and why it failed. Alternatively, use `/codex:rescue` for deep collaborative investigation.
 
 **Turn 1 — Claude shares implementation evidence:**
 ```

@@ -2,7 +2,7 @@
 name: auto-paper-improvement-loop
 description: "Autonomously improve a generated paper via GPT-5.4 xhigh review → implement fixes → recompile, for 2 rounds. Use when user says \"改论文\", \"improve paper\", \"论文润色循环\", \"auto improve\", or wants to iteratively polish a generated paper."
 argument-hint: [paper-directory]
-allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, mcp__codex__codex, mcp__codex__codex-reply
+allowed-tools: Bash(*), Bash(codex*), Read, Write, Edit, Grep, Glob, Agent, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Auto Paper Improvement Loop: Review → Fix → Recompile
@@ -18,7 +18,7 @@ Unlike `/auto-review-loop` (which iterates on **research** — running experimen
 ## Constants
 
 - **MAX_ROUNDS = 2** — Two rounds of review→fix→recompile. Empirically, Round 1 catches structural issues (4→6/10), Round 2 catches remaining presentation issues (6→7/10). Diminishing returns beyond 2 rounds for writing-only improvements.
-- **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex MCP for paper review.
+- **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex CLI for paper review.
 - **REVIEW_LOG = `PAPER_IMPROVEMENT_LOG.md`** — Cumulative log of all rounds, stored in paper directory.
 - **HUMAN_CHECKPOINT = false** — When `true`, pause after each round's review and present score + weaknesses to the user. The user can approve fixes, provide custom modification instructions, skip specific fixes, or stop early. When `false` (default), runs fully autonomously.
 
@@ -36,7 +36,6 @@ If the context window fills up mid-loop, Claude Code auto-compacts. To recover, 
 ```json
 {
   "current_round": 1,
-  "threadId": "019ce736-...",
   "last_score": 6,
   "status": "in_progress",
   "timestamp": "2026-03-13T21:00:00"
@@ -71,31 +70,25 @@ done > /tmp/paper_full_text.txt
 
 Send the full paper text to GPT-5.4 xhigh:
 
+```bash
+codex exec --output-schema skills/shared-references/codex-schemas/review-5dim.schema.json -o /tmp/aris-paper-review-1.json --sandbox read-only -m gpt-5.4 "You are reviewing a [VENUE] paper. Please provide a detailed, structured review. Read the project files directly.
+
+## Full Paper Text:
+[paste concatenated sections]
+
+## Review Instructions
+Please act as a senior ML reviewer ([VENUE] level). Provide:
+1. **Overall Score** (1-10, where 6 = weak accept, 7 = accept)
+2. **Summary** (2-3 sentences)
+3. **Strengths** (bullet list, ranked)
+4. **Weaknesses** (bullet list, ranked: CRITICAL > MAJOR > MINOR)
+5. **For each CRITICAL/MAJOR weakness**: A specific, actionable fix
+6. **Missing References** (if any)
+7. **Verdict**: Ready for submission? Yes / Almost / No
+
+Focus on: theoretical rigor, claims vs evidence alignment, writing clarity,
+self-containedness, notation consistency."
 ```
-mcp__codex__codex:
-  model: gpt-5.4
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    You are reviewing a [VENUE] paper. Please provide a detailed, structured review.
-
-    ## Full Paper Text:
-    [paste concatenated sections]
-
-    ## Review Instructions
-    Please act as a senior ML reviewer ([VENUE] level). Provide:
-    1. **Overall Score** (1-10, where 6 = weak accept, 7 = accept)
-    2. **Summary** (2-3 sentences)
-    3. **Strengths** (bullet list, ranked)
-    4. **Weaknesses** (bullet list, ranked: CRITICAL > MAJOR > MINOR)
-    5. **For each CRITICAL/MAJOR weakness**: A specific, actionable fix
-    6. **Missing References** (if any)
-    7. **Verdict**: Ready for submission? Yes / Almost / No
-
-    Focus on: theoretical rigor, claims vs evidence alignment, writing clarity,
-    self-containedness, notation consistency.
-```
-
-Save the threadId for Round 2.
 
 ### Step 2b: Human Checkpoint (if enabled)
 
@@ -149,23 +142,18 @@ Verify: 0 undefined references, 0 undefined citations.
 
 ### Step 5: Round 2 Review
 
-Use `mcp__codex__codex-reply` with the saved threadId:
+Use `codex exec resume --last` to maintain conversation context from Round 1:
 
-```
-mcp__codex__codex-reply:
-  threadId: [saved from Round 1]
-  model: gpt-5.4
-  config: {"model_reasoning_effort": "xhigh"}
-  prompt: |
-    [Round 2 update]
+```bash
+codex exec resume --last --output-schema skills/shared-references/codex-schemas/review-5dim.schema.json -o /tmp/aris-paper-review-2.json --sandbox read-only -m gpt-5.4 "[Round 2 update]. Read the project files directly.
 
-    Since your last review, we have implemented:
-    1. [Fix 1]: [description]
-    2. [Fix 2]: [description]
-    ...
+Since your last review, we have implemented:
+1. [Fix 1]: [description]
+2. [Fix 2]: [description]
+...
 
-    Please re-score and re-assess. Same format:
-    Score, Summary, Strengths, Weaknesses, Actionable fixes, Verdict.
+Please re-score and re-assess. Same format:
+Score, Summary, Strengths, Weaknesses, Actionable fixes, Verdict."
 ```
 
 ### Step 5b: Human Checkpoint (if enabled)
@@ -302,7 +290,7 @@ paper/
 
 - **Preserve all PDF versions** — user needs to compare progression
 - **Save FULL raw review text** — do not summarize or truncate GPT-5.4 responses
-- **Use `mcp__codex__codex-reply`** for Round 2 to maintain conversation context
+- **Use `codex exec resume --last`** for Round 2 to maintain conversation context
 - **Always recompile after fixes** — verify 0 errors before proceeding
 - **Do not fabricate experimental results** — synthetic validation must describe methodology, not invent numbers
 - **Respect the paper's claims** — soften overclaims rather than adding unsupported new claims
