@@ -341,11 +341,37 @@ If `/ablation-planner` is not available, skip silently — the existing EXPERIME
 
 **Skip entirely if main results are positive.**
 
-When the main method produces negative or inconclusive results, consult literature for inspiration before handing off:
+When the main method produces negative or inconclusive results, perform deep analysis before handing off:
 
-1. **Diagnose the failure**: What specific metric fell short? On which data splits or scenarios?
+**Step 5.7a: Independent Failure Investigation** (codex:rescue — GPT-5.4 reads all files):
 
-2. **Identify the root cause**: Why did the method underperform? Trace from the symptom to the underlying mathematical, physical, or architectural reason.
+```
+/codex:rescue --effort xhigh "Main experiment results are NEGATIVE/INCONCLUSIVE. Perform a deep failure analysis.
+
+Read these files directly:
+- All experiment result files in refine-logs/ and results/
+- Source code in src/ — the implementation
+- refine-logs/EXPERIMENT_PLAN.md — what was planned
+- refine-logs/FINAL_PROPOSAL.md — the method design
+- git log — recent changes
+
+Analyze:
+1. IMPLEMENTATION CHECK: Was the method implemented correctly per the proposal? Any bugs, shortcuts, or deviations?
+2. INTEGRATION CHECK: Does the method integrate properly with the existing codebase? Any conflicts?
+3. ROOT CAUSE: Is the failure due to implementation error, integration issue, fundamental flaw, or insufficient tuning?
+4. SALVAGE: If salvageable, propose a concrete revised implementation approach.
+5. What specific metric fell short? On which data splits/scenarios?"
+```
+
+Save rescue report. Then:
+
+1. **If implementation/integration error** → fix → **re-run Phase 2.3 (mandatory `/codex:adversarial-review --scope working-tree`)** → re-run experiments (don't hand off as negative)
+2. **If insufficient tuning** → run hyperparameter sweep → re-evaluate
+3. **If fundamental or needs deeper investigation** → continue to literature scan below
+
+> **Rule: ANY code fix from failure analysis must pass Phase 2.3 adversarial review before re-running experiments.**
+
+**Step 5.7b: Literature-based principle extraction** (for fundamental issues):
 
 3. **Quick literature scan**: Search for techniques addressing this specific root cause:
    ```bash

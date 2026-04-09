@@ -724,12 +724,50 @@ When a variant is declared "Improved" (statistically significant), immediately v
 
 > This catches confounds DURING optimization, not just at paper-writing time. Skipping this step risks building on a false foundation for 20+ subsequent rounds.
 
+**Step 2.7: Deep Failure Analysis** (only when variant REGRESSED or showed no improvement)
+
+When a variant fails to improve (tied or worse), run rescue to understand WHY:
+
+```
+/codex:rescue --effort xhigh "Innovation round N variant FAILED (tied/regressed).
+Read these files directly:
+- innovation-logs/round-NN/results.md — this round's results
+- innovation-logs/round-NN/innovation.md — the variant design
+- src/ — the implementation code
+- git diff — what was changed
+
+Analyze:
+1. IMPLEMENTATION CHECK: Was the variant implemented correctly per the design spec?
+2. INTEGRATION CHECK: Did the new component conflict with existing modules?
+3. ROOT CAUSE: Why did this variant fail? Distinguish:
+   - Implementation bug (design is sound, code is wrong)
+   - Integration conflict (design is sound, doesn't fit architecture)
+   - Hypothesis wrong (the underlying principle doesn't apply here)
+   - Insufficient tuning (might work with different hyperparameters)
+4. SALVAGE: Can this variant be fixed? Propose concrete revised approach.
+5. TECHNIQUE VERDICT: Should the technique be marked NEGATIVE or given another chance with different integration?
+
+Produce a structured analysis."
+```
+
+Save to `innovation-logs/round-NN/failure-analysis.md`.
+
+**Route based on rescue analysis:**
+- **Implementation bug** → fix the bug → **re-run Step 1.1 (mandatory `/codex:adversarial-review`)** → re-test in the SAME round
+- **Integration conflict** → note in TECHNIQUE_LIBRARY how to integrate properly → if fixable now: fix → **mandatory review** → retry; if complex: retry in next round
+- **Hypothesis wrong** → mark technique as TESTED-NEGATIVE with specific reason
+- **Insufficient tuning** → mark as TESTED-MIXED, suggest hyperparameter range for next attempt
+- **Salvageable** → implement revised approach → **mandatory `/codex:adversarial-review --scope working-tree`** → re-test
+
+> **Rule: ANY code change — including bug fixes from failure analysis — must pass Step 1.1 adversarial review before experiments.**
+
 **Step 3: Technique library update**
 - For each technique used in this round's variant:
   - If the round improved: mark as `TESTED-POSITIVE` (or update existing positive entry with conditions)
-  - If the round regressed: mark as `TESTED-NEGATIVE` with specific conditions noted
+  - If the round regressed: mark as `TESTED-NEGATIVE` with specific conditions noted + rescue failure analysis
   - If mixed (some metrics improved, some regressed): mark as `TESTED-MIXED`
 - Record specific conditions: "works when combined with X but not Y", "effective on walking sequences but not driving"
+- **Include rescue's root cause and salvage recommendation** in the technique entry
 
 **Step 4: Blacklist update**
 - If a technique has been tested in 2+ different configurations and was `TESTED-NEGATIVE` each time → add to `BLACKLIST.md`:

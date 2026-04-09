@@ -102,10 +102,18 @@ After ANY code modification → /codex:adversarial-review --scope working-tree
 - Approve → proceed
 - **NOT skippable** — no code change enters experiments or next phase without adversarial review
 
-This rule is implemented as:
-- `auto-review-loop` Step C.1.5
-- `deep-innovation-loop` Step 1.1
-- `experiment-bridge` Phase 2.3
+This rule is implemented at these checkpoints:
+
+**Primary (after initial implementation):**
+- `auto-review-loop` Step C.1.5 — after implementing fixes
+- `deep-innovation-loop` Step 1.1 — after implementing variant
+- `experiment-bridge` Phase 2.3 — after implementing experiment code
+
+**Secondary (after fix-and-rerun from failure analysis):**
+- `result-to-claim` Step 4b — after fixing implementation/integration errors or implementing revised approach
+- `idea-creator` Phase 5 step 4 — after fixing pilot code or implementing revised approach
+- `deep-innovation-loop` Step 2.7 — after fixing implementation bugs from failure analysis (routes back to Step 1.1)
+- `experiment-bridge` Phase 5.7a — after fixing errors from failure investigation (routes back to Phase 2.3)
 
 ## When to Escalate to Independent Channel
 

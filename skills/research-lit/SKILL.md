@@ -415,6 +415,27 @@ If Zotero BibTeX was exported, include a `references.bib` snippet for direct use
 - Update related work notes in project memory
 - If Obsidian is available, optionally create a literature review note in the vault
 
+### Step 6: Research Wiki Integration (if `research-wiki/` exists)
+
+**Skip entirely if `research-wiki/` directory does not exist.**
+
+Ingest the top relevant papers into the wiki for cross-session knowledge accumulation:
+
+```bash
+for paper in top_relevant_papers (limit 8-12):
+    SLUG=$(python3 tools/research_wiki.py slug "$TITLE" --author "$LAST" --year $YEAR)
+    # Create papers/<slug>.md with structured schema
+    # Add edges for relationships to existing wiki papers
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "paper:$SLUG" --to "<target>" --type "extends" \
+      --evidence "Builds on..."
+done
+python3 tools/research_wiki.py rebuild_query_pack research-wiki/
+python3 tools/research_wiki.py log research-wiki/ "research-lit ingested N papers"
+```
+
+This enables `/idea-creator` to read the wiki and avoid re-discovering known work.
+
 ## Web Resilience Rules
 
 Web operations (WebSearch, WebFetch) can hang indefinitely and block the entire pipeline. Apply these rules strictly:

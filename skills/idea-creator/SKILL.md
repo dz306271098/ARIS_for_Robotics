@@ -25,6 +25,22 @@ Given a broad research direction from the user, systematically generate, validat
 
 ## Workflow
 
+### Phase 0: Load Research Wiki (if `research-wiki/` exists)
+
+**Skip entirely if `research-wiki/` directory does not exist.**
+
+If the wiki exists, load it BEFORE landscape survey to avoid repeating known work:
+
+1. Read `research-wiki/query_pack.md` — compressed context (gaps, failed ideas, top papers)
+2. **Treat listed gaps as priority search seeds** for Phase 1
+3. **Treat failed ideas as banlist** — do NOT regenerate similar ideas
+4. **Treat top papers as known prior work** — skip re-searching them
+
+If `query_pack.md` is missing or > 7 days old:
+```bash
+python3 tools/research_wiki.py rebuild_query_pack research-wiki/
+```
+
 ### Phase 1: Landscape Survey (5-10 min)
 
 Map the research area to understand what exists and where the gaps are.
@@ -149,7 +165,28 @@ Before committing to a full research effort, run cheap pilot experiments to get 
    - Any surprising findings that suggest a pivot?
    - Total GPU-hours consumed (track against MAX_TOTAL_GPU_HOURS budget)
 
-4. **Re-rank based on empirical evidence**: Update the idea ranking using pilot results. An idea with strong pilot signal jumps ahead of a theoretically appealing but untested idea.
+4. **Deep failure analysis for negative pilots** (codex:rescue — for EACH idea with NEGATIVE result):
+   ```
+   /codex:rescue --effort xhigh "Pilot experiment for idea '[idea title]' produced NEGATIVE results.
+   Read these files directly:
+   - src/ or pilot scripts — the pilot implementation code
+   - Pilot output files (logs, metrics JSON/CSV)
+   - IDEA_REPORT.md — the original idea description
+   - refine-logs/ — experiment plan if exists
+   Analyze:
+   1. Was the idea implemented correctly in the pilot? Any bugs, shortcuts, or deviations from the idea?
+   2. Was the pilot fair (correct baseline, proper evaluation, enough training)?
+   3. Is the negative result due to implementation issues or a fundamental flaw?
+   4. If salvageable: propose a revised implementation approach.
+   5. If fundamentally flawed: explain why so we don't revisit."
+   ```
+   - If rescue identifies **implementation error** → fix → **mandatory `/codex:adversarial-review --scope working-tree`** → re-pilot (don't eliminate)
+   - If rescue identifies **fundamental flaw** → eliminate with documented reason
+   - If rescue proposes **revised approach** → implement the revised approach → **mandatory `/codex:adversarial-review --scope working-tree`** → re-pilot
+
+   > **Rule: ANY code fix before re-piloting must pass adversarial review.**
+
+5. **Re-rank based on empirical evidence + rescue analysis**: Update the idea ranking. An idea with positive pilot signal jumps ahead. An idea with negative pilot BUT salvageable rescue analysis may stay ranked (with note). An idea confirmed fundamentally flawed is eliminated.
 
 Note: Skip this phase if the ideas are purely theoretical or if no GPU is available. Flag skipped ideas as "needs pilot validation" in the report.
 
@@ -207,6 +244,37 @@ Write a structured report to `IDEA_REPORT.md` in the project root:
 - [ ] Scale up Idea 1 to full experiment (multi-seed, full dataset)
 - [ ] If confirmed, invoke /auto-review-loop for full iteration
 ```
+
+### Phase 7: Write Ideas to Research Wiki (if `research-wiki/` exists)
+
+**Skip entirely if `research-wiki/` directory does not exist.**
+
+Write ALL generated ideas (recommended + eliminated) back to the wiki for cross-session memory:
+
+```bash
+for each idea (recommended AND eliminated):
+    # Create research-wiki/ideas/<id>.md with:
+    #   - node_id, stage (proposed/piloted/archived), outcome
+    #   - hypothesis, method, pilot results
+    #   - based_on: [paper:<slug>, ...]
+    #   - target_gaps: [gap:<id>, ...]
+    
+    # Add edges:
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "idea:<id>" --to "paper:<slug>" --type "inspired_by" \
+      --evidence "Extends approach from..."
+    
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "idea:<id>" --to "gap:<gid>" --type "addresses_gap" \
+      --evidence "Targets gap..."
+done
+
+python3 tools/research_wiki.py rebuild_query_pack research-wiki/
+python3 tools/research_wiki.py log research-wiki/ \
+  "idea-creator wrote N ideas (M recommended, K eliminated)"
+```
+
+> Failed ideas are the most valuable wiki memory — they prevent future re-ideation from repeating dead ends.
 
 ## Web Resilience Rules
 
