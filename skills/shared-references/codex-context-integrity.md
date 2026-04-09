@@ -97,10 +97,74 @@ If any item cannot be checked (e.g., no failed experiments this round), explicit
 After ANY code modification → /codex:adversarial-review --scope working-tree
 ```
 
-- Critical findings → fix immediately, re-run review
-- Medium/low findings → document, proceed
-- Approve → proceed
 - **NOT skippable** — no code change enters experiments or next phase without adversarial review
+- After receiving review results, Claude (executor) MUST follow the **Review Feedback Verification Protocol** below
+
+## Review Feedback Verification Protocol
+
+**Claude must NOT blindly accept review findings.** After receiving any review feedback (from `codex exec`, `/codex:adversarial-review`, or `/codex:rescue`), Claude must:
+
+### Step 1: Evaluate Each Finding for Correctness
+
+For each finding/weakness, Claude independently assesses:
+
+| Assessment | Action |
+|-----------|--------|
+| **Agree** — the finding is correct, it is a real issue | Accept and fix |
+| **Partially agree** — the finding identifies a real problem, but the suggested fix is inappropriate | Accept the diagnosis, propose a different fix |
+| **Disagree** — the finding is incorrect (misread code logic, ignored context, based on wrong assumption) | Proceed to Step 2: Dispute and Discuss |
+| **Need more info** — cannot determine if correct | Proceed to Step 2: Request clarification |
+
+### Step 2: Dispute and Discuss (when disagreement or ambiguity exists)
+
+When Claude disagrees with a finding, it **must NOT silently ignore it, nor blindly comply**. It must:
+
+1. **State Claude's position with evidence**:
+   - Why is this finding incorrect?
+   - Provide specific code/data/logic evidence supporting the rebuttal
+
+2. **Submit the dispute to the reviewer for adjudication**:
+   ```
+   /codex:rescue --effort xhigh "
+   Review feedback dispute:
+   
+   REVIEWER said: [paste the specific finding]
+   
+   I (Claude/executor) DISAGREE because: [specific reasoning with code/data evidence]
+   
+   Read these files directly to verify:
+   - [relevant source code files]
+   - [relevant experiment results]
+   
+   Please adjudicate: is the reviewer's finding correct, or is the executor's rebuttal valid?
+   Provide your independent assessment with evidence from the files."
+   ```
+
+3. **Handle the adjudication result**:
+   - Reviewer upholds finding with sufficient evidence → accept and fix
+   - Reviewer accepts Claude's rebuttal → skip that finding, log as `[DISPUTED — executor rebuttal accepted]`
+   - Both sides have valid points → find a compromise, log as `[DISPUTED — compromise reached]`
+   - Cannot reach agreement → log as `[UNRESOLVED DISPUTE]`, apply conservative approach (lean toward the reviewer's position, as the reviewer independently read the files and may have seen issues Claude missed)
+
+### Step 3: Log All Review Handling Decisions
+
+For each finding, log the final disposition:
+```markdown
+| Finding | Verdict | Action | Reasoning |
+|---------|---------|--------|-----------|
+| "Baseline comparison unfair" | Accepted | Fixed hyperparameter parity | Reviewer was correct |
+| "Missing ablation for module X" | Accepted | Added ablation | Valid concern |
+| "Loss function has bug on line 45" | Disputed → Rebuttal accepted | No change | Line 45 is intentional design, not bug |
+| "Statistical test wrong" | Disputed → Compromise | Changed from t-test to Wilcoxon | Reviewer's concern about normality valid |
+```
+
+### Key Principles
+
+- **Claude is responsible for verifying review findings** — reviewers can also make mistakes (misread code, ignore context, rely on outdated assumptions)
+- **Rebuttals must be evidence-based** — cannot reject findings based on gut feeling alone; must provide code/data/logic evidence
+- **Disputes must go through tools** — cannot internally decide a finding is wrong and silently ignore it; must submit to reviewer for adjudication
+- **Conservative principle** — when uncertain, lean toward accepting the review finding (the reviewer independently read the files and may have spotted issues Claude missed)
+- **Complete logging** — all agreements, rebuttals, discussions, and compromises must be recorded in the review log
 
 This rule is implemented at these checkpoints:
 

@@ -553,9 +553,12 @@ After implementing the variant, ALWAYS run an adversarial review:
 ```
 /codex:adversarial-review --scope working-tree --focus "Review variant implementation for: correctness vs design spec, logic bugs, fair baseline comparison, proper seeding, evaluation metric accuracy"
 ```
-- If verdict = `needs-attention` with **critical** findings → fix immediately, re-run review
-- If verdict = `needs-attention` with only medium/low findings → document in round log, proceed
 - If verdict = `approve` → proceed to Step 1.5
+- If verdict = `needs-attention` → apply **Review Feedback Verification Protocol** (see `../shared-references/codex-context-integrity.md`):
+  - Evaluate each finding for correctness
+  - Agreed findings → fix
+  - Disputed findings → submit rebuttal via `/codex:rescue` for adjudication
+  - After disputes resolved, fix all confirmed issues → re-run adversarial-review
 - **This step is NOT skippable** — every code change must pass adversarial review before deployment
 
 **Step 1.5: Experiment Design + Code Review (Dual Channel)**
@@ -567,7 +570,7 @@ Before deploying, run BOTH an independent file-based audit AND a dialogue-based 
 /codex:adversarial-review --base HEAD~1 --focus "Verify this variant implements the stated hypothesis correctly, baseline comparison is fair (same tuning budget, same data, same compute), no logic bugs, evaluation uses ground truth not model output, seeds are fixed"
 ```
 
-If adversarial-review returns `needs-attention` with CRITICAL findings: Claude MUST fix them before proceeding. Do not skip.
+If adversarial-review returns `needs-attention`: apply **Review Feedback Verification Protocol** (see `../shared-references/codex-context-integrity.md`) — evaluate each finding for correctness, dispute incorrect ones via `/codex:rescue`. Confirmed CRITICAL issues must be fixed and re-reviewed.
 
 **Step 1.5b: Design Review** (Codex Plugin — reads code directly):
 
@@ -609,7 +612,7 @@ Variant: [name and description]
     Flag issues as CRITICAL (must fix) / MAJOR (should fix) / MINOR.
 ```
 
-- If CRITICAL issues found: Claude Opus 4.6 (the executor) implements the fixes, then re-submits for review (max 2 review rounds). After fixes pass or 2 rounds exhausted, proceed to Step 2.
+- If issues found: apply **Review Feedback Verification Protocol** — evaluate each finding, dispute incorrect ones via `/codex:rescue`. Confirmed CRITICAL issues must be fixed and re-reviewed (max 2 rounds). After fixes pass or 2 rounds exhausted, proceed to Step 2.
 - If Codex MCP unavailable: skip review, proceed with self-review only
 
 **Step 2: Sanity check**

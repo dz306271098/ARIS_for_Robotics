@@ -135,7 +135,14 @@ Read the structured JSON from `/tmp/aris-review-round-N.json` and extract:
 - **STRENGTHENING weaknesses** — `strengthening_weaknesses[]`
 - **Action items** (ranked list of fixes, BLOCKING first)
 
-**STOP CONDITION**: If overall score meets POSITIVE_THRESHOLD for TARGET_VENUE AND no BLOCKING weaknesses remain → stop loop, document final state. If verdict contains "ready" → also stop.
+**Review Feedback Verification** (see `../shared-references/codex-context-integrity.md`):
+
+Before implementing ANY fix from the review, Claude must verify each weakness:
+- **Blocking weaknesses**: Evaluate each BLOCKING finding — is it truly BLOCKING-level? If Claude believes the reviewer misjudged (e.g., flagging intentional design as a bug), submit a rebuttal via `/codex:rescue` for adjudication.
+- **Scoring disputes**: If Claude believes a dimension score is unfair (e.g., reviewer overlooked existing ablation studies), submit specific evidence-based rebuttal.
+- Log all agreements/rebuttals/discussions in `AUTO_REVIEW.md` under `## Feedback Verification` for that round.
+
+**STOP CONDITION**: If overall score meets POSITIVE_THRESHOLD for TARGET_VENUE AND no BLOCKING weaknesses remain (after verification) → stop loop, document final state. If verdict contains "ready" → also stop.
 
 #### Human Checkpoint (if enabled)
 
@@ -223,9 +230,12 @@ After completing code changes, ALWAYS run an adversarial review before proceedin
 ```
 /codex:adversarial-review --scope working-tree --focus "Review code changes for: correctness, logic bugs, fair baseline comparison, proper seeding, evaluation metric accuracy, data leakage risk"
 ```
-- If verdict = `needs-attention` with **critical** findings → fix immediately, re-run review
-- If verdict = `needs-attention` with only medium/low findings → document and proceed
 - If verdict = `approve` → proceed to Step C.2
+- If verdict = `needs-attention` → apply **Review Feedback Verification Protocol** (see `../shared-references/codex-context-integrity.md`):
+  - Evaluate each finding for correctness
+  - Agreed findings → fix
+  - Disputed findings → submit rebuttal via `/codex:rescue` for adjudication
+  - After disputes resolved, fix all confirmed issues → re-run adversarial-review
 - **This step is NOT skippable** — every code change must pass adversarial review
 
 **Step C.2: Quick hyperparameter sensitivity** — for the changed component:

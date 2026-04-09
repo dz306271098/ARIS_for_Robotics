@@ -110,9 +110,12 @@ After ANY code changes in Phase 2, ALWAYS run an adversarial review:
 ```
 /codex:adversarial-review --scope working-tree --focus "Review experiment implementation for: correctness, logic bugs, proper seeding, result saving format, match with experiment plan"
 ```
-- If verdict = `needs-attention` with **critical** findings → fix immediately, re-run review
-- If verdict = `needs-attention` with only medium/low → document, proceed to Phase 2.5
 - If verdict = `approve` → proceed to Phase 2.5
+- If verdict = `needs-attention` → apply **Review Feedback Verification Protocol** (see `../shared-references/codex-context-integrity.md`):
+  - Evaluate each finding for correctness
+  - Agreed findings → fix
+  - Disputed findings → submit rebuttal via `/codex:rescue` for adjudication
+  - After disputes resolved, fix all confirmed issues → re-run adversarial-review
 - **This step is NOT skippable** — every code change must pass adversarial review
 
 ### Phase 2.5: Cross-Model Code Review (when CODE_REVIEW = true)
