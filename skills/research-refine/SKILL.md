@@ -181,7 +181,7 @@ If both routes are weak, rethink the framing instead of combining them into a la
 
 After identifying the technical gap and choosing the sharpest route:
 
-1. **Survey adjacent domains**: Search for techniques from related fields that address similar gaps (e.g., for inertial odometry: techniques from SLAM, VIO, signal processing, state estimation, deep learning for time series, physics-informed neural networks).
+1. **Survey adjacent domains**: Search for techniques from related fields that address similar gaps (e.g., for robotics: techniques from control theory, reinforcement learning, computer vision, motion planning, contact mechanics, sim-to-real transfer, foundation models).
 2. **Evaluate each candidate technique**:
    - Does it address the core bottleneck or just a symptom?
    - Can it be elegantly integrated (not bolted on)?

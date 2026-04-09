@@ -134,22 +134,22 @@ Before searching online, check if the user already has relevant papers locally:
 Before any external API call, generate **8-10 query variants** to maximize coverage across domains. Different papers — even in different fields — may address the same fundamental problem using completely different terminology.
 
 **Domain-specific variants** (5):
-1. **Original phrase**: The user's exact topic (e.g., "inertial odometry")
-2. **Synonym rephrasing**: Alternative terminology (e.g., "IMU-based positioning", "dead reckoning")
-3. **Broader term**: Wider scope to catch related work (e.g., "learning-based navigation")
-4. **Narrower/method-specific**: Core technique name (e.g., "transformer IMU trajectory estimation")
-5. **Baseline/dataset name**: If domain-specific section below applies, include key baselines (e.g., "AIR-IO", "TLIO")
+1. **Original phrase**: The user's exact topic (e.g., "robot grasping")
+2. **Synonym rephrasing**: Alternative terminology (e.g., "object manipulation", "grasp planning")
+3. **Broader term**: Wider scope to catch related work (e.g., "learning-based robotics")
+4. **Narrower/method-specific**: Core technique name (e.g., "transformer-based policy learning")
+5. **Baseline/dataset name**: If domain-specific section below applies, include key baselines (e.g., "DAgger", "PPO")
 
 **Cross-domain variants** (3-5, when `CROSS_DOMAIN = true`):
 Identify the **fundamental mathematical/physical problem** underlying the research topic, then generate queries targeting foundational fields:
 
-6. **Mathematics**: What mathematical structures or theories underpin this problem? (e.g., "Lie group integration SO(3)", "stochastic differential equations on manifolds", "information geometry Fisher metric", "optimal transport trajectory", "differential geometry rotation estimation")
-7. **Signal processing**: What signal processing techniques address similar data characteristics? (e.g., "Kalman filter IMU bias estimation", "wavelet denoising accelerometer", "adaptive filtering non-stationary signals", "spectral analysis periodic motion")
-8. **ML/DL foundations**: What ML paradigms address the same structural challenge? (e.g., "state space models sequential data", "equivariant neural networks SE(3)", "physics-informed neural networks dynamics", "contrastive learning temporal sequences")
-9. **Physics/mechanics**: What physical laws or models constrain this problem? (e.g., "rigid body dynamics quaternion", "inertial navigation error propagation", "conservation laws motion estimation")
-10. **Adjacent application domains**: Where else is the same fundamental problem solved? (e.g., "visual odometry drift correction" for inertial odometry, "speech enhancement" for sensor denoising, "protein folding SE(3)" for rotation estimation)
+6. **Mathematics**: What mathematical structures or theories underpin this problem? (e.g., "Lie group integration SO(3)", "optimization on manifolds", "convex relaxation for motion planning", "optimal transport trajectory", "differential geometry rotation estimation")
+7. **Signal processing**: What signal processing techniques address similar data characteristics? (e.g., "Kalman filter state estimation", "sensor fusion multi-modal", "adaptive filtering non-stationary signals", "spectral analysis periodic motion")
+8. **ML/DL foundations**: What ML paradigms address the same structural challenge? (e.g., "state space models sequential data", "equivariant neural networks SE(3)", "imitation learning", "reinforcement learning exploration", "physics-informed neural networks dynamics")
+9. **Physics/mechanics**: What physical laws or models constrain this problem? (e.g., "contact dynamics", "rigid body mechanics", "conservation laws motion estimation", "friction modeling manipulation")
+10. **Adjacent application domains**: Where else is the same fundamental problem solved? (e.g., "autonomous driving perception", "drone navigation", "protein folding SE(3)" for rotation estimation, "surgical robotics" for fine manipulation)
 
-**How to generate cross-domain variants**: Decompose the research problem into its fundamental components (e.g., "inertial odometry" = rotation estimation + translation integration + drift correction + noise handling). For each component, ask: "What field has the deepest theory for this sub-problem?" Generate one query per field.
+**How to generate cross-domain variants**: Decompose the research problem into its fundamental components (e.g., "robot manipulation" = perception + grasp planning + force control + motion generation + sim2real transfer). For each component, ask: "What field has the deepest theory for this sub-problem?" Generate one query per field.
 
 Store ALL variants as `QUERY_VARIANTS` — Step 1 will loop through each variant for every API source.
 
@@ -257,12 +257,12 @@ Batch 3-5 WebSearch queries at a time. If any hangs > 60 seconds, abandon and co
 
 After the main domain search, run dedicated searches in foundational fields. The goal is to find theories, methods, and mathematical frameworks from OTHER disciplines that address the same fundamental problem structure.
 
-**Identify fundamental sub-problems**: Decompose the research topic into its mathematical/physical components. For example, "inertial odometry" decomposes into:
-- Rotation estimation → Lie group theory, quaternion algebra, differential geometry on SO(3)
-- Translation integration → stochastic calculus, error propagation theory
-- Drift correction → Kalman filtering, factor graphs, optimization on manifolds
-- Noise modeling → stochastic processes, Bayesian estimation, signal denoising theory
-- Sequential modeling → state space models, recurrent dynamics, temporal point processes
+**Identify fundamental sub-problems**: Decompose the research topic into its mathematical/physical components. For example, "robot manipulation" decomposes into:
+- Perception → point cloud processing, 6-DoF pose estimation, scene understanding
+- Grasp planning → contact mechanics, grasp quality metrics, optimization on SE(3)
+- Force control → impedance/admittance control, contact dynamics, compliance modeling
+- Motion generation → trajectory optimization, motion planning, collision avoidance
+- Sim-to-real transfer → domain randomization, system identification, domain adaptation
 
 For each sub-problem, search targeted foundational queries:
 
@@ -298,9 +298,9 @@ Discard papers that are domain-relevant but principle-irrelevant.
 
 Continue until MAX_TOTAL_PAPERS is reached or all cross-domain queries are exhausted.
 
-### Domain-Specific Search: Robotics & Inertial Navigation
+### Domain-Specific Search: Robotics
 
-When the research topic involves robotics, inertial navigation, odometry, IMU, or sensor fusion:
+When the research topic involves robotics or embodied AI:
 
 **Priority Venues** (via Semantic Scholar):
 - IEEE RA-L (Robotics and Automation Letters)
@@ -311,22 +311,26 @@ When the research topic involves robotics, inertial navigation, odometry, IMU, o
 - RSS (Robotics: Science and Systems)
 
 **Key Search Terms** (combine and vary):
-- Inertial odometry, neural inertial navigation, IMU odometry
-- Pedestrian dead reckoning, inertial measurement unit
-- Deep inertial odometry, learning-based inertial navigation
-- IMU preintegration, inertial sensor fusion
-- Attitude estimation, orientation tracking
-- Specific baselines: AIR-IO, TLIO, RoNIN, RINS-W, IONet, MotionTransformer
+- Manipulation, grasping, dexterous manipulation, contact-rich manipulation
+- Locomotion, legged robotics, quadruped, humanoid control
+- Navigation, SLAM, visual navigation, exploration
+- Perception, point cloud, 6-DoF pose estimation, scene understanding
+- Planning, motion planning, task and motion planning (TAMP)
+- Control, model predictive control, impedance control, whole-body control
+- Sim-to-real, domain randomization, system identification
+- Imitation learning, reinforcement learning for robotics, diffusion policy
 
 **arXiv Categories**:
 - cs.RO (Robotics)
-- cs.CV (when combined with visual-inertial)
-- eess.SP (Signal Processing, for IMU denoising)
+- cs.AI (Artificial Intelligence)
+- cs.LG (Machine Learning)
+- cs.CV (when combined with vision-based robotics)
 
-**Dataset-Specific Search**:
-- RIDI dataset, OxIOD, RoNIN dataset, KITTI IMU
-- EuRoC MAV dataset (IMU component)
-- TUM-VI dataset
+**Dataset/Benchmark-Specific Search**:
+- RLBench, CALVIN, MetaWorld, Open X-Embodiment
+- nuScenes, KITTI, Waymo Open Dataset
+- Habitat, AI2-THOR, iGibson
+- MuJoCo benchmarks, Isaac Gym
 
 When using Semantic Scholar, filter by venues:
 `— sources: semantic-scholar, venues: "IEEE Robotics and Automation Letters,ICRA,IROS"`
@@ -379,7 +383,7 @@ For each relevant paper (from all sources), extract:
 
 ### Step 2.5: Gap-Driven Expansion (one round)
 
-After analyzing the initial batch, check if the collected papers reveal **terminology, methods, or sub-topics** that were NOT in the original QUERY_VARIANTS. For example, if multiple papers mention "equivariant neural networks for IMU" but that phrase was not in any original query, it represents a gap.
+After analyzing the initial batch, check if the collected papers reveal **terminology, methods, or sub-topics** that were NOT in the original QUERY_VARIANTS. For example, if multiple papers mention "diffusion policy for manipulation" but that phrase was not in any original query, it represents a gap.
 
 **If significant gaps are found** (distinct term clusters covering ≥3 papers not in your original variants):
 1. Generate up to 3 new targeted queries from the discovered terminology
@@ -464,10 +468,10 @@ Web operations (WebSearch, WebFetch) can hang indefinitely and block the entire 
 5. **Prefer API tools over web scraping**: For arXiv and Semantic Scholar, ALWAYS prefer the dedicated Python tools (`tools/arxiv_fetch.py`, `tools/semantic_scholar_fetch.py`) over WebSearch/WebFetch. These are faster, more reliable, and have built-in error handling:
    ```bash
    # arXiv — reliable, structured results
-   python tools/arxiv_fetch.py search "inertial odometry"
+   python tools/arxiv_fetch.py search "robot manipulation"
    
    # Semantic Scholar — reliable, published venue papers
-   python tools/semantic_scholar_fetch.py search "inertial odometry" --year 2024-2026
+   python tools/semantic_scholar_fetch.py search "robot manipulation" --year 2024-2026
    ```
 
 6. **Sub-agent timeout**: When launching an Agent for web research, keep the scope narrow (one specific query, not "search everything"). Broad agents are more likely to hang.

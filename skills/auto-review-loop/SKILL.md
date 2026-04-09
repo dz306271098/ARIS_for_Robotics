@@ -192,12 +192,12 @@ When `RESEARCH_DRIVEN_FIX = true` (default), for each critical weakness identifi
 
 1. **Classify**: Is this a surface symptom or a root cause?
    - Symptom: "accuracy is low on sequence X"
-   - Root cause: "the model has no mechanism to estimate gyroscope bias drift"
+   - Root cause: "the model has no mechanism to handle contact state transitions during manipulation"
 
 2. **If root cause is novel** (not addressed in prior rounds):
    a. Search arXiv + Semantic Scholar for techniques addressing this root cause.
       **Web resilience**: Prefer API tools (`python tools/arxiv_fetch.py search "query"`, `python tools/semantic_scholar_fetch.py search "query"`) over WebSearch. If WebSearch/WebFetch hangs (~60s), abandon immediately and continue with available results. Phase B.5 must NEVER block the pipeline.
-   b. Look for solutions in adjacent domains (SLAM, VIO, signal processing, state estimation)
+   b. Look for solutions in adjacent domains (control theory, reinforcement learning, computer vision, motion planning)
    c. **Extract distilled principles** — for each relevant technique found, apply the Principle Extraction Protocol from `../shared-references/principle-extraction.md`:
       - Layer 1: What did the paper specifically do? (surface method)
       - Layer 2: WHY does it work? (underlying principle — one sentence, no paper-specific nouns)

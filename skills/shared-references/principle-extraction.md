@@ -42,12 +42,12 @@ Examples of the transformation:
 
 | Surface method | Underlying principle |
 |---|---|
-| "Attention mechanism over IMU windows" | "Selective weighting of temporal features based on estimated signal reliability" |
-| "EKF for gyroscope bias estimation" | "Online estimation of slowly-varying systematic errors through prediction-correction with a physical process model" |
+| "Attention mechanism over point cloud features" | "Selective weighting of features based on estimated relevance to the task" |
+| "Model predictive control for legged locomotion" | "Receding-horizon optimization that re-plans from the current state using a dynamics model" |
 | "Contrastive learning for trajectory embeddings" | "Enforcing that representations preserve metric structure of the output space" |
 | "Multi-scale temporal convolution" | "Capturing phenomena that operate at different characteristic timescales by explicit scale decomposition" |
-| "Physics-informed loss with gravity constraint" | "Injecting known conservation laws as soft constraints to reduce the feasible solution space" |
-| "Graph neural network for skeleton pose" | "Propagating local measurements through a topology that mirrors the physical structure of the system" |
+| "Physics-informed loss with dynamics constraint" | "Injecting known physical laws as soft constraints to reduce the feasible solution space" |
+| "Graph neural network for multi-robot coordination" | "Propagating local observations through a topology that mirrors the physical/logical structure of the multi-agent system" |
 
 ### Layer 3: Generalization (How does this apply beyond the original domain?)
 

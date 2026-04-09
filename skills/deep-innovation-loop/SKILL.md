@@ -1,7 +1,7 @@
 ---
 name: deep-innovation-loop
 description: "Autonomous deep research innovation loop for ML methods. Iteratively diagnoses root causes, researches literature for solutions, synthesizes novel method variants, tests them, and evolves the approach over 40+ rounds. Unlike auto-review-loop (symptom-fixing), this skill drives genuine methodological innovation with cumulative knowledge. Use when user says \"deep innovation\", \"evolve method\", \"deep loop\", \"innovate\", \"方法进化\", \"深度创新\", or wants autonomous method evolution beyond simple review-fix cycles."
-argument-hint: [method-description-or-research-brief — baseline: AIR-IO, venue: RAL, domain: inertial odometry]
+argument-hint: [method-description-or-research-brief — baseline: <your_baseline>, venue: <target_venue>, domain: <your_domain>]
 allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, Skill, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
@@ -54,10 +54,10 @@ This is NOT a review-fix loop. This is a **research program** that discovers, sy
 | `HUMAN_CHECKPOINT` | false | When true, pause after each round's diagnosis for user input |
 | `COMPACT` | false | When true, use compact logs for session recovery |
 | `VENUE` | RAL | Target venue (IEEE Robotics and Automation Letters) |
-| `DOMAIN` | inertial odometry | Research domain |
-| `PRIMARY_BASELINE` | AIR-IO | Primary comparison baseline |
+| `DOMAIN` | robotics | Research domain (override for your specific sub-domain, e.g., manipulation, navigation, locomotion) |
+| `PRIMARY_BASELINE` | "" | Primary comparison baseline (must be specified by user, e.g., PointNet++, RRT*, DAgger, SLAM baseline) |
 
-Override inline: `/deep-innovation-loop "improve inertial odometry" — baseline: AIR-IO, venue: RAL, max rounds: 40, human checkpoint: true`
+Override inline: `/deep-innovation-loop "improve robot manipulation" — baseline: DAgger, venue: CoRL, domain: manipulation, max rounds: 40, human checkpoint: true`
 
 ## Full Autonomy Principle
 
@@ -83,7 +83,7 @@ innovation-logs/
 ├── BLACKLIST.md                    # Approaches proven ineffective (with reasons)
 ├── FUSION_CANDIDATES.md            # Synergy combinations to test
 ├── findings.md                     # Key research + engineering findings
-├── score-history.csv               # Metric progression (ATE, RTE, drift, etc.)
+├── score-history.csv               # Metric progression (primary_metric, secondary_metric, task_metric, etc.)
 ├── round-NN/                       # Per-round detailed records
 │   ├── diagnosis.md                #   Root cause analysis
 │   ├── research.md                 #   Literature search results
@@ -106,16 +106,16 @@ Write `INNOVATION_STATE.json` after each Phase E:
   "best_score": 6.5,
   "best_round": 9,
   "best_variant": "v9-adaptive-ekf-transformer",
-  "current_variant": "v12-gravity-aware-attention",
+  "current_variant": "v12-spatial-attention-grasp",
   "patience_counter": 2,
   "regression_counter": 0,
-  "explored_techniques": ["adaptive_ekf", "gravity_compensation", "attention_fusion"],
+  "explored_techniques": ["spatial_attention", "force_feedback", "policy_distillation"],
   "failed_approaches": ["raw_lstm:no_physics_awareness", "naive_transformer:drift_accumulation"],
-  "baseline_metrics": {"ATE": 1.23, "RTE": 0.45},
-  "best_metrics": {"ATE": 0.89, "RTE": 0.31},
+  "baseline_metrics": {"success_rate": 0.72, "completion_time": 15.3},
+  "best_metrics": {"success_rate": 0.89, "completion_time": 11.2},
   "pending_experiments": ["screen_exp_v12"],
   "metrics_history": [
-    {"round": 0, "variant": "AIR-IO-baseline", "ATE": 1.23, "RTE": 0.45, "score": 4.0}
+    {"round": 0, "variant": "baseline-DAgger", "success_rate": 0.72, "completion_time": 15.3, "score": 4.0}
   ],
   "timestamp": "2026-03-31T21:00:00"
 }
@@ -264,11 +264,11 @@ Always use `--effort xhigh` for maximum reasoning depth.
        mathematical/physical/architectural reason.
        (e.g., "drift accumulates because the network has no mechanism 
        to observe absolute orientation — it only sees relative rotations, 
-       so gyroscope bias is unobservable")
+       so the error is unobservable")
     3. CAUSAL CHAIN: Symptom ← Intermediate cause ← Root cause
     4. ANALOGIES: Has this root cause been solved in adjacent fields?
-       (SLAM, VIO, visual odometry, sensor fusion, state estimation, 
-       signal processing, control theory)
+       (manipulation, navigation, SLAM, perception, planning, 
+       control theory, sensor fusion, sim-to-real)
     5. DIFFICULTY: Architecture change / loss function / training strategy / 
        data augmentation / post-processing / hyperparameter tuning
     6. INNOVATION DIRECTIONS: Based on the root cause, propose 2-3 
@@ -311,26 +311,26 @@ Save to `innovation-logs/round-NN/diagnosis.md`.
    a. **arXiv search** — PREFER the API tool over WebSearch:
       ```bash
       # Primary: reliable API tool with built-in timeout
-      python tools/arxiv_fetch.py search "inertial odometry gravity compensation"
+      python tools/arxiv_fetch.py search "robot manipulation force control"
       ```
       - Keywords: combine domain terms + root cause concept
-      - Example: `"inertial odometry" AND "gravity compensation"`, 
-        `"IMU preintegration" AND "bias estimation"`, `"neural inertial" AND "attention"`
-      - Focus on last 2 years, categories: cs.RO, eess.SP, cs.CV
+      - Example: `"robot grasping" AND "force control"`, 
+        `"motion planning" AND "collision avoidance"`, `"policy learning" AND "attention"`
+      - Focus on last 2 years, categories: cs.RO, cs.AI, cs.LG
       - Only use WebSearch as fallback if the API tool fails
    
    b. **Semantic Scholar** — PREFER the API tool over WebSearch:
       ```bash
       # Primary: reliable API tool with built-in timeout
-      python tools/semantic_scholar_fetch.py search "inertial odometry" --year 2024-2026
+      python tools/semantic_scholar_fetch.py search "robot learning" --year 2024-2026
       ```
       - Target venues: RAL, ICRA, IROS, TRO, CoRL, RSS
       - Also check adjacent: IEEE TSP, ICASSP, NeurIPS, ICML (for method innovations)
       - Filter by citation count and recency
    
    c. **Adjacent domain search** (WebSearch acceptable here, with timeout):
-      - If root cause is "drift accumulation" → search SLAM loop closure techniques
-      - If root cause is "sensor noise" → search signal processing / Kalman filtering
+      - If root cause is "sim-to-real gap" → search domain adaptation / transfer learning
+      - If root cause is "sensor noise" → search signal processing / sensor fusion
       - If root cause is "temporal modeling" → search sequence modeling / transformers
       - If root cause is "physics mismatch" → search physics-informed neural networks
       - **If WebSearch hangs (~60s), abandon and skip** — adjacent domain search is supplementary, not critical
@@ -432,7 +432,7 @@ Current method (v{N-1}) if different from best:
     TASK: Propose 2-3 method variants that address the identified root causes.
     
     For EACH variant:
-    1. NAME: descriptive variant name (e.g., "v12-gravity-aware-attention")
+    1. NAME: descriptive variant name (e.g., "v12-spatial-attention-grasp")
     2. HYPOTHESIS: What specific improvement do you expect and why?
     3. MECHANISM: Exactly what changes from current best method
     4. TECHNIQUE FUSION: Which techniques from the library are combined?
@@ -441,9 +441,9 @@ Current method (v{N-1}) if different from best:
          inspired this variant? State the principle, not the paper's method.
          Verify: does this variant's design look different from the source 
          paper's implementation while embodying the same principle?
-       (e.g., "Technique A provides gravity-aware features, which makes 
-       Technique B's attention mechanism focus on motion-relevant signals 
-       instead of sensor noise, amplifying both effects")
+       (e.g., "Technique A provides spatial attention features, which makes 
+       Technique B's policy network focus on task-relevant regions 
+       instead of background clutter, amplifying both effects")
     6. IMPLEMENTATION: Concrete code changes needed (files, functions, modules)
     7. RISK: What could go wrong? What assumptions might be violated?
     8. EXPECTED METRIC IMPACT: Which metrics improve? Which might regress?
@@ -652,15 +652,15 @@ Variant: [name and description]
 - Build comparison table with statistical rigor:
 
   ```markdown
-  | Method | Mean ATE ↓ | ± std | Mean RTE ↓ | ± std | vs Baseline | p-value | Sig |
-  |--------|-----------|-------|-----------|-------|-------------|---------|-----|
+  | Method | Primary ↑/↓ | ± std | Secondary ↑/↓ | ± std | vs Baseline | p-value | Sig |
+  |--------|-------------|-------|---------------|-------|-------------|---------|-----|
   | [PRIMARY_BASELINE] | X.XX | ±X.XX | X.XX | ±X.XX | — | — | — |
   | Best (v{best_round}) | X.XX | ±X.XX | X.XX | ±X.XX | ΔX% | p=X.XX | ** |
   | Current (v{N}) | X.XX | ±X.XX | X.XX | ±X.XX | ΔX% | p=X.XX | * |
   ```
   Significance: * p<0.05, ** p<0.01, *** p<0.001, NS = not significant
 
-- Record per-sequence breakdown (important for inertial odometry — different motion types)
+- Record per-task/per-scenario breakdown (important for robotics — different environments/tasks)
 - Append to `score-history.csv`
 - **Flag non-significant improvements as "NS"** — Phase E should treat NS improvements as "tied", not "improved"
 
@@ -692,7 +692,7 @@ Save to `innovation-logs/round-NN/results.md`.
 **Step 1: Score update**
 - Record new metrics in `score-history.csv`:
   ```
-  round,variant,ATE,RTE,drift,score,macro_phase,timestamp
+  round,variant,primary_metric,secondary_metric,task_metric,score,macro_phase,timestamp
   ```
 
 **Step 2: Improvement check**
@@ -705,7 +705,7 @@ Save to `innovation-logs/round-NN/results.md`.
 | **Significantly worse** | Increment `regression_counter`. If `regression_counter >= REGRESSION_TOLERANCE`: revert code to best variant and reset regression_counter. |
 
 **Threshold guidance** (adapt to your domain):
-- **Improved**: Primary metric (e.g., mean ATE) shows absolute improvement beyond noise range (typically > 1-2% relative improvement, or > 1 standard deviation across seeds). If multiple metrics, majority must improve with none significantly regressing.
+- **Improved**: Primary metric (e.g., success rate, ATE, reward) shows absolute improvement beyond noise range (typically > 1-2% relative improvement, or > 1 standard deviation across seeds). If multiple metrics, majority must improve with none significantly regressing.
 - **Tied**: Primary metric changes by less than noise range in either direction.
 - **Slightly worse**: Primary metric regresses within 5% relative, or only on a minority of sequences.
 - **Significantly worse**: Primary metric regresses by > 5% relative, or regresses on a majority of sequences.
@@ -835,7 +835,7 @@ elif macro_phase == "polish":
 - Update `INNOVATION_STATE.json` with all current state
 - If `COMPACT = true`: append one-line finding to `findings.md`:
   ```
-  - [Round N] [positive/negative/mixed]: [one-sentence finding] (ATE: X.XX → Y.YY)
+  - [Round N] [positive/negative/mixed]: [one-sentence finding] (primary_metric: X.XX → Y.YY)
   ```
 
 **Step 10: Human checkpoint** (if `HUMAN_CHECKPOINT = true`)
@@ -917,7 +917,7 @@ When the loop ends (by any stopping condition):
    🏁 Deep innovation loop complete.
    
    Best: v{best_round} — score {best_score}/10
-   Improvement over [PRIMARY_BASELINE]: [ΔX%] ATE, [ΔY%] RTE
+   Improvement over [PRIMARY_BASELINE]: [ΔX%] primary_metric, [ΔY%] secondary_metric
    
    Next steps:
    → /auto-review-loop "[topic]" — 2-3 rounds of paper-level polish
@@ -941,8 +941,8 @@ When the loop ends (by any stopping condition):
 ### Web Resilience (Critical for Pipeline Stability)
 - **NEVER let web operations block the pipeline.** WebSearch and WebFetch can hang indefinitely — treat them as unreliable.
 - **Prefer API tools over WebSearch/WebFetch**:
-  - arXiv: `python tools/arxiv_fetch.py search "query"` (reliable, fast)
-  - Semantic Scholar: `python tools/semantic_scholar_fetch.py search "query"` (reliable, fast)
+  - arXiv: `python tools/arxiv_fetch.py search "query"` (reliable, fast, categories: cs.RO, cs.AI, cs.LG)
+  - Semantic Scholar: `python tools/semantic_scholar_fetch.py search "query"` (reliable, fast, venues: RA-L, ICRA, IROS, TRO, CoRL, RSS)
   - For known URLs: `curl -sL --max-time 30 "URL"` (has built-in timeout)
 - **Timeout rule**: If WebSearch/WebFetch does not respond within ~60 seconds, abandon it immediately. Do NOT retry the same query — reformulate or skip.
 - **Phase B is supplementary, not blocking**: If all literature searches fail in Phase B, proceed to Phase C using existing `TECHNIQUE_LIBRARY.md`. Log `[WEB UNAVAILABLE]` and continue.
@@ -971,13 +971,13 @@ When the loop ends (by any stopping condition):
 - Every experiment must have fixed random seeds, proper logging, and parseable output (JSON/CSV)
 - Document EVERYTHING — the innovation log should be self-contained and reproducible
 
-### Domain Awareness (Inertial Odometry Defaults)
-- **Key metrics**: ATE (Absolute Trajectory Error), RTE (Relative Trajectory Error), heading drift, position drift rate
-- **Key challenges**: gyroscope bias estimation, gravity compensation, cumulative drift, sensor noise
-- **Key techniques to explore**: EKF/UKF state estimation, IMU preintegration, attention mechanisms for temporal data, physics-informed losses, gravity-aware architectures, multi-scale temporal modeling
-- **Key baselines**: AIR-IO, TLIO, RoNIN, RINS-W, IONet, MotionTransformer
-- **Key datasets**: RIDI, OxIOD, RoNIN dataset, KITTI (IMU), EuRoC MAV, TUM-VI
-- **Venue awareness**: RAL expects real-world experimental validation, runtime analysis, ablation studies
+### Domain Awareness (Robotics Defaults)
+- **Key metrics**: task success rate, completion time, trajectory error, sample efficiency, sim-to-real transfer gap (adapt to your sub-domain)
+- **Key challenges**: sim-to-real transfer, sample efficiency, generalization across environments, contact-rich manipulation, safe exploration
+- **Key techniques to explore**: imitation learning, reinforcement learning, policy distillation, world models, foundation models for robotics, diffusion policies, attention mechanisms, physics-informed losses
+- **Key baselines**: specify for your sub-domain (e.g., DAgger, PPO, SAC, RT-2, PointNet++, RRT*, ORB-SLAM3)
+- **Key datasets**: specify for your sub-domain (e.g., RLBench, CALVIN, Open X-Embodiment, nuScenes, KITTI, Habitat, MuJoCo benchmarks)
+- **Venue awareness**: RA-L/ICRA/IROS expect real-world experimental validation; CoRL/RSS value novel learning methods; all expect ablation studies
 
 ### Integration with ARIS Skills
 
@@ -1002,18 +1002,18 @@ This skill composes with existing skills — invoke them as needed:
 ## Example Invocations
 
 ```
-# Full pipeline for inertial odometry research
-/deep-innovation-loop "improve pure inertial odometry using deep learning" — \
-  baseline: AIR-IO, venue: RAL, domain: inertial odometry, \
+# Full pipeline for robot manipulation research
+/deep-innovation-loop "improve dexterous manipulation with policy learning" — \
+  baseline: DAgger, venue: CoRL, domain: manipulation, \
   human checkpoint: false, max rounds: 40
 
 # With human checkpoints for manual guidance
-/deep-innovation-loop "novel IMU-based navigation method" — \
-  baseline: AIR-IO, venue: RAL, human checkpoint: true
+/deep-innovation-loop "novel vision-based navigation method" — \
+  baseline: PointNav-SLAM, venue: RA-L, domain: navigation, human checkpoint: true
 
 # Specify compute constraints
-/deep-innovation-loop "inertial odometry with transformer" — \
-  baseline: AIR-IO, venue: RAL, max rounds: 30, \
+/deep-innovation-loop "locomotion with transformer world model" — \
+  baseline: PPO, venue: RSS, domain: locomotion, max rounds: 30, \
   compact: true
 
 # Resume from previous session (automatic if INNOVATION_STATE.json exists)
@@ -1025,7 +1025,7 @@ This skill composes with existing skills — invoke them as needed:
 The `deep-innovation-loop` can be invoked from `/research-pipeline` by setting `DEEP_INNOVATION=true`:
 
 ```
-/research-pipeline "inertial odometry" — deep innovation: true, baseline: AIR-IO, venue: RAL
+/research-pipeline "robot manipulation" — deep innovation: true, baseline: DAgger, venue: CoRL, domain: manipulation
 ```
 
 This chains: `/idea-discovery` → implement → `/deep-innovation-loop` → `/auto-review-loop` (polish) → `/paper-write`
