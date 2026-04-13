@@ -1,6 +1,8 @@
 ---
-name: "run-experiment"
-description: "Deploy and run ML experiments on local or remote GPU servers. Use when user says \"run experiment\", \"deploy to server\", \"\u8dd1\u5b9e\u9a8c\", or needs to launch training jobs."
+name: run-experiment
+description: Deploy and run ML experiments on local or remote GPU servers. Use when user says "run experiment", "deploy to server", "跑实验", or needs to launch training jobs.
+argument-hint: [experiment-description]
+allowed-tools: Bash(*), Read, Grep, Glob, Edit, Write, Agent
 ---
 
 # Run Experiment
@@ -11,21 +13,32 @@ Deploy and run ML experiment: $ARGUMENTS
 
 ### Step 1: Detect Environment
 
-Read the project's `AGENTS.md` to determine the experiment environment:
+Read the project's `CODEX.md` to determine the experiment environment:
 
-- **Local GPU**: Look for local CUDA/MPS setup info
-- **Remote server**: Look for SSH alias, conda env, code directory
+- **Local GPU** (`gpu: local`): Look for local CUDA/MPS setup info
+- **Remote server** (`gpu: remote`): Look for SSH alias, conda env, code directory
+- **Vast.ai** (`gpu: vast`): Check for `vast-instances.json` at project root — if a running instance exists, use it. Also check `CODEX.md` for a `## Vast.ai` section.
 
-If no server info is found in `AGENTS.md`, ask the user.
+**Vast.ai detection priority:**
+1. If `CODEX.md` has `gpu: vast` or a `## Vast.ai` section:
+   - If `vast-instances.json` exists and has a running instance → use that instance
+   - If no running instance → call `/vast-gpu provision` which analyzes the task, presents cost-optimized GPU options, and rents the user's choice
+2. If no server info is found in `CODEX.md`, default to `gpu: local` and attempt to use locally available GPUs (via `nvidia-smi`). If no local GPU detected, log a warning and attempt CPU execution for small-scale experiments.
 
 ### Step 2: Pre-flight Check
 
 Check GPU availability on the target machine:
 
-**Remote:**
+**Remote (SSH):**
 ```bash
 ssh <server> nvidia-smi --query-gpu=index,memory.used,memory.total --format=csv,noheader
 ```
+
+**Remote (Vast.ai):**
+```bash
+ssh -p <PORT> root@<HOST> nvidia-smi --query-gpu=index,memory.used,memory.total --format=csv,noheader
+```
+(Read `ssh_host` and `ssh_port` from `vast-instances.json`, or run `vastai ssh-url <INSTANCE_ID>` which returns `ssh://root@HOST:PORT`)
 
 **Local:**
 ```bash
@@ -38,7 +51,7 @@ Free GPU = memory.used < 500 MiB.
 
 ### Step 3: Sync Code (Remote Only)
 
-Check the project's `AGENTS.md` for a `code_sync` setting. If not specified, default to `rsync`.
+Check the project's `CODEX.md` for a `code_sync` setting. If not specified, default to `rsync`.
 
 #### Option A: rsync (default)
 
@@ -47,7 +60,7 @@ Only sync necessary files — NOT data, checkpoints, or large files:
 rsync -avz --include='*.py' --exclude='*' <local_src>/ <server>:<remote_dst>/
 ```
 
-#### Option B: git (when `code_sync: git` is set in AGENTS.md)
+#### Option B: git (when `code_sync: git` is set in CODEX.md)
 
 Push local changes to remote repo, then pull on the server:
 ```bash
@@ -60,9 +73,28 @@ ssh <server> "cd <remote_dst> && git pull"
 
 Benefits: version-tracked, multi-server sync with one push, no rsync include/exclude rules needed.
 
-### Step 3.5: W&B Integration (when `wandb: true` in AGENTS.md)
+#### Option C: Vast.ai instance
 
-**Skip this step entirely if `wandb` is not set or is `false` in AGENTS.md.**
+Sync code to the vast.ai instance (always rsync, code dir is `/workspace/project/`):
+```bash
+rsync -avz -e "ssh -p <PORT>" \
+  --include='*.py' --include='*.yaml' --include='*.yml' --include='*.json' \
+  --include='*.txt' --include='*.sh' --include='*/' \
+  --exclude='*.pt' --exclude='*.pth' --exclude='*.ckpt' \
+  --exclude='__pycache__' --exclude='.git' --exclude='data/' \
+  --exclude='wandb/' --exclude='outputs/' \
+  ./ root@<HOST>:/workspace/project/
+```
+
+If `requirements.txt` exists, install dependencies:
+```bash
+scp -P <PORT> requirements.txt root@<HOST>:/workspace/
+ssh -p <PORT> root@<HOST> "pip install -q -r /workspace/requirements.txt"
+```
+
+### Step 3.5: W&B Integration (when `wandb: true` in CODEX.md)
+
+**Skip this step entirely if `wandb` is not set or is `false` in CODEX.md.**
 
 Before deploying, ensure the experiment scripts have W&B logging:
 
@@ -98,7 +130,7 @@ Before deploying, ensure the experiment scripts have W&B logging:
    ssh <server> "wandb login <WANDB_API_KEY>"
    ```
 
-> The W&B project name and API key come from `AGENTS.md` (see example below). The experiment name is auto-generated from the script name + timestamp.
+> The W&B project name and API key come from `CODEX.md` (see example below). The experiment name is auto-generated from the script name + timestamp.
 
 ### Step 4: Deploy
 
@@ -111,6 +143,17 @@ ssh <server> "screen -dmS <exp_name> bash -c '\
   conda activate <env> && \
   CUDA_VISIBLE_DEVICES=<gpu_id> python <script> <args> 2>&1 | tee <log_file>'"
 ```
+
+#### Vast.ai instance
+
+No conda needed — the Docker image has the environment. Use `/workspace/project/` as working dir:
+```bash
+ssh -p <PORT> root@<HOST> "screen -dmS <exp_name> bash -c '\
+  cd /workspace/project && \
+  CUDA_VISIBLE_DEVICES=<gpu_id> python <script> <args> 2>&1 | tee /workspace/<log_file>'"
+```
+
+After launching, update the `experiment` field in `vast-instances.json` for this instance.
 
 #### Local
 
@@ -126,9 +169,14 @@ For local long-running jobs, use `run_in_background: true` to keep the conversat
 
 ### Step 5: Verify Launch
 
-**Remote:**
+**Remote (SSH):**
 ```bash
 ssh <server> "screen -ls"
+```
+
+**Remote (Vast.ai):**
+```bash
+ssh -p <PORT> root@<HOST> "screen -ls"
 ```
 
 **Local:**
@@ -140,6 +188,39 @@ After deployment is verified, check `~/.codex/feishu.json`:
 - Send `experiment_done` notification: which experiments launched, which GPUs, estimated time
 - If config absent or mode `"off"`: skip entirely (no-op)
 
+### Step 7: Auto-Destroy Vast.ai Instance (when `gpu: vast` and `auto_destroy: true`)
+
+**Skip this step if not using vast.ai or `auto_destroy` is `false`.**
+
+After the experiment completes (detected via `/monitor-experiment` or screen session ending):
+
+1. **Download results** from the instance:
+   ```bash
+   rsync -avz -e "ssh -p <PORT>" root@<HOST>:/workspace/project/results/ ./results/
+   ```
+
+2. **Download logs**:
+   ```bash
+   scp -P <PORT> root@<HOST>:/workspace/*.log ./logs/
+   ```
+
+3. **Destroy the instance** to stop billing:
+   ```bash
+   vastai destroy instance <INSTANCE_ID>
+   ```
+
+4. **Update `vast-instances.json`** — mark status as `destroyed`.
+
+5. **Report cost**:
+   ```
+   Vast.ai instance <ID> auto-destroyed.
+   - Duration: ~X.X hours
+   - Estimated cost: ~$X.XX
+   - Results saved to: ./results/
+   ```
+
+> This ensures users are never billed for idle instances. When `auto_destroy: true` (the default), the full lifecycle is automatic: rent → setup → run → collect → destroy.
+
 ## Key Rules
 
 - ALWAYS check GPU availability first — never blindly assign GPUs
@@ -148,13 +229,15 @@ After deployment is verified, check `~/.codex/feishu.json`:
 - Run deployment commands with `run_in_background: true` to keep conversation responsive
 - Report back: which GPU, which screen/process, what command, estimated time
 - If multiple experiments, launch them in parallel on different GPUs
+- **Vast.ai cost awareness**: When using `gpu: vast`, always report the running cost. If `auto_destroy: true`, destroy the instance as soon as all experiments on it complete
 
-## AGENTS.md Example
+## CODEX.md Example
 
-Users should add their server info to their project's `AGENTS.md`:
+Users should add their server info to their project's `CODEX.md`:
 
 ```markdown
 ## Remote Server
+- gpu: remote               # use pre-configured SSH server
 - SSH: `ssh my-gpu-server`
 - GPU: 4x A100 (80GB each)
 - Conda: `eval "$(/opt/conda/bin/conda shell.bash hook)" && conda activate research`
@@ -164,9 +247,17 @@ Users should add their server info to their project's `AGENTS.md`:
 - wandb_project: my-project # W&B project name (required if wandb: true)
 - wandb_entity: my-team     # W&B team/user (optional, uses default if omitted)
 
+## Vast.ai
+- gpu: vast                  # rent on-demand GPU from vast.ai
+- auto_destroy: true         # auto-destroy after experiment completes (default: true)
+- max_budget: 5.00           # optional: max total $ to spend per experiment
+
 ## Local Environment
+- gpu: local                 # use local GPU
 - Mac MPS / Linux CUDA
 - Conda env: `ml` (Python 3.10 + PyTorch)
 ```
 
-> **W&B setup**: Run `wandb login` on your server once (or set `WANDB_API_KEY` env var). The skill reads project/entity from `AGENTS.md` and adds `wandb.init()` + `wandb.log()` to your training scripts automatically. Dashboard: `https://wandb.ai/<entity>/<project>`.
+> **Vast.ai setup**: Run `pip install vastai && vastai set api-key YOUR_KEY`. Upload your SSH public key at https://cloud.vast.ai/manage-keys/. Set `gpu: vast` in your `CODEX.md` — `/run-experiment` will automatically rent an instance, run the experiment, and destroy it when done.
+
+> **W&B setup**: Run `wandb login` on your server once (or set `WANDB_API_KEY` env var). The skill reads project/entity from CODEX.md and adds `wandb.init()` + `wandb.log()` to your training scripts automatically. Dashboard: `https://wandb.ai/<entity>/<project>`.

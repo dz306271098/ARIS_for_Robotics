@@ -1,7 +1,10 @@
 ---
 name: "experiment-plan"
 description: "Turn a refined research proposal or method idea into a detailed, claim-driven experiment roadmap. Use after `research-refine`, or when the user asks for a detailed experiment plan, ablation matrix, evaluation protocol, run order, compute budget, or paper-ready validation that supports the core problem, novelty, simplicity, and any LLM / VLM / Diffusion / RL-based contribution."
+argument-hint: [refined-proposal-or-topic]
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent
 ---
+
 
 # Experiment Plan: Claim-Driven, Paper-Oriented Validation
 
@@ -239,4 +242,3 @@ Tracker file: refine-logs/EXPERIMENT_TRACKER.md
 /run-experiment    -> execute the runs
 /auto-review-loop  -> react to results and iterate on the paper
 ```
-

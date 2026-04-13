@@ -1,6 +1,8 @@
 ---
-name: "monitor-experiment"
-description: "Monitor running experiments, check progress, collect results. Use when user says \"check results\", \"is it done\", \"monitor\", or wants experiment output."
+name: monitor-experiment
+description: Monitor running experiments, check progress, collect results. Use when user says "check results", "is it done", "monitor", or wants experiment output.
+argument-hint: [server-alias or screen-name]
+allowed-tools: Bash(ssh *), Bash(echo *), Read, Write, Edit
 ---
 
 # Monitor Experiment Results
@@ -10,8 +12,20 @@ Monitor: $ARGUMENTS
 ## Workflow
 
 ### Step 1: Check What's Running
+
+**SSH server:**
 ```bash
 ssh <server> "screen -ls"
+```
+
+**Vast.ai instance** (read `ssh_host`, `ssh_port` from `vast-instances.json`):
+```bash
+ssh -p <PORT> root@<HOST> "screen -ls"
+```
+
+Also check vast.ai instance status:
+```bash
+vastai show instances
 ```
 
 ### Step 2: Collect Output from Each Screen
@@ -31,6 +45,54 @@ If JSON results exist, fetch and parse them:
 ```bash
 ssh <server> "cat <results_dir>/<latest>.json"
 ```
+
+### Step 3.5: Pull W&B Metrics (when `wandb: true` in CODEX.md)
+
+**Skip this step entirely if `wandb` is not set or is `false` in CODEX.md.**
+
+Pull training curves and metrics from Weights & Biases via Python API:
+
+```bash
+# List recent runs in the project
+ssh <server> "python3 -c \"
+import wandb
+api = wandb.Api()
+runs = api.runs('<entity>/<project>', per_page=10)
+for r in runs:
+    print(f'{r.id}  {r.state}  {r.name}  {r.summary.get(\"eval/loss\", \"N/A\")}')
+\""
+
+# Pull specific metrics from a run (last 50 steps)
+ssh <server> "python3 -c \"
+import wandb, json
+api = wandb.Api()
+run = api.run('<entity>/<project>/<run_id>')
+history = list(run.scan_history(keys=['train/loss', 'eval/loss', 'eval/ppl', 'train/lr'], page_size=50))
+print(json.dumps(history[-10:], indent=2))
+\""
+
+# Pull run summary (final metrics)
+ssh <server> "python3 -c \"
+import wandb, json
+api = wandb.Api()
+run = api.run('<entity>/<project>/<run_id>')
+print(json.dumps(dict(run.summary), indent=2, default=str))
+\""
+```
+
+**What to extract:**
+- **Training loss curve** — is it converging? diverging? plateauing?
+- **Eval metrics** — loss, PPL, accuracy at latest checkpoint
+- **Learning rate** — is the schedule behaving as expected?
+- **GPU memory** — any OOM risk?
+- **Run status** — running / finished / crashed?
+
+**W&B dashboard link** (include in summary for user):
+```
+https://wandb.ai/<entity>/<project>/runs/<run_id>
+```
+
+> This gives the auto-review-loop richer signal than just screen output — training dynamics, loss curves, and metric trends over time.
 
 ### Step 4: Summarize Results
 
@@ -58,4 +120,4 @@ After results are collected, check `~/.codex/feishu.json`:
 - Compare against the correct baseline (same config)
 - Note if experiments are still running (check progress bars, iteration counts)
 - If results look wrong, check training logs for errors before concluding
-
+- **Vast.ai cost awareness**: When monitoring vast.ai instances, report the running cost (hours * $/hr from `vast-instances.json`). If all experiments on an instance are done, remind the user to run `/vast-gpu destroy <instance_id>` to stop billing

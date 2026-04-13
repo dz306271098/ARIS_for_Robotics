@@ -1,8 +1,8 @@
 # ARIS 使用指南：纯惯性里程计研究
 
 > 面向纯惯性里程计（Inertial Odometry）领域，以 AIR-IO 为主基线，目标期刊 IEEE RAL。
-> 执行模型：Claude Opus 4.6（执行器）+ GPT-5.4（审查器，通过三工具架构交互）
-> 交互通道：`codex exec`（结构化评分/多轮对话/图片审查）+ `/codex:adversarial-review`（代码审查）+ `/codex:rescue`（深度调查/协作）
+> 当前主线路径：**Codex 作为执行器** + **Claude Code CLI 作为审查器**（通过本地 `claude-review` MCP bridge）。
+> 兼容说明：本指南后半部分仍保留了一些较早期的 Codex 三工具实验性做法，作为补充参考，不再是仓库主线安装方式。
 > 运行模式：**完全自主，无需人工干预**
 
 ---
@@ -33,73 +33,68 @@
 
 ## 1. 环境准备
 
-### 1.1 安装 Claude Code
+### 1.1 安装 Codex CLI（执行器）
 
 ```bash
-# 方式一：npm 安装
-npm install -g @anthropic-ai/claude-code
+# npm 安装
+npm install -g @openai/codex
 
-# 方式二：已安装则确认版本
+# 验证
+codex --version
+
+# 首次配置
+codex setup
+```
+
+### 1.2 安装 Claude Code CLI（审查器）
+
+```bash
+npm install -g @anthropic-ai/claude-code
 claude --version
 ```
 
-### 1.2 安装 ARIS 技能
+### 1.3 安装 ARIS 技能
 
 ```bash
 # 克隆 ARIS 仓库（如果尚未克隆）
 git clone https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep.git
 
-# 将所有技能安装到 Claude Code
-cp -r Auto-claude-code-research-in-sleep/skills/* ~/.claude/skills/
+# 安装 Codex 主线基础技能
+mkdir -p ~/.codex/skills
+cp -a Auto-claude-code-research-in-sleep/skills/skills-codex/* ~/.codex/skills/
+
+# 叠加 Claude 审稿 overlay
+cp -a Auto-claude-code-research-in-sleep/skills/skills-codex-claude-review/* ~/.codex/skills/
 ```
 
-验证安装：在 Claude Code 中输入 `/` 后应能看到所有 ARIS 技能（如 `/research-pipeline`、`/deep-innovation-loop` 等）。
+验证安装：启动 `codex` 后，应该能在技能列表中看到 ARIS 技能（如 `/research-pipeline`、`/deep-innovation-loop` 等）。
 
-### 1.3 配置 Codex CLI + Codex Plugin（GPT-5.4 三工具架构）
+### 1.4 配置 Claude 审稿 bridge
 
-ARIS 使用三种方式与 GPT-5.4 交互，全部基于 Codex CLI：
+注册本地 `claude-review` MCP，让 Codex 把 reviewer-aware 技能路由到 Claude Code CLI：
 
 ```bash
-sudo apt update
-sudo apt install -y curl git build-essential
-
-# 安装 nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-
-# 让当前 shell 立即生效
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-
-# 安装 Node LTS 主线
-nvm install 24
-nvm use 24
-
-# 验证
-node -v
-npm -v
-
-# 安装 Codex CLI
-npm i -g @openai/codex
-
-# 验证
-codex --version
-
-# 配置 Codex（设置模型为 gpt-5.4）
-codex setup
-# 在弹出的配置中选择 gpt-5.4 模型
+mkdir -p ~/.codex/mcp-servers/claude-review
+cp Auto-claude-code-research-in-sleep/mcp-servers/claude-review/server.py ~/.codex/mcp-servers/claude-review/server.py
+codex mcp add claude-review -- python3 ~/.codex/mcp-servers/claude-review/server.py
 ```
 
-验证 Codex CLI：
+验证 bridge：
+
 ```bash
-codex exec --sandbox read-only --ephemeral "Say hello and list the top 3 files in this directory."
+codex mcp list
+claude -p "Reply with exactly READY" --output-format json --tools ""
 ```
 
-验证 Codex Plugin（安装后自动可用）：
-```
-/codex:setup
+启动项目：
+
+```bash
+codex -C /path/to/your/project
 ```
 
-ARIS 使用三种 Codex 通道（GPT-5.4 在所有通道中都能直接读取项目文件）：
+### 1.5 可选：保留旧的 Codex 深度审查实验通道
+
+如果你明确需要本指南后文提到的旧式三工具实验通道，再额外参考这些命令；但它们不再是 ARIS 主线默认路径：
 
 | 通道 | 用途 | 调用方式 |
 |------|------|---------|
@@ -107,11 +102,11 @@ ARIS 使用三种 Codex 通道（GPT-5.4 在所有通道中都能直接读取项
 | `/codex:adversarial-review` | 代码审查（读 git diff，结构化 findings） | Skill 命令 |
 | `/codex:rescue --effort xhigh` | 深度调查、失败诊断、协作问题解决 | Skill 命令 |
 
-### 1.4 可选配置
+### 1.6 可选配置
 
 #### 飞书通知（手机接收实验进度）
 
-创建 `~/.claude/feishu.json`：
+创建 `~/.codex/feishu.json`：
 ```json
 {
   "mode": "push",
@@ -122,7 +117,7 @@ ARIS 使用三种 Codex 通道（GPT-5.4 在所有通道中都能直接读取项
 
 #### W&B 训练监控
 
-在你的项目 `CLAUDE.md` 中添加：
+在你的项目 `CODEX.md` 中添加：
 ```markdown
 - wandb: true
 - wandb_project: inertial-odometry
@@ -139,9 +134,9 @@ mkdir ~/io-research && cd ~/io-research
 git init
 ```
 
-### 2.2 编写 CLAUDE.md
+### 2.2 编写 CODEX.md
 
-在项目根目录创建 `CLAUDE.md`，这是 ARIS 读取项目配置的核心文件：
+在项目根目录创建 `CODEX.md`，这是 Codex 主线路径读取项目配置的核心文件：
 
 ```markdown
 # Inertial Odometry Research Project
@@ -208,7 +203,7 @@ ARIS 会在研究过程中自动创建以下文件结构：
 
 ```
 ~/io-research/
-├── CLAUDE.md                        # 项目配置（你创建）
+├── CODEX.md                         # 项目配置（你创建）
 ├── RESEARCH_BRIEF.md                # 研究简报（你创建）
 ├── IDEA_REPORT.md                   # 创意发现报告（阶段一生成）
 ├── IDEA_CANDIDATES.md               # 精简版创意候选（compact 模式）

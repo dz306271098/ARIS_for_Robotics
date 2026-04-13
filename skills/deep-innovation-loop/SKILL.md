@@ -139,7 +139,7 @@ Follow the phases in order. Do **not** stop unless a stopping condition is met. 
 
 1. **Check for recovery**: Read `innovation-logs/INNOVATION_STATE.json`. Apply recovery logic above.
 
-2. **Read project context**: Load `RESEARCH_BRIEF.md` or `CLAUDE.md` for problem context. Read existing codebase to understand current method implementation.
+2. **Read project context**: Load `RESEARCH_BRIEF.md` or `CODEX.md` (fallback `CLAUDE.md`) for problem context. If `research-wiki/query_pack.md` exists, read it before freezing the research anchor and treat failed ideas as a banlist plus open gaps as literature seeds. Read existing codebase to understand current method implementation.
 
 3. **Freeze the Research Anchor** (immutable throughout the loop):
 
@@ -1022,10 +1022,20 @@ This skill composes with existing skills — invoke them as needed:
 
 ## Composing with Research Pipeline
 
-The `deep-innovation-loop` can be invoked from `/research-pipeline` by setting `DEEP_INNOVATION=true`:
+`deep-innovation-loop` is now part of the default `/research-pipeline` method-evolution stage:
 
-```
+```text
+/research-pipeline "robot manipulation"                                           # default: deep innovation gate in auto mode
 /research-pipeline "robot manipulation" — deep innovation: true, baseline: DAgger, venue: CoRL, domain: manipulation
+/research-pipeline "robot manipulation" — deep innovation: false
 ```
 
-This chains: `/idea-discovery` → implement → `/deep-innovation-loop` → `/auto-review-loop` (polish) → `/paper-write`
+Behavior:
+
+- `deep innovation: auto` — the pipeline runs an innovation gate after initial experiments and enters `deep-innovation-loop` when structural method evolution is still needed
+- `deep innovation: true` — always run `deep-innovation-loop`
+- `deep innovation: false` — skip deep innovation and go directly to `/auto-review-loop`
+
+When deep innovation is used, the mainline chain is:
+
+`/idea-discovery` -> implement -> `/deep-innovation-loop` -> `/auto-review-loop` (polish)

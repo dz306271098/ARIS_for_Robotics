@@ -2,7 +2,7 @@
 
 [中文版](SESSION_RECOVERY_GUIDE_CN.md) | English
 
-> How to maintain project state across sessions and context compaction in ARIS workflows — the core design is **Pipeline Status in your project CLAUDE.md**, with optional Claude Code hooks for automation.
+> How to maintain project state across sessions and context compaction in ARIS workflows — the core design is **Pipeline Status in your project `CODEX.md`** (legacy `CLAUDE.md` still works), with optional Claude Code hooks for automation.
 
 ## Why Session Recovery Matters
 
@@ -15,11 +15,11 @@ ARIS already persists some state to files (`REVIEW_STATE.json`, `AUTO_REVIEW.md`
 
 ## The Core Solution: Pipeline Status
 
-The single most important thing you can do is maintain a **`## Pipeline Status`** section in your project's `CLAUDE.md`. This is a lightweight, structured snapshot of "where the project is right now" — readable in 30 seconds, enough for any LLM to resume work.
+The single most important thing you can do is maintain a **`## Pipeline Status`** section in your project's `CODEX.md`. This is a lightweight, structured snapshot of "where the project is right now" — readable in 30 seconds, enough for any LLM to resume work.
 
 ### What Pipeline Status Contains
 
-Add this to your project `CLAUDE.md`:
+Add this to your project `CODEX.md`:
 
 ```yaml
 ## Pipeline Status
@@ -77,11 +77,11 @@ After Workflow 1 (`/idea-discovery`), `IDEA_REPORT.md` contains 8-12 candidate i
 3. Project notes or log files, if you maintain any (restore debugging context, decision rationale)
 4. If `active_tasks`/`training_status` is non-empty → check remote sessions, rebuild monitoring
 
-This works on **any platform** (Claude Code, Cursor, Trae, Codex CLI, OpenClaw) — it's just a Markdown convention.
+This works on **any platform** (Codex CLI, Claude Code, Cursor, Trae, OpenClaw) — it's just a Markdown convention.
 
-### Recommended CLAUDE.md Rules
+### Recommended `CODEX.md` Rules
 
-Add these rules to your project `CLAUDE.md` so the LLM knows when and how to maintain state:
+Add these rules to your project `CODEX.md` so the LLM knows when and how to maintain state:
 
 ```markdown
 ## State Persistence Rules
@@ -101,7 +101,7 @@ On new session or post-compaction recovery:
 
 ## Optional: Claude Code Hooks for Automation
 
-The Pipeline Status convention works without any tooling — the LLM just needs to follow the rules in CLAUDE.md. But in practice, LLMs sometimes forget, especially after compaction. Claude Code [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) can automate the recovery.
+The Pipeline Status convention works without any tooling — the LLM just needs to follow the rules in `CODEX.md`. But in practice, LLMs sometimes forget, especially after compaction. Claude Code [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) can automate the recovery.
 
 > **These hooks are Claude Code-specific.** If you use Cursor, Trae, or other platforms, skip this section — the Pipeline Status convention above is all you need.
 
@@ -145,11 +145,11 @@ FLAG="/tmp/aris-session-restore-$$"
 [ -f "$FLAG" ] && exit 0
 touch "$FLAG"
 
-# Find project root (nearest directory with CLAUDE.md)
+# Find project root (nearest directory with CODEX.md, fallback CLAUDE.md)
 PROJECT_DIR=""
 SEARCH_DIR="$CWD"
 while [[ "$SEARCH_DIR" == "$RESEARCH_ROOT"/* ]]; do
-  if [ -f "$SEARCH_DIR/CLAUDE.md" ]; then
+  if [ -f "$SEARCH_DIR/CODEX.md" ] || [ -f "$SEARCH_DIR/CLAUDE.md" ]; then
     PROJECT_DIR="$SEARCH_DIR"
     break
   fi
@@ -160,7 +160,9 @@ done
 OUTPUT=""
 
 # 1. Read Pipeline Status
-STATUS=$(sed -n '/^## Pipeline Status/,/^## [^P]/p' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null | head -15 | sed '$d')
+CONFIG_FILE="$PROJECT_DIR/CODEX.md"
+[ -f "$CONFIG_FILE" ] || CONFIG_FILE="$PROJECT_DIR/CLAUDE.md"
+STATUS=$(sed -n '/^## Pipeline Status/,/^## [^P]/p' "$CONFIG_FILE" 2>/dev/null | head -15 | sed '$d')
 if [ -n "$STATUS" ]; then
   OUTPUT="[session-restore] Research project detected. Current state:\n$STATUS"
 fi
@@ -171,7 +173,7 @@ if [ -f "$PROJECT_DIR/docs/research_contract.md" ]; then
 fi
 
 # 3. Check for active training
-if grep -q "training_status:.*running" "$PROJECT_DIR/CLAUDE.md" 2>/dev/null; then
+if grep -q "training_status:.*running" "$CONFIG_FILE" 2>/dev/null; then
   OUTPUT="$OUTPUT\n\n[session-restore] Active training detected — check remote status and rebuild monitoring."
 fi
 
@@ -184,7 +186,7 @@ if [ -f "$PROJECT_DIR/REVIEW_STATE.json" ]; then
 fi
 
 # 5. Suggest stage-appropriate actions
-STAGE=$(grep -oP '(?<=stage:\s).*' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null | head -1 | tr -d ' ')
+STAGE=$(grep -oP '(?<=stage:\s).*' "$CONFIG_FILE" 2>/dev/null | head -1 | tr -d ' ')
 case "$STAGE" in
   idea-discovery)
     OUTPUT="$OUTPUT\n\n[session-restore] Stage: idea-discovery. Resume with /idea-discovery or /research-lit." ;;

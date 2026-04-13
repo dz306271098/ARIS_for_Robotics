@@ -1,29 +1,68 @@
 # `skills-codex`
 
-Codex-native mirror of the base ARIS skill set.
+Codex-native ARIS skill pack.
 
-## Scope
+## What this package is
 
-This package keeps the main `skills/` workflows available for OpenAI Codex CLI.
+This directory is now the **main Codex executor pack** for ARIS. Install it into `~/.codex/skills/` and use it as the base layer for:
 
-Recent core workflow follow-up skills mirrored here include:
+- pure Codex execution
+- Codex + Claude review via `skills-codex-claude-review/`
+- Codex + Gemini review via `skills-codex-gemini-review/`
 
+It mirrors the current repository skill surface that is practical to run from Codex, including the newer support skills that were previously missing from the Codex pack:
+
+- `deep-innovation-loop`
+- `meta-optimize`
+- `research-wiki`
+- `semantic-scholar`
+- `system-profile`
+- `vast-gpu`
 - `training-check`
 - `result-to-claim`
 - `ablation-planner`
+- `rebuttal`
 
-These skills cover the experiment follow-up chain:
+`shared-references/` is included as a support directory and is intentionally not a callable skill.
 
-1. monitor training quality early
-2. judge what claims the results actually support
-3. design reviewer-facing ablations before paper writing
+## Mainline workflow embedding
+
+These newer support skills are not sidecars anymore. In the current mainline they fit together like this:
+
+- `research-wiki` is the long-horizon memory layer. Initialize it once after `CODEX.md` and `RESEARCH_BRIEF.md` are stable, then let `/research-lit`, `/idea-creator`, and `/result-to-claim` keep it fresh.
+- `deep-innovation-loop` is now part of the default `/research-pipeline` method-evolution path. The practical chain is:
+  `/idea-discovery -> implement -> /run-experiment -> innovation gate -> /deep-innovation-loop? -> /auto-review-loop`
+- `meta-optimize` is not part of fragile experiment execution. Use it after milestones to improve the harness based on artifacts such as `AUTO_REVIEW.md`, `innovation-logs/`, `refine-logs/`, `paper/`, `rebuttal/`, and `CODEX.md`.
+
+In other words:
+
+- `research-wiki` = memory layer
+- `deep-innovation-loop` = mainline evolution stage
+- `meta-optimize` = maintenance layer
 
 ## Install
 
-Copy this directory into your Codex skills path:
-
 ```bash
+mkdir -p ~/.codex/skills
 cp -a skills/skills-codex/* ~/.codex/skills/
 ```
 
-If you also use reviewer overlay packages, install this base package first, then apply the overlay on top.
+If you use a reviewer overlay, always install this base package first and then copy the overlay on top.
+
+## Project config naming
+
+For Codex-first usage, use a project-level `CODEX.md` as the primary config and status file.
+
+- `CODEX.md` is the only mainline project config name
+- mainline skills, tools, and docs in this package are expected to read `CODEX.md`
+
+## Scope boundary
+
+This package migrates the **skill files and support references**, not the whole runtime environment.
+
+You still need to provide and configure your own:
+
+- Python / LaTeX / GPU / SSH environment
+- MCP servers
+- API keys or CLI logins
+- project-specific `CODEX.md` / data / codebase

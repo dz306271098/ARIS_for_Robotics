@@ -1,7 +1,10 @@
 ---
 name: paper-illustration
 description: "Generate publication-quality AI illustrations for academic papers using Gemini image generation. Creates architecture diagrams, method illustrations with Codex-supervised iterative refinement loop. Use when user says \"生成图表\", \"画架构图\", \"AI绘图\", \"paper illustration\", \"generate diagram\", or needs visual figures for papers."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, WebSearch
+argument-hint: [description-or-method-file]
 ---
+
 
 # Paper Illustration: Multi-Stage Codex-Supervised Figure Generation
 

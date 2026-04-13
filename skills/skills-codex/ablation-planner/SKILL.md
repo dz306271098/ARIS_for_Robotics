@@ -1,8 +1,10 @@
 ---
 name: ablation-planner
 description: "Use when main results pass result-to-claim (`claim_supported = yes` or `partial`) and ablation studies are needed for paper submission. A secondary Codex agent designs ablations from a reviewer's perspective; the local executor reviews feasibility and implements."
+argument-hint: [method-description-or-claim]
 allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent
 ---
+
 
 # Ablation Planner
 

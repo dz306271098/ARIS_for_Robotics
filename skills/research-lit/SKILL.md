@@ -14,7 +14,7 @@ Research topic: $ARGUMENTS
 - **PAPER_LIBRARY** — Local directory containing user's paper collection (PDFs). Check these paths in order:
   1. `papers/` in the current project directory
   2. `literature/` in the current project directory
-  3. Custom path specified by user in `CLAUDE.md` under `## Paper Library`
+  3. Custom path specified by user in `CODEX.md` (fallback `CLAUDE.md`) under `## Paper Library`
 - **MAX_LOCAL_PAPERS = 20** — Maximum number of local PDFs to scan (read first 3 pages each). If more are found, prioritize by filename relevance to the topic.
 - **API_MAX_PER_QUERY = 100** — Maximum results per API query (arXiv, Semantic Scholar). Applies per query variant. Use `search-bulk` for S2 when requesting > 100.
 - **MAX_TOTAL_PAPERS = 500** — Overall cap on unique papers collected across all sources, query variants, and snowball expansion. The search continues adding papers until this cap is reached or all queries are exhausted. Set lower (e.g., 100) for faster search.

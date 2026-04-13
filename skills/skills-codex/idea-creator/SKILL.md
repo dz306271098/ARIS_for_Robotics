@@ -1,7 +1,10 @@
 ---
 name: "idea-creator"
 description: "Generate and rank research ideas given a broad direction. Use when user says \"\u627eidea\", \"brainstorm ideas\", \"generate research ideas\", \"what can we work on\", or wants to explore a research area for publishable directions."
+allowed-tools: Bash(*), Read, Write, Grep, Glob, WebSearch, WebFetch, Agent
+argument-hint: [research-direction]
 ---
+
 
 # Research Idea Creator
 
@@ -22,6 +25,23 @@ Given a broad research direction from the user, systematically generate, validat
 > 💡 Override via argument, e.g., `/idea-creator "topic" — pilot budget: 4h per idea, 20h total`.
 
 ## Workflow
+
+### Phase 0: Load Research Wiki (if `research-wiki/` exists)
+
+**Skip entirely if `research-wiki/` directory does not exist.**
+
+If the wiki exists, load it BEFORE landscape survey to avoid repeating known work:
+
+1. Read `research-wiki/query_pack.md` — compressed context (gaps, failed ideas, top papers)
+2. Treat listed gaps as priority search seeds for Phase 1
+3. Treat failed ideas as a banlist — do NOT regenerate the same dead ends
+4. Treat top papers as already-known prior work and focus the new search on what is missing
+
+If `query_pack.md` is missing or obviously stale:
+
+```bash
+python3 tools/research_wiki.py rebuild_query_pack research-wiki/
+```
 
 ### Phase 1: Landscape Survey (5-10 min)
 
@@ -207,6 +227,35 @@ Write a structured report to `IDEA_REPORT.md` in the project root:
 - [ ] If confirmed, invoke /auto-review-loop for full iteration
 ```
 
+### Phase 7: Write Ideas to Research Wiki (if `research-wiki/` exists)
+
+**Skip entirely if `research-wiki/` directory does not exist.**
+
+Write **all** generated ideas back to the wiki, not just the final recommendation:
+
+```bash
+for each idea (recommended AND eliminated):
+    # Create or update research-wiki/ideas/<id>.md with:
+    #   - node_id, stage, outcome
+    #   - hypothesis, method sketch, pilot result
+    #   - based_on papers and target gaps
+
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "idea:<id>" --to "paper:<slug>" --type "inspired_by" \
+      --evidence "Idea builds on or reacts to this paper"
+
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "idea:<id>" --to "gap:<gid>" --type "addresses_gap" \
+      --evidence "Idea explicitly targets this gap"
+done
+
+python3 tools/research_wiki.py rebuild_query_pack research-wiki/
+python3 tools/research_wiki.py log research-wiki/ \
+  "idea-creator wrote N ideas (recommended + eliminated)"
+```
+
+Failed ideas are the most valuable wiki memory because they prevent future re-ideation from looping back into the same dead ends.
+
 ## Key Rules
 
 - **Large file handling**: If the Write tool fails due to file size, immediately retry using Bash (`cat << 'EOF' > file`) to write in chunks. Do NOT ask the user for permission — just do it silently.
@@ -231,4 +280,3 @@ implement                     → write code
 /run-experiment               → deploy to GPU
 /auto-review-loop             → iterate until submission-ready
 ```
-

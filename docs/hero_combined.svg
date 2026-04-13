@@ -74,7 +74,7 @@
       <rect x="37" y="91" width="7" height="7" fill="#444"/>
       <rect x="44" y="91" width="7" height="7" fill="#444"/>
     </g>
-    <text x="38" y="82" text-anchor="middle" fill="#4A9EDA" font-size="7px" font-weight="bold">Claude Code</text>
+    <text x="38" y="82" text-anchor="middle" fill="#4A9EDA" font-size="7px" font-weight="bold">Codex</text>
 
     <!-- GPT Pixel Character (right, scaled 0.7) -->
     <g transform="translate(345,2) scale(0.7)">
@@ -128,7 +128,7 @@
       <rect x="37" y="91" width="7" height="7" fill="#444"/>
       <rect x="44" y="91" width="7" height="7" fill="#444"/>
     </g>
-    <text x="387" y="82" text-anchor="middle" fill="#74AA63" font-size="7px" font-weight="bold">GPT-5.4 xhigh</text>
+    <text x="387" y="82" text-anchor="middle" fill="#74AA63" font-size="7px" font-weight="bold">Claude Code</text>
 
     <!-- Conversation bubbles (compressed spacing) -->
     <rect x="65" y="90" width="200" height="22" fill="#e8f4fd" stroke="#4a9eda" stroke-width="1.2" rx="6"/>
@@ -223,7 +223,7 @@
       <rect x="37" y="91" width="7" height="7" fill="#444"/>
       <rect x="44" y="91" width="7" height="7" fill="#444"/>
     </g>
-    <text x="212" y="80" text-anchor="middle" fill="#4A9EDA" font-size="7px" font-weight="bold">Claude Code</text>
+    <text x="212" y="80" text-anchor="middle" fill="#4A9EDA" font-size="7px" font-weight="bold">Codex</text>
 
     <!-- Code editor panel -->
     <rect x="30" y="88" width="170" height="95" fill="#2d2d2d" rx="6"/>
@@ -394,7 +394,7 @@
       <rect x="37" y="91" width="7" height="7" fill="#444"/>
       <rect x="44" y="91" width="7" height="7" fill="#444"/>
     </g>
-    <text x="72" y="178" text-anchor="middle" fill="#4A9EDA" font-size="9px" font-weight="bold">Claude Code</text>
+    <text x="72" y="178" text-anchor="middle" fill="#4A9EDA" font-size="9px" font-weight="bold">Codex</text>
     <text x="72" y="188" text-anchor="middle" fill="#4A9EDA" font-size="9px" font-weight="bold">(Executor)</text>
 
     <!-- GPT Pixel Character (right side) -->
@@ -449,7 +449,7 @@
       <rect x="667" y="91" width="7" height="7" fill="#444"/>
       <rect x="674" y="91" width="7" height="7" fill="#444"/>
     </g>
-    <text x="813" y="178" text-anchor="middle" fill="#74AA63" font-size="9px" font-weight="bold">GPT-5.4 xhigh</text>
+    <text x="813" y="178" text-anchor="middle" fill="#74AA63" font-size="9px" font-weight="bold">Claude Code</text>
     <text x="813" y="188" text-anchor="middle" fill="#74AA63" font-size="9px" font-weight="bold">(Reviewer)</text>
 
     <!-- Row 1: CC → GPT -->
@@ -613,7 +613,7 @@
     <line x1="615" y1="135" x2="631" y2="135" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="4,2"/>
 
     <!-- GPT-5.4 label near score cards -->
-    <text x="498" y="238" text-anchor="middle" font-size="8px" fill="#74AA63" font-weight="bold">reviewed by GPT-5.4 xhigh</text>
+    <text x="498" y="238" text-anchor="middle" font-size="8px" fill="#74AA63" font-weight="bold">reviewed by Claude Code</text>
 
     <!-- Gemini Pixel Character (purple, right side, same size as CC/GPT) -->
     <g transform="translate(760,120)">
@@ -780,7 +780,7 @@
       <rect x="37" y="91" width="7" height="7" fill="#444"/>
       <rect x="44" y="91" width="7" height="7" fill="#444"/>
     </g>
-    <text x="40" y="228" text-anchor="middle" font-size="8px" fill="#4A9EDA" font-weight="bold">Claude Code</text>
+    <text x="40" y="228" text-anchor="middle" font-size="8px" fill="#4A9EDA" font-weight="bold">Codex</text>
     <text x="40" y="237" text-anchor="middle" font-size="7px" fill="#4A9EDA">(Drafter)</text>
 
     <!-- GPT pixel character (right-bottom, full body with glasses) -->

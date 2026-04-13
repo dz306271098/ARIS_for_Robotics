@@ -20,8 +20,30 @@ TOTAL_SKILLS=$(grep -c '"skill_invoke"' "$EVENTS_FILE" 2>/dev/null || echo 0)
 # Check when meta-optimize was last run
 if [ -f "$LAST_RUN_FILE" ]; then
     LAST_TS=$(cat "$LAST_RUN_FILE")
-    # Count skill invocations AFTER last run
-    SINCE_LAST=$(awk -v ts="$LAST_TS" '$0 ~ /"skill_invoke"/ && $0 > ts' "$EVENTS_FILE" | wc -l | tr -d ' ')
+    # Count skill invocations AFTER last run by parsing the JSONL timestamp field.
+    SINCE_LAST=$(python3 - "$EVENTS_FILE" "$LAST_TS" <<'PY'
+import json
+import sys
+
+events_path = sys.argv[1]
+last_ts = sys.argv[2]
+count = 0
+
+with open(events_path, encoding="utf-8") as f:
+    for raw in f:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if payload.get("event") == "skill_invoke" and payload.get("ts", "") > last_ts:
+            count += 1
+
+print(count)
+PY
+)
 else
     SINCE_LAST=$TOTAL_SKILLS
 fi

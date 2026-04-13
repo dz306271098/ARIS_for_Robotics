@@ -1,238 +1,231 @@
 ---
 name: meta-optimize
-description: "Analyze ARIS usage logs and propose optimizations to SKILL.md files, reviewer prompts, and workflow defaults. Outer-loop harness optimization inspired by Meta-Harness (Lee et al., 2026). Use when user says \"优化技能\", \"meta optimize\", \"improve skills\", \"分析使用记录\", or wants to optimize ARIS's own harness components based on accumulated experience."
+description: "Analyze ARIS workflow evidence and propose optimizations to SKILL.md files, reviewer prompts, and workflow defaults. Use when user says \"优化技能\", \"meta optimize\", \"improve skills\", \"分析使用记录\", or wants to improve ARIS's own harness based on real project traces."
 argument-hint: [target-skill-or-all]
 allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, Bash(codex*), Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
 # Meta-Optimize: Outer-Loop Harness Optimization for ARIS
 
-Analyze accumulated usage logs and propose optimizations for: **$ARGUMENTS**
+Analyze accumulated project evidence and propose harness improvements for: **$ARGUMENTS**
 
 ## Context
 
-ARIS is a **research harness** — a system of skills, bridges, workflows, and artifact contracts that wraps around LLMs to orchestrate research. This skill implements a prototype **outer loop** that observes how the harness is used and proposes improvements to the harness itself (not to the research artifacts it produces).
+ARIS is a research harness. This skill optimizes the harness itself:
 
-Inspired by Meta-Harness (Lee et al., 2026): the key insight is that harness design matters as much as model weights, and harness engineering can be partially automated by logging execution traces and using them to guide improvements.
+- skill prompts
+- default parameters
+- convergence rules
+- workflow ordering
+- artifact contracts
 
-## What This Skill Optimizes (Harness Components)
+It does **not** optimize the research artifact directly. Papers, code, and experiments stay in the normal research workflow; `meta-optimize` improves the system that produced them.
 
-| Component | Example | Optimizable? |
-|-----------|---------|:---:|
-| SKILL.md prompts | Reviewer instructions, quality gates, step descriptions | Yes |
-| Default parameters | `difficulty: medium`, `MAX_ROUNDS: 4`, `threshold: 6/10` | Yes |
-| Convergence rules | When to stop the review loop, retry counts | Yes |
-| Workflow ordering | Skill chain sequence within a workflow | Yes |
-| Artifact schemas | What fields go in EXPERIMENT_LOG.md, IDEA_REPORT.md | Cautious |
-| MCP bridge config | Which reviewer model, routing rules | No (infra) |
+## Codex-First Mainline Note
 
-**Not optimized**: The research artifacts themselves (papers, code, experiments). That's what the regular workflows do.
+In the current Codex executor + Claude reviewer mainline, `meta-optimize` should be treated as a **maintenance loop** that runs after evidence has accumulated.
 
-## Prerequisites
+It supports two evidence modes:
 
-1. **Logging must be active.** Copy `templates/claude-hooks/meta_logging.json` into your project's `.claude/settings.json` (or merge the hooks section).
-2. **Sufficient data.** At least 5 complete workflow runs logged in `.aris/meta/events.jsonl`. The skill will check and warn if insufficient.
+| Mode | When to use | Required input |
+|------|-------------|----------------|
+| **Artifact-first** | Default for Codex mainline | `AUTO_REVIEW.md`, `innovation-logs/`, `refine-logs/`, `findings.md`, `paper/`, `rebuttal/`, `CODEX.md` |
+| **Event-log enhanced** | Optional, when you also collect hook logs | `.aris/meta/events.jsonl` plus the artifacts above |
+
+Hook logs are helpful but no longer mandatory. If `.aris/meta/events.jsonl` does not exist, analyze the project artifacts instead of erroring out.
+
+## Recommended Workflow Embedding
+
+Use `meta-optimize` at milestone boundaries, not in the middle of a fragile experiment run:
+
+1. After one full `/research-pipeline` pass:
+   ```text
+   /meta-optimize "research-pipeline"
+   ```
+2. After repeated review stalls:
+   ```text
+   /meta-optimize "auto-review-loop"
+   ```
+3. After a long innovation plateau:
+   ```text
+   /meta-optimize "deep-innovation-loop"
+   ```
+4. After paper-writing or rebuttal friction:
+   ```text
+   /meta-optimize "paper-writing"
+   /meta-optimize "rebuttal"
+   ```
+5. When you want a cross-project maintenance sweep:
+   ```text
+   /meta-optimize all
+   ```
+
+Never auto-apply harness patches from inside a main research workflow. Generate a report first, review it, then explicitly apply a selected change.
+
+## Optional Logging Enhancement
+
+If you want passive event logs in addition to artifact analysis, merge:
+
+```text
+templates/claude-hooks/meta_logging.json
+```
+
+into any Claude Code sessions you still run for auxiliary work. This writes:
+
+- project log: `.aris/meta/events.jsonl`
+- global log: `~/.aris/meta/events.jsonl`
+
+and uses:
+
+- `tools/meta_opt/log_event.sh`
+- `tools/meta_opt/check_ready.sh`
+
+The hook path is optional enhancement, not a hard prerequisite for the Codex mainline.
 
 ## Workflow
 
-### Step 0: Check Data Availability
+### Step 0: Determine Available Evidence
 
-```bash
-EVENTS_FILE=".aris/meta/events.jsonl"
-if [ ! -f "$EVENTS_FILE" ]; then
-    echo "ERROR: No event log found at $EVENTS_FILE"
-    echo "Enable logging first: copy templates/claude-hooks/meta_logging.json into .claude/settings.json"
-    exit 1
-fi
+Check for evidence in this order:
 
-EVENT_COUNT=$(wc -l < "$EVENTS_FILE")
-SKILL_INVOCATIONS=$(grep -c '"skill_invoke"' "$EVENTS_FILE" || echo 0)
-SESSIONS=$(grep -c '"session_start"' "$EVENTS_FILE" || echo 0)
+1. `.aris/meta/events.jsonl`
+2. `AUTO_REVIEW.md`, `REVIEW_STATE.json`
+3. `innovation-logs/INNOVATION_STATE.json`, `innovation-logs/EVOLUTION_LOG.md`, `innovation-logs/score-history.csv`
+4. `refine-logs/EXPERIMENT_PLAN.md`, `refine-logs/EXPERIMENT_TRACKER.md`, `EXPERIMENT_LOG.md`, `findings.md`
+5. `paper/`, `PAPER_IMPROVEMENT_LOG.md`, `rebuttal/`
+6. `CODEX.md` for current defaults, recurring overrides, and project-level constraints
 
-echo "📊 Event log: $EVENT_COUNT events, $SKILL_INVOCATIONS skill invocations, $SESSIONS sessions"
+If **none** of these are present, stop and report:
 
-if [ "$SKILL_INVOCATIONS" -lt 5 ]; then
-    echo "⚠️  Insufficient data (<5 skill invocations). Continue using ARIS normally and re-run later."
-    exit 0
-fi
+```text
+Insufficient evidence for meta-optimize. Finish at least one major workflow stage first.
 ```
 
-### Step 1: Analyze Usage Patterns
+### Step 1: Build an Evidence Summary
 
-Read `.aris/meta/events.jsonl` and compute:
+#### If event logs exist
 
-**Frequency analysis:**
-- Which skills are invoked most often?
-- Which slash commands do users type most?
-- What parameter overrides are most common? (These suggest bad defaults.)
+Analyze:
 
-**Failure analysis:**
-- Which tools fail most often? In which skills?
-- What error patterns repeat? (OOM, import, compilation, timeout)
-- How many auto-debug retries per workflow run?
+- most-invoked skills
+- repeated parameter overrides
+- repeated tool failures
+- sessions between optimizations
+- manual interruptions and recurring user corrections
 
-**Convergence analysis (for auto-review-loop):**
-- Average rounds to reach threshold
-- Score trajectory shape (fast improvement? plateau? oscillation?)
-- Which review round catches the most critical issues?
-- Do users override difficulty mid-run?
+#### Always analyze artifacts
 
-**Human intervention analysis:**
-- Where do users interrupt with manual prompts during workflows?
-- What manual corrections do users make most? (These indicate skill gaps.)
+Look for:
 
-Present findings as a structured summary table.
+- repeated `auto-review-loop` criticisms across rounds or projects
+- repeated `deep-innovation-loop` plateaus, regressions, or blacklisted patterns
+- repeated experiment failures or rescue patterns in `findings.md`
+- repeated paper-writing or rebuttal issues
+- places where `CODEX.md` repeatedly forces the same manual workaround because a skill default is poor
+
+Present a compact table of recurring friction:
+
+```markdown
+| Signal | Evidence | Likely harness problem |
+|--------|----------|------------------------|
+| Auto-review keeps asking for the same ablation | AUTO_REVIEW.md rounds 2-4 | experiment-plan under-specifies must-run ablations |
+| Deep loop plateaus after 3 rounds | innovation-logs/score-history.csv | diagnosis step too shallow or blacklist not enforced strongly |
+| Paper compile failures repeat | PAPER_IMPROVEMENT_LOG.md | paper-write emits brittle LaTeX patterns |
+```
 
 ### Step 2: Identify Optimization Targets
 
-Based on Step 1, rank optimization opportunities by expected impact:
+Rank opportunities by expected impact and confidence:
 
 ```markdown
-## Optimization Opportunities (ranked)
+## Optimization Opportunities
 
-| # | Target | Signal | Proposed Change | Expected Impact |
-|---|--------|--------|-----------------|-----------------|
-| 1 | auto-review-loop default threshold | Users override to 7/10 in 60% of runs | Change default from 6/10 to 7/10 | Fewer manual overrides |
-| 2 | experiment-bridge retry count | 40% of runs hit max retries on OOM | Add OOM-specific recovery (reduce batch size) | Fewer failed experiments |
-| 3 | paper-write de-AI patterns | Users manually fix "delve" in 80% of runs | Add "delve" to default watchword list | Fewer manual edits |
+| # | Target | Evidence | Proposed Change | Confidence |
+|---|--------|----------|-----------------|------------|
+| 1 | research-pipeline default stage ordering | deep innovation was manually inserted in multiple projects | make innovation gate part of mainline | high |
+| 2 | idea-creator wiki integration | repeated re-discovery of failed ideas | load query_pack before ideation and write killed ideas back | high |
+| 3 | paper-writing default venue checks | repeated page-limit fixes | add earlier page-budget validation | medium |
 ```
 
-If `$ARGUMENTS` specifies a target skill, focus analysis on that skill only.
-If `$ARGUMENTS` is empty or "all", analyze all skills with sufficient data.
+If `$ARGUMENTS` names a specific skill, focus only on that surface.
 
-### Step 3: Generate Patch Proposals
+### Step 3: Generate Minimal Patch Proposals
 
-For each optimization target, generate a concrete diff:
+For each target, write a small diff and tie it to evidence. One patch per idea.
 
-```diff
---- a/skills/auto-review-loop/SKILL.md
-+++ b/skills/auto-review-loop/SKILL.md
-@@ -15,7 +15,7 @@
- ## Constants
- 
--- **SCORE_THRESHOLD = 6** — Minimum review score to accept.
-+- **SCORE_THRESHOLD = 7** — Minimum review score to accept. (Raised based on usage data: 60% of users overrode to 7+.)
-```
+Rules:
 
-**Rules for patch generation:**
-- One patch per optimization target
-- Each patch must include a comment explaining WHY (with data from the log)
-- Patches must be minimal — change only what the data supports
-- Never change artifact schemas or MCP bridge config in v1
-- Never change behavior that would break existing user workflows
+- minimal changes only
+- cite evidence explicitly
+- do not auto-change bridge infra
+- do not rewrite large skills without a traceable reason
 
-### Step 4: Cross-Model Review of Patches
+### Step 4: Cross-Model Review
 
-Send each patch to GPT-5.4 xhigh for adversarial review:
+Before recommending a patch, run a cross-model review using the reviewer path available in the current environment. The reviewer should answer:
 
-```bash
-codex exec --sandbox read-only -m gpt-5.4 "You are reviewing a proposed optimization to an ARIS SKILL.md file. Read the project files directly.
+1. Does the evidence support the proposed change?
+2. Could the change hurt other workflows?
+3. Is this the minimal safe fix?
+4. Should the patch be applied now, later, or never?
 
-## Original Skill (relevant section)
-[paste original]
+If no external reviewer path is available, do a local critical review and mark it as such.
 
-## Proposed Patch
-[paste diff]
+### Step 5: Present the Report
 
-## Evidence from Usage Log
-[paste summary stats]
-
-Review this patch:
-1. Does the evidence support the change?
-2. Could this change hurt other use cases?
-3. Is the change minimal and safe?
-4. Score 1-10: should this be applied?
-
-If score < 7, explain what additional evidence would be needed."
-```
-
-### Step 5: Present Results
-
-Output a structured report:
+Output:
 
 ```markdown
 # ARIS Meta-Optimization Report
 
-**Date**: [today]
-**Data**: [N] events, [M] skill invocations, [K] sessions
-**Target**: [skill name or "all"]
+**Target**: [skill or all]
+**Evidence mode**: artifact-first | event-log enhanced
 
 ## Proposed Changes
+- [change 1]
+- [change 2]
 
-### Change 1: [title]
-- **Target**: [skill/file:line]
-- **Signal**: [what the data shows]
-- **Patch**: [diff]
-- **Reviewer Score**: [X/10]
-- **Reviewer Notes**: [summary]
-- **Status**: ✅ Recommended / ⚠️ Needs more data / ❌ Rejected
+## Deferred Changes
+- [needs more evidence]
 
-### Change 2: ...
-
-## Changes NOT Made (insufficient evidence)
-- [pattern observed but too few samples]
-
-## Recommendations
-- [ ] Apply Change 1 (reviewer approved)
-- [ ] Collect more data for Change 3 (need N more runs)
-- [ ] Consider manual review of Change 2
-
-## Next Steps
-Run `/meta-optimize apply 1` to apply a specific change, or
-`/meta-optimize apply all` to apply all recommended changes.
+## Recommended Next Actions
+- [ ] Apply change 1
+- [ ] Collect more evidence for change 2
+- [ ] Re-run meta-optimize after next milestone
 ```
 
-### Step 6: Apply Changes (if user approves)
+### Step 6: Apply Only on Explicit Command
 
-If user runs `/meta-optimize apply [N]`:
-1. Back up original SKILL.md to `.aris/meta/backups/`
-2. Apply the patch
-3. Log the change to `.aris/meta/optimizations.jsonl`
-4. Remind user to test the changed skill on their next run
+If the user runs:
 
-**Never auto-apply without user approval.**
-
-## Key Rules
-
-- **Log-driven, not speculative.** Every proposed change must cite specific data from the event log. No "I think this would be better."
-- **Minimal patches.** Change one thing at a time. Don't rewrite entire skills.
-- **Reviewer-gated.** Every patch goes through cross-model review before recommendation.
-- **Reversible.** Always back up before applying. Always log what changed.
-- **User-approved.** Never auto-apply. Present, explain, let the user decide.
-- **Honest about uncertainty.** If the data is insufficient, say so. Don't optimize on noise.
-- **Portable.** Optimizations should improve the skill for all users, not just one user's style. If a change seems user-specific, flag it.
-
-## Event Schema Reference
-
-The log at `.aris/meta/events.jsonl` contains JSONL records with these shapes:
-
-```jsonl
-{"ts":"...","session":"...","event":"skill_invoke","skill":"auto-review-loop","args":"difficulty: hard"}
-{"ts":"...","session":"...","event":"PostToolUse","tool":"Bash","input_summary":"pdflatex main.tex"}
-{"ts":"...","session":"...","event":"codex_call","tool":"codex_exec","input_summary":"review..."}
-{"ts":"...","session":"...","event":"tool_failure","tool":"Bash","input_summary":"python train.py"}
-{"ts":"...","session":"...","event":"slash_command","command":"/auto-review-loop","args":""}
-{"ts":"...","session":"...","event":"user_prompt","prompt_preview":"change difficulty to hard"}
-{"ts":"...","session":"...","event":"session_start","source":"startup","model":"claude-opus-4-6"}
-{"ts":"...","session":"...","event":"session_end"}
+```text
+/meta-optimize apply 1
+/meta-optimize apply all
 ```
+
+then:
+
+1. back up the touched skill files to `.aris/meta/backups/`
+2. apply the patch
+3. append a record to `.aris/meta/optimizations.jsonl`
+4. recommend validating the changed workflow on the next project
+
+Never auto-apply from a read-only analysis run.
 
 ## Triggering
 
-This skill is NOT part of the standard W1→W1.5→W2→W3→W4 pipeline. It is a **maintenance workflow** with three trigger mechanisms:
+`meta-optimize` is not part of the default research execution loop. It is a maintenance layer triggered by:
 
-1. **Passive logging** (always on): Claude Code hooks record events to `.aris/meta/events.jsonl` automatically during normal usage. Zero user effort.
+- explicit user request
+- end-of-milestone review
+- optional SessionEnd reminder from `tools/meta_opt/check_ready.sh` when hook logs are enabled
 
-2. **Automatic readiness check** (SessionEnd hook): When a Claude Code session ends, `check_ready.sh` counts skill invocations since the last `/meta-optimize` run. If ≥5 new invocations have accumulated, it prints a reminder:
-   ```
-   📊 ARIS has logged 8 skill runs since last optimization. Run /meta-optimize to check for improvement opportunities.
-   ```
-   This is a **suggestion only** — it does not auto-run optimization.
+The SessionEnd reminder is advisory only.
 
-3. **Manual trigger**: User runs `/meta-optimize` when they see the reminder or whenever they want.
+## Key Rules
 
-**After each `/meta-optimize` run**, the skill writes the current timestamp to `.aris/meta/.last_optimize` so the readiness check only counts new invocations.
-
-## Acknowledgements
-
-Inspired by [Meta-Harness](https://arxiv.org/abs/2603.28052) (Lee et al., 2026) — end-to-end optimization of model harnesses via filesystem-based experience access and agentic code search.
+- **Artifact evidence is first-class.** Lack of hook logs is not a reason to abort.
+- **Log-driven, not vibe-driven.** Every patch must tie back to concrete traces or artifacts.
+- **Maintenance is downstream of research, not upstream.** Do not stall the active project to refactor the harness mid-flight.
+- **Never auto-apply.** Optimization proposals must be reviewed before they mutate the harness.
+- **Optimize for future runs.** The purpose is to reduce repeated friction in the next project, not to churn the current one for marginal prompt cosmetics.

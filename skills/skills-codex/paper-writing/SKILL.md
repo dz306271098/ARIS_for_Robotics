@@ -1,7 +1,10 @@
 ---
 name: "paper-writing"
 description: "Workflow 3: Full paper writing pipeline. Orchestrates paper-plan \u2192 paper-figure \u2192 paper-write \u2192 paper-compile \u2192 auto-paper-improvement-loop to go from a narrative report to a polished, submission-ready PDF. Use when user says \\\"\u5199\u8bba\u6587\u5168\u6d41\u7a0b\\\", \\\"write paper pipeline\\\", \\\"\u4ece\u62a5\u544a\u5230PDF\\\", \\\"paper writing\\\", or wants the complete paper generation workflow."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, Skill
+argument-hint: [narrative-report-path-or-topic]
 ---
+
 
 # Workflow 3: Paper Writing Pipeline
 

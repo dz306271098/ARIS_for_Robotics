@@ -1,7 +1,10 @@
 ---
 name: "paper-plan"
-description: "Generate a structured paper outline from review conclusions and experiment results. Use when user says \\\"\u5199\u5927\u7eb2\\\", \\\"paper outline\\\", \\\"plan the paper\\\", \\\"\u8bba\u6587\u89c4\u5212\\\", or wants to create a paper plan before writing."
+description: "Generate a structured paper outline from review conclusions and experiment results. Use when you need to turn evidence into a venue-aware paper plan before drafting."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, WebSearch, WebFetch
+argument-hint: [topic-or-narrative-doc]
 ---
+
 
 # Paper Plan: From Review Conclusions to Paper Outline
 
@@ -9,263 +12,225 @@ Generate a structured, section-by-section paper outline from: **$ARGUMENTS**
 
 ## Constants
 
-- **REVIEWER_MODEL = `gpt-5.4`** — Model used via a secondary Codex agent for outline review. Must be an OpenAI model.
-- **TARGET_VENUE = `ICLR`** — Default venue. User can override (e.g., `/paper-plan "topic" — venue: NeurIPS`). Supported: `ICLR`, `NeurIPS`, `ICML`, `CVPR`, `ACL`, `AAAI`, `ACM`, `IEEE_JOURNAL` (IEEE Transactions / Letters), `IEEE_CONF` (IEEE conferences).
-- **MAX_PAGES** — Page limit. For ML conferences: main body to Conclusion end (excluding references, appendix). ICLR=9, NeurIPS=9, ICML=8. **For IEEE venues: references ARE included in page count.** IEEE journal Transactions ≈ 12-14 pages total, Letters ≈ 4-5 pages total; IEEE conference ≈ 5-8 pages total (including references).
+- **REVIEWER_MODEL = `gpt-5.4`** — Used via a secondary Codex reviewer agent for outline review
+- **TARGET_VENUE = `ICLR`** — Override as needed
+- **MAX_PAGES** — Venue-specific hard budget; for IEEE-style venues, references count too
 
 ## Inputs
 
-The skill expects one or more of these in the project directory:
+Use whatever exists in the project:
 
-1. **NARRATIVE_REPORT.md** or **STORY.md** — research narrative with claims and evidence
-2. **GPT54_AUTO_REVIEW.md** — auto-review loop conclusions
-3. **Experiment results** — JSON files in `figures/`, screen logs, tables
-4. **IDEA_REPORT.md** — from idea-discovery pipeline (if applicable)
-5. **CLAIMS_FROM_RESULTS.md** — structured claim judgment from `/result-to-claim` (preferred if available)
+1. `CLAIMS_FROM_RESULTS.md` — preferred claim source
+2. `NARRATIVE_REPORT.md` or `STORY.md`
+3. `AUTO_REVIEW.md`, `RESEARCH_REVIEW.md`, rebuttal notes, reviewer findings
+4. experiment results, tables, figure-ready JSON/CSV
+5. `IDEA_REPORT.md`, `FINAL_METHOD.md`, `CODEX.md`, `RESEARCH_BRIEF.md`
 
-If none exist, ask the user to describe the paper's contribution in 3-5 sentences.
-
-## Orchestra-Guided Writing Overlay
-
-Keep the existing workflow and outputs, but use the shared references below to improve the quality of the story and outline:
-
-- Read `../shared-references/writing-principles.md` when framing the Abstract, Introduction, Related Work, or hero figure
-- Read `../shared-references/venue-checklists.md` before freezing the outline for a specific venue
-- Load these references only when they help; they are support material, not a new workflow phase
+If no narrative file exists, infer the contribution from the available project artifacts and write that inference down before planning the paper.
 
 ## Workflow
 
 ### Step 1: Extract Claims and Evidence
 
-**First check for `CLAIMS_FROM_RESULTS.md`** — if it exists, use it as the starting point for claims and merge it with any additional evidence from the narrative documents below.
+Build a claims-evidence matrix first. Paper structure comes after this.
 
-Read all available narrative documents and extract:
+Extract:
 
-1. **Core claims** (3-5 main contributions)
-2. **Evidence** for each claim (which experiments, which metrics, which figures)
-3. **Known weaknesses** (from reviewer feedback)
-4. **Suggested framing** (from review conclusions)
+1. **one-sentence contribution** — the single sentence a reviewer should remember
+2. **core claims** — 3-5 claims maximum
+3. **evidence per claim** — figures, tables, ablations, proofs, or analysis
+4. **known weaknesses** — open risks, weak baselines, scope boundaries
+5. **venue-specific framing constraints** — what must be front-loaded
 
-Build a **Claims-Evidence Matrix**:
-
-```markdown
-| Claim | Evidence | Status | Section |
-|-------|----------|--------|---------|
-| [claim 1] | [exp A, metric B] | Supported | §3.2 |
-| [claim 2] | [exp C] | Partially supported | §4.1 |
-```
-
-### Step 2: Determine Paper Type and Structure
-
-Based on TARGET_VENUE and paper content, classify and select structure.
-
-Before committing to a structure, apply the narrative principle from `../shared-references/writing-principles.md`:
-
-- The paper should tell one coherent technical story
-- By the end of the Introduction, the outline should make the **What**, **Why**, and **So What** explicit
-- Front-load the most important material: title, abstract, introduction, and hero figure
-
-**IMPORTANT**: The section count is FLEXIBLE (5-8 sections). Choose what fits the content best. The templates below are starting points, not rigid constraints.
-
-**Empirical/Diagnostic paper:**
-```
-1. Introduction (1.5 pages)
-2. Related Work (1 page)
-3. Method / Setup (1.5 pages)
-4. Experiments (3 pages)
-5. Analysis / Discussion (1 page)
-6. Conclusion (0.5 pages)
-```
-
-**Theory + Experiments paper:**
-```
-1. Introduction (1.5 pages)
-2. Related Work (1 page)
-3. Preliminaries & Modeling (1.5 pages)
-4. Experiments (1.5 pages)
-5. Theory Part A (1.5 pages)
-6. Theory Part B (1.5 pages)
-7. Conclusion (0.5 pages)
-— Total: 9 pages
-```
-Theory papers often need 7 sections (splitting theory into estimation + optimization, or setup + analysis). The total page budget MUST sum to MAX_PAGES.
-
-Theory papers should:
-- Include **proof sketch** locations (not just theorem statements)
-- Plan a **comparison table** of prior theoretical bounds vs. this paper's bounds
-- Identify which proofs go in appendix vs. main body
-
-**Method paper:**
-```
-1. Introduction (1.5 pages)
-2. Related Work (1 page)
-3. Method (2 pages)
-4. Experiments (2.5 pages)
-5. Ablation / Analysis (1 page)
-6. Conclusion (0.5 pages)
-```
-
-### Step 3: Section-by-Section Planning
-
-For each section, specify:
+Write:
 
 ```markdown
-### §0 Abstract
-- **One-sentence problem**: [what gap this paper addresses]
-- **Approach**: [what we do, in one sentence]
-- **Key result**: [most compelling quantitative finding]
-- **Implication**: [why it matters]
-- **Estimated length**: 150-250 words
-- **Self-contained check**: can a reader understand this without the paper?
-
-### §1 Introduction
-- **Opening hook**: [1-2 sentences that motivate the problem]
-- **Gap**: [what's missing in prior work]
-- **Key questions**: [the research questions this paper answers]
-- **Contributions**: [numbered list, matching Claims-Evidence Matrix]
-- **Hero figure**: [describe what Figure 1 should show — MUST include clear comparison if applicable]
-- **Estimated length**: 1.5 pages
-- **Key citations**: [3-5 papers to cite here]
-
-### §2 Related Work
-- **Subtopics**: [2-4 categories of related work]
-- **Positioning**: [how this paper differs from each category]
-- **Minimum length**: 1 full page (at least 3-4 paragraphs with substantive synthesis)
-- **Must NOT be just a list** — synthesize, compare, and position
-
-### §3 Method / Setup / Preliminaries
-- **Notation**: [key symbols and their meanings]
-- **Problem formulation**: [formal setup]
-- **Method description**: [algorithm, model, or experimental design]
-- **Formal statements**: [theorems, propositions if applicable]
-- **Proof sketch locations**: [which key steps appear here vs. appendix]
-- **Estimated length**: 1.5-2 pages
-
-### §4 Experiments / Main Results
-- **Figures planned**:
-  - Fig 1: [description, type: bar/line/table/architecture, WHAT COMPARISON it shows]
-  - Fig 2: [description]
-  - Table 1: [what it shows, which methods/baselines compared]
-- **Data source**: [which JSON files / experiment results]
-
-### §5 Conclusion
-- **Restatement**: [contributions rephrased, not copy-pasted from intro]
-- **Limitations**: [honest assessment — reviewers value this]
-- **Future work**: [1-2 concrete directions]
-- **Estimated length**: 0.5 pages
+| Claim | Evidence | Status | Risk | Planned Section |
+|-------|----------|--------|------|-----------------|
 ```
 
-### Step 4: Figure Plan
+If a claim lacks evidence, mark it `needs_experiment` instead of pretending it belongs in the paper.
 
-List every figure and table:
+### Step 2: Choose the Paper Type and Story
+
+Classify the paper before you allocate sections:
+
+- empirical / diagnostic
+- method paper
+- theory + experiments
+- systems / robotics validation
+
+Then apply three story checks:
+
+1. **What** is the contribution?
+2. **Why** was the problem hard or unresolved before?
+3. **So what** changes because this contribution exists?
+
+If the introduction cannot answer all three early, the story is not ready.
+
+### Step 3: Allocate Venue-Aware Structure
+
+Pick the section count that fits the story. Do not force everything into a rigid template.
+
+For each section, define:
+
+- purpose
+- claims carried by the section
+- evidence consumed by the section
+- expected length
+- required citations
+- what can move to appendix if space collapses
+
+Also explicitly front-load:
+
+- the one-sentence contribution
+- the hero result
+- the minimum novelty positioning
+- the clearest system or method overview figure
+
+### Step 4: Venue-Specific Notes
+
+For robotics and IEEE-style venues, apply stricter structure checks.
+
+#### RAL / ICRA / IROS style
+
+- include a system overview figure early
+- include recent baselines, not just classic ones
+- include runtime or latency analysis for real-time claims
+- include failure cases or boundary conditions
+- remember that page pressure is severe, especially when references count
+
+#### ML conference style
+
+- make the intro self-sufficient
+- tie every experiment to a claim
+- do not bury the strongest result after the method
+- related work must synthesize, not just enumerate
+
+### Step 5: Section-by-Section Planning
+
+For each section, specify a concrete plan:
 
 ```markdown
-## Figure Plan
+### Abstract
+- problem
+- why it matters
+- approach
+- strongest result
+- exact takeaway
 
-| ID | Type | Description | Data Source | Priority |
-|----|------|-------------|-------------|----------|
-| Fig 1 | Hero/Architecture | System overview + comparison | manual | HIGH |
-| Fig 2 | Line plot | Training curves comparison | figures/exp_A.json | HIGH |
-| Fig 3 | Bar chart | Ablation results | figures/ablation.json | MEDIUM |
-| Table 1 | Comparison table | Main results vs. baselines | figures/main_results.json | HIGH |
-| Table 2 | Theory comparison | Prior bounds vs. ours | manual | HIGH (theory papers) |
+### Introduction
+- opening hook
+- gap
+- one-sentence contribution
+- contributions list
+- hero figure description
+
+### Related Work
+- 2-4 subclusters
+- exact positioning against each cluster
+
+### Method / Setup
+- formulation
+- design choices
+- what is genuinely new
+
+### Experiments
+- main table
+- ablations
+- robustness / failure analysis
+- statistical notes
+
+### Conclusion
+- concise restatement
+- limitations
+- future work
 ```
 
-**CRITICAL for Figure 1 / Hero Figure**: Describe in detail what the figure should contain, including:
-- Which methods are being compared
-- What the visual difference should demonstrate
-- Caption draft that clearly states the comparison
+### Step 6: Figure and Table Plan
 
-### Step 5: Citation Scaffolding
-
-For each section, list required citations:
+List every figure and table with purpose and data source:
 
 ```markdown
-## Citation Plan
-- §1 Intro: [paper1], [paper2], [paper3] (problem motivation)
-- §2 Related: [paper4]-[paper10] (categorized by subtopic)
-- §3 Method: [paper11] (baseline), [paper12] (technique we build on)
+| ID | Type | Purpose | Data Source | Priority |
+|----|------|---------|-------------|----------|
 ```
 
-**Citation rules** (from claude-scholar + Imbad0202/academic-research-skills):
-1. NEVER generate BibTeX from memory — always verify via search or existing .bib files
-2. Every citation must be verified: correct authors, year, venue
-3. Flag any citation you're unsure about with `[VERIFY]`
-4. Prefer published versions over arXiv preprints when available
+For the hero figure, specify:
 
-### Step 6: Cross-Review with REVIEWER_MODEL
+- what is being compared
+- what a skim reader should notice in 3 seconds
+- caption draft
+- why this figure earns the early placement
 
-Send the complete outline to GPT-5.4 xhigh for feedback:
+### Step 7: Citation Scaffolding
 
-```
+For each section, list required citations and whether they are verified.
+
+Rules:
+
+- never invent citations from memory
+- verify authors, venue, and year
+- prefer published versions when they exist
+- mark uncertain items `[VERIFY]`
+
+### Step 8: External Outline Review
+
+Send the outline to a reviewer agent before freezing it:
+
+```text
 spawn_agent:
-  model: gpt-5.4
+  model: REVIEWER_MODEL
   reasoning_effort: xhigh
   message: |
-    Review this paper outline for a [VENUE] submission.
-    [full outline including Claims-Evidence Matrix]
+    PAPER OUTLINE REVIEW
 
-    Score 1-10 on:
-    1. Logical flow — does the story build naturally?
-    2. Claim-evidence alignment — every claim backed?
-    3. Missing experiments or analysis
-    4. Positioning relative to prior work
-    5. Page budget feasibility (MAX_PAGES = main body to Conclusion end, excluding refs/appendix)
+    Target venue:
+    [venue]
 
-    For each weakness, suggest the MINIMUM fix.
-    Be specific and actionable — "add X" not "consider more experiments".
+    One-sentence contribution:
+    [sentence]
+
+    Claims-evidence matrix:
+    [matrix]
+
+    Outline:
+    [section-by-section plan]
+
+    Figure plan:
+    [figures and tables]
+
+    Return:
+    1. logical_flow_score: 1-10
+    2. claim_evidence_alignment: strong | mixed | weak
+    3. missing_sections_or_analysis: ranked list
+    4. overclaimed_sections: ranked list
+    5. venue_fit_risks: ranked list
+    6. page_budget_risks: ranked list
+    7. minimum_fixes: concrete edits only
 ```
 
-Apply feedback before finalizing.
+Apply the minimum credible fixes before finalizing.
 
-### Step 7: Output
+### Step 9: Output
 
-Save the final outline to `PAPER_PLAN.md` in the project root:
+Write `PAPER_PLAN.md` with:
 
-```markdown
-# Paper Plan
-
-**Title**: [working title]
-**Venue**: [target venue]
-**Type**: [empirical/theory/method]
-**Date**: [today]
-**Page budget**: [MAX_PAGES] pages (main body to Conclusion end, excluding references & appendix)
-**Section count**: [N] (must match the number of section files that will be created)
-
-## Claims-Evidence Matrix
-[from Step 1]
-
-## Structure
-[from Step 2-3, section by section]
-
-## Figure Plan
-[from Step 4, with detailed hero figure description]
-
-## Citation Plan
-[from Step 5]
-
-## Reviewer Feedback
-[from Step 6, summarized]
-
-## Next Steps
-- [ ] /paper-figure to generate all figures
-- [ ] /paper-write to draft LaTeX
-- [ ] /paper-compile to build PDF
-```
+- title placeholder
+- one-sentence contribution
+- venue and page budget
+- paper type
+- claims-evidence matrix
+- section-by-section structure
+- figure plan
+- citation plan
+- reviewer feedback summary
+- next drafting steps
 
 ## Key Rules
 
-- **Large file handling**: If the Write tool fails due to file size, immediately retry using Bash (`cat << 'EOF' > file`) to write in chunks. Do NOT ask the user for permission — just do it silently.
-
-- **Do NOT generate author information** — leave author block as placeholder or anonymous
-- **Be honest about evidence gaps** — mark claims as "needs experiment" rather than overclaiming
-- **Page budget is hard** — if content exceeds MAX_PAGES, suggest what to move to appendix
-- **MAX_PAGES counting differs by venue** — ML conferences: main body to Conclusion end, references/appendix NOT counted. **IEEE venues: references ARE counted toward the page limit.**
-- **Venue-specific norms** — ML conferences (ICLR/NeurIPS/ICML) use `natbib` (`\citep`/`\citet`); **IEEE venues use `cite` package (`\cite{}`, numeric style)**
-- **Claims-Evidence Matrix is the backbone** — every claim must map to evidence, every experiment must support a claim
-- **Figures need detailed descriptions** — especially the hero figure, which must clearly specify comparisons and visual expectations
-- **Section count is flexible** — 5-8 sections depending on paper type. Don't force content into a rigid 5-section template.
-
-## Acknowledgements
-
-Outline methodology inspired by [Research-Paper-Writing-Skills](https://github.com/Master-cai/Research-Paper-Writing-Skills) (claim-evidence mapping), [claude-scholar](https://github.com/Galaxy-Dawn/claude-scholar) (citation verification), and [Imbad0202/academic-research-skills](https://github.com/Imbad0202/academic-research-skills) (claim verification protocol).
+- The claims-evidence matrix is the backbone. Build it first.
+- Be honest about weak evidence; move unsupported material out of the main claim path.
+- Front-load the strongest story elements.
+- The page budget is hard; decide early what belongs in appendix.
+- Leave author metadata as placeholder or anonymous.

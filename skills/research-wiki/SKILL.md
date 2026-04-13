@@ -149,7 +149,7 @@ Generate `query_pack.md` — a compressed, context-window-friendly summary:
 
 | Section | Budget | Content |
 |---------|--------|---------|
-| Project direction | 300 chars | From CLAUDE.md or RESEARCH_BRIEF.md |
+| Project direction | 300 chars | From `CODEX.md` (preferred), fallback `CLAUDE.md`, or `RESEARCH_BRIEF.md` |
 | Top 5 gaps | 1200 chars | From gap_map.md, ranked by: unresolved + linked ideas + failed experiments |
 | Paper clusters | 1600 chars | 3-5 clusters by tag overlap, 2-3 sentences each |
 | Failed ideas | 1400 chars | **Always included** — highest anti-repetition value |
@@ -200,6 +200,21 @@ Edges: 64
 Gaps: 8 (3 unresolved)
 Last updated: 2026-04-07T10:12:00Z
 ```
+
+## Recommended Mainline Embedding
+
+The practical way to embed Research Wiki into the Codex mainline is:
+
+1. **Initialize once** after `CODEX.md` and `RESEARCH_BRIEF.md` are stable:
+   ```text
+   /research-wiki init
+   ```
+2. **Let `/research-lit` ingest papers** so the wiki becomes the field-memory layer rather than a manual note dump.
+3. **Let `/idea-creator` read `query_pack.md` before ideation** and write both recommended and failed ideas after ideation.
+4. **Let `/result-to-claim` update experiments and claim verdicts** so re-ideation can learn from failures instead of repeating them.
+5. **Use `/research-wiki query`, `stats`, and `lint` between long sessions** to refresh context, inspect coverage, and catch stale or contradictory memory.
+
+If you only run short one-off experiments, the wiki can stay disabled. If the project spans multiple sessions, branches, or idea pivots, enable it early.
 
 ## Integration with Existing Workflows
 

@@ -1,7 +1,10 @@
 ---
 name: "paper-figure"
 description: "Generate publication-quality figures and tables from experiment results. Use when user says \\\"\u753b\u56fe\\\", \\\"\u4f5c\u56fe\\\", \\\"generate figures\\\", \\\"paper figures\\\", or needs plots for a paper."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent
+argument-hint: [figure-plan-or-data-path]
 ---
+
 
 # Paper Figure: Publication-Quality Plots from Experiment Data
 

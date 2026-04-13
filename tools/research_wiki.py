@@ -111,10 +111,28 @@ def rebuild_query_pack(wiki_root: str, max_chars: int = 8000):
     sections = []
 
     # 1. Project direction (300 chars)
-    brief_path = root.parent / "RESEARCH_BRIEF.md"
-    if brief_path.exists():
-        brief = brief_path.read_text()[:300]
-        sections.append(f"## Project Direction\n{brief}\n")
+    project_root = root.parent
+    direction_text = ""
+    for candidate in ("CODEX.md", "RESEARCH_BRIEF.md"):
+        path = project_root / candidate
+        if not path.exists():
+            continue
+
+        content = path.read_text(encoding="utf-8")
+        if candidate != "RESEARCH_BRIEF.md":
+            match = re.search(r"^## Research Direction\s*$([\s\S]*?)(?=^##\s|\Z)", content, re.MULTILINE)
+            if match:
+                direction_text = match.group(1).strip()
+            else:
+                direction_text = content.strip()
+        else:
+            direction_text = content.strip()
+
+        if direction_text:
+            break
+
+    if direction_text:
+        sections.append(f"## Project Direction\n{direction_text[:300]}\n")
 
     # 2. Gap map (1200 chars)
     gap_path = root / "gap_map.md"

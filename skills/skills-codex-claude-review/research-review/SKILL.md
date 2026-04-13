@@ -1,17 +1,20 @@
 ---
 name: "research-review"
-description: "Get a deep critical review of research from Claude via claude-review MCP. Use when user says \"review my research\", \"help me review\", \"get external review\", or wants critical feedback on research ideas, papers, or experimental results."
+description: "Get a deep critical review of research from GPT using a secondary Codex reviewer agent. Use when you want hard feedback on ideas, drafts, experiments, or overall research positioning."
+allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent
+argument-hint: [topic-or-scope]
 ---
 
 > Override for Codex users who want **Claude Code**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
-# Research Review via `claude-review` MCP (high-rigor review)
+# Research Review via a Secondary Codex Reviewer
 
-Get a multi-round critical review of research work from an external LLM with maximum reasoning depth.
+Get a multi-round external review with maximum rigor, but keep the executor local.
 
 ## Constants
 
 - **REVIEWER_MODEL = `claude-review`** — Claude reviewer invoked through the local `claude-review` MCP bridge. Set `CLAUDE_REVIEW_MODEL` if you need a specific Claude model override.
+- **MAX_REVIEW_ROUNDS = 5** — After that, force an agreement checkpoint instead of open-ended discussion
 
 ## Context: $ARGUMENTS
 
@@ -28,83 +31,145 @@ Get a multi-round critical review of research work from an external LLM with max
 
 ## Workflow
 
-### Step 1: Gather Research Context
-Before calling the external reviewer, compile a comprehensive briefing:
-1. Read project narrative documents (e.g., STORY.md, README.md, paper drafts)
-2. Read any memory/notes files for key findings and experiment history
-3. Identify: core claims, methodology, key results, known weaknesses
+### Step 1: Build a Real Review Brief
 
-### Step 2: Initial Review (Round 1)
-Send a detailed prompt with high-rigor review:
+Before asking for criticism, gather the actual state of the project:
+
+1. Narrative documents: `README.md`, `NARRATIVE_REPORT.md`, `STORY.md`, paper drafts
+2. Method and experiment artifacts: `refine-logs/`, `innovation-logs/`, result tables, W&B summaries
+3. Implementation constraints: `CODEX.md`, `RESEARCH_BRIEF.md`, compute limits, available baselines
+4. Known weaknesses: prior review docs, `findings.md`, failed experiments, novelty-check output
+
+Write a self-contained `RESEARCH_REVIEW.md` scaffold with:
+
+- project summary
+- intended claims
+- strongest evidence
+- known weaknesses
+- concrete questions for the reviewer
+
+### Step 2: Initial External Review
+
+Send a full briefing, not a vague prompt.
 
 ```
 mcp__claude-review__review_start:
   prompt: |
-    [Full research context + specific questions]
-    Please act as a senior ML reviewer (NeurIPS/ICML level). Identify:
-    1. Logical gaps or unjustified claims
-    2. Missing experiments that would strengthen the story
-    3. Narrative weaknesses
-    4. Whether the contribution is sufficient for a top venue
-    Please be brutally honest.
+    SENIOR RESEARCH REVIEW
+
+    Please act as a demanding top-tier reviewer for this project.
+
+    Research context:
+    [problem, method, target venue, constraints]
+
+    Core claims:
+    [3-5 claims]
+
+    Evidence:
+    [main results, ablations, novelty positioning, limitations]
+
+    Known weaknesses:
+    [what already looks shaky]
+
+    Return:
+    1. overall_score: 1-10
+    2. dimension_scores: novelty | technical_soundness | experimental_rigor | clarity | significance
+    3. strongest_points: ranked list
+    4. critical_weaknesses: ranked list
+    5. missing_experiments: minimum package, not a wishlist
+    6. claim_risks: which claims are weak or overstated
+    7. narrative_risks: what a reviewer will misunderstand or dismiss
+    8. venue_fit: accept frontier | borderline | weak fit
+    9. highest_leverage_next_step: one action that changes the outcome most
+
+    Be specific, skeptical, and evidence-driven.
 ```
 
 After this start call, immediately save the returned `jobId` and poll `mcp__claude-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
-### Step 3: Iterative Dialogue (Rounds 2-N)
-Use `mcp__claude-review__review_reply_start` with the saved completed `threadId`, then poll `mcp__claude-review__review_status` with the returned `jobId` until `done=true` to continue the conversation:
+Save the raw reviewer output into `RESEARCH_REVIEW.md`.
 
-For each round:
-1. **Respond** to criticisms with evidence/counterarguments
-2. **Ask targeted follow-ups** on the most actionable points
-3. **Request specific deliverables**: experiment designs, paper outlines, claims matrices
+### Step 3: Iterative Dialogue
 
-Key follow-up patterns:
-- "If we reframe X as Y, does that change your assessment?"
-- "What's the minimum experiment to satisfy concern Z?"
-- "Please design the minimal additional experiment package (highest acceptance lift per GPU week)"
-- "Please write a mock NeurIPS/ICML review with scores"
-- "Give me a results-to-claims matrix for possible experimental outcomes"
+Use follow-up rounds to resolve the highest-value disagreements, not to argue defensively.
 
-### Step 4: Convergence
-Stop iterating when:
-- Both sides agree on the core claims and their evidence requirements
-- A concrete experiment plan is established
-- The narrative structure is settled
+Typical follow-ups:
 
-### Step 5: Document Everything
-Save the full interaction and conclusions to a review document in the project root:
-- Round-by-round summary of criticisms and responses
-- Final consensus on claims, narrative, and experiments
-- Claims matrix (what claims are allowed under each possible outcome)
-- Prioritized TODO list with estimated compute costs
-- Paper outline if discussed
+- ask whether a reframed claim would now be acceptable
+- request the minimum experiment package that resolves a specific objection
+- request a claims-to-evidence matrix
+- ask for a mock venue review with score and confidence
+- ask which single weakness most threatens rejection
 
-Update project memory/notes with key review conclusions.
+Use the same reviewer thread for continuity:
+
+```
+mcp__claude-review__review_reply_start:
+  threadId: [saved agent id]
+  prompt: |
+    Follow-up on the previous review.
+
+    Here is the clarification / new evidence:
+    [reply with specific evidence]
+
+    Re-evaluate only these points:
+    [contested claims, experiments, narrative structure]
+```
+
+After this start call, immediately save the returned `jobId` and poll `mcp__claude-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
+
+### Step 4: Agreement Checkpoint
+
+After round 3, or earlier if the discussion starts circling, force a convergence memo inside `RESEARCH_REVIEW.md`:
+
+```markdown
+## Agreement Checkpoint
+
+- Settled:
+  [claims and evidence both sides now accept]
+- Contested:
+  [specific disagreements and why they remain unresolved]
+- Unknown:
+  [things that still require experiment or analysis]
+- Resolution path:
+  [one concrete action per contested or unknown item]
+```
+
+If contested items remain after `MAX_REVIEW_ROUNDS`, stop debating and switch to a resolution-oriented follow-up:
+
+```
+mcp__claude-review__review_reply_start:
+  threadId: [saved agent id]
+  prompt: |
+    We need to converge.
+
+    Here are the remaining contested items:
+    [list]
+
+    For each item, specify the minimum experiment, analysis, or claim change that resolves it.
+    Do not restate the whole review. Produce an action plan only.
+```
+
+After this start call, immediately save the returned `jobId` and poll `mcp__claude-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
+
+### Step 5: Final Deliverables
+
+Finalize `RESEARCH_REVIEW.md` with:
+
+- round-by-round summary
+- final score and dimension scores
+- settled claims
+- contested claims
+- claims-evidence matrix
+- prioritized TODOs with estimated compute or writing cost
+- optional paper outline or mock review if requested
+
+Also update `findings.md`, `CODEX.md`, or project notes with the small number of review conclusions that should actually steer execution.
 
 ## Key Rules
 
-- Always ask the Claude reviewer for strict, high-rigor feedback.
-- Send comprehensive context in Round 1 — the external model cannot read your files
-- Be honest about weaknesses — hiding them leads to worse feedback
-- Push back on criticisms you disagree with, but accept valid ones
-- Focus on ACTIONABLE feedback — "what experiment would fix this?"
-- Document the completed `threadId` for potential future resumption
-- The review document should be self-contained (readable without the conversation)
-
-## Prompt Templates
-
-### For initial review:
-"I'm going to present a complete ML research project for your critical review. Please act as a senior ML reviewer (NeurIPS/ICML level)..."
-
-### For experiment design:
-"Please design the minimal additional experiment package that gives the highest acceptance lift per GPU week. Our compute: [describe]. Be very specific about configurations."
-
-### For paper structure:
-"Please turn this into a concrete paper outline with section-by-section claims and figure plan."
-
-### For claims matrix:
-"Please give me a results-to-claims matrix: what claim is allowed under each possible outcome of experiments X and Y?"
-
-### For mock review:
-"Please write a mock NeurIPS review with: Summary, Strengths, Weaknesses, Questions for Authors, Score, Confidence, and What Would Move Toward Accept."
+- Always ask for high-rigor review; shallow politeness is useless here.
+- Give the reviewer the strongest opposing evidence too, not just the polished story.
+- Do not let the reviewer become the executor. The reviewer critiques; the executor decides and implements.
+- Force convergence with an agreement checkpoint when the dialogue starts repeating.
+- Preserve both the raw review output and the normalized action items.

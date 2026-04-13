@@ -1,7 +1,10 @@
 ---
 name: "paper-write"
 description: "Draft LaTeX paper section by section from an outline. Use when user says \\\"\u5199\u8bba\u6587\\\", \\\"write paper\\\", \\\"draft LaTeX\\\", \\\"\u5f00\u59cb\u5199\\\", or wants to generate LaTeX content from a paper plan."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, WebSearch, WebFetch
+argument-hint: [venue-or-section]
 ---
+
 
 # Paper Write: Section-by-Section LaTeX Generation
 

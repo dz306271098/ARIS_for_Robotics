@@ -14,17 +14,31 @@ SRC_ROOT = REPO_ROOT / "skills" / "skills-codex"
 DEST_ROOT = REPO_ROOT / "skills" / "skills-codex-claude-review"
 
 TARGET_SKILLS = [
+    "ablation-planner",
+    "experiment-bridge",
+    "deep-innovation-loop",
+    "idea-creator",
+    "idea-discovery",
+    "idea-discovery-robot",
     "research-review",
     "novelty-check",
     "research-refine",
     "auto-review-loop",
+    "grant-proposal",
     "paper-plan",
     "paper-figure",
+    "paper-poster",
+    "paper-slides",
     "paper-write",
+    "paper-writing",
     "auto-paper-improvement-loop",
+    "result-to-claim",
+    "rebuttal",
+    "training-check",
 ]
 
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
+DESCRIPTION_LINE_RE = re.compile(r"^(description:\s*)(.+)$", re.MULTILINE)
 SPAWN_BLOCK_RE = re.compile(r"```(?:yaml|text)?\nspawn_agent:\n([\s\S]*?)```")
 SEND_BLOCK_RE = re.compile(r"```(?:yaml|text)?\nsend_input:\n([\s\S]*?)```")
 
@@ -65,17 +79,49 @@ def extract_field(frontmatter: str, field: str) -> str:
     return value
 
 
-def build_frontmatter(name: str, description: str) -> str:
-    safe_desc = description.replace('"', '\\"')
-    return f'---\nname: "{name}"\ndescription: "{safe_desc}"\n---\n\n'
-
-
 def normalize_description(text: str) -> str:
     text = text or "Claude-review override for a Codex-native ARIS skill."
     text = text.replace("GPT using a secondary Codex agent", "Claude via claude-review MCP")
     text = text.replace("using a secondary Codex agent", "using Claude Code via claude-review MCP")
     text = text.replace("via GPT-5.4 xhigh review", "via Claude review through claude-review MCP")
     return text
+
+
+def rewrite_frontmatter(frontmatter: str) -> str:
+    description = normalize_description(extract_field(frontmatter, "description"))
+    safe_desc = description.replace('"', '\\"')
+
+    if DESCRIPTION_LINE_RE.search(frontmatter):
+        frontmatter = DESCRIPTION_LINE_RE.sub(
+            lambda match: f'{match.group(1)}"{safe_desc}"',
+            frontmatter,
+            count=1,
+        )
+    else:
+        lines = frontmatter.splitlines()
+        inserted = False
+        for index, line in enumerate(lines):
+            if line.startswith("name:"):
+                lines.insert(index + 1, f'description: "{safe_desc}"')
+                inserted = True
+                break
+        if not inserted:
+            lines.insert(0, f'description: "{safe_desc}"')
+        frontmatter = "\n".join(lines)
+
+    frontmatter = frontmatter.replace("mcp__codex__codex-reply", "mcp__claude-review__review_reply_start")
+    frontmatter = frontmatter.replace("mcp__codex__codex", "mcp__claude-review__review_start")
+    if (
+        "allowed-tools:" in frontmatter
+        and "mcp__claude-review__review_start" in frontmatter
+        and "mcp__claude-review__review_status" not in frontmatter
+    ):
+        frontmatter = frontmatter.replace(
+            "mcp__claude-review__review_reply_start",
+            "mcp__claude-review__review_reply_start, mcp__claude-review__review_status",
+            1,
+        )
+    return frontmatter
 
 
 def rewrite_spawn_block(match: re.Match[str]) -> str:
@@ -108,6 +154,9 @@ def rewrite_send_block(match: re.Match[str]) -> str:
             continue
         if stripped.startswith("id:"):
             out.append(line.replace("id:", "threadId:", 1))
+            continue
+        if stripped.startswith("target:"):
+            out.append(line.replace("target:", "threadId:", 1))
             continue
         if stripped.startswith("message:"):
             out.append(line.replace("message:", "prompt:", 1))
@@ -143,6 +192,9 @@ def transform_body(text: str) -> str:
     text = text.replace("via a Claude reviewer via `claude-review` MCP (xhigh reasoning)", "via `claude-review` MCP (high-rigor review)")
     text = text.replace("secondary Codex agent (xhigh reasoning)", "Claude reviewer via `claude-review` MCP")
     text = text.replace("GPT-5.4 xhigh", "Claude review")
+    text = text.replace("via Codex MCP", "via the local `claude-review` MCP bridge")
+    text = text.replace("using Codex MCP", "using the local `claude-review` MCP bridge")
+    text = text.replace("Codex MCP for", "`claude-review` MCP for")
     text = text.replace("Send the full paper text to GPT-5.4 xhigh:", "Send the full paper text to Claude through `claude-review`:")
     text = text.replace("Send the complete outline to GPT-5.4 xhigh for feedback:", "Send the complete outline to Claude for feedback:")
     text = text.replace("Call REVIEWER_MODEL via `spawn_agent` (`spawn_agent`) with xhigh reasoning:", "Call REVIEWER_MODEL via `mcp__claude-review__review_start` with high-rigor review:")
@@ -159,6 +211,16 @@ def transform_body(text: str) -> str:
     text = text.replace("- **ALWAYS use `reasoning_effort: xhigh`** for all Codex review calls.", "- **Always ask the Claude reviewer for strict, high-rigor feedback** in every review round.")
     text = text.replace("- **Save `agent_id` from Phase 2** and use `send_input` for later rounds.", "- **Save the completed `threadId` from Phase 2** and use `mcp__claude-review__review_reply_start` plus `mcp__claude-review__review_status` for later rounds.")
     text = text.replace("- **Use `send_input`** for Round 2 to maintain conversation context", "- **Use `mcp__claude-review__review_reply_start` plus `mcp__claude-review__review_status`** for Round 2 to maintain conversation context")
+    text = text.replace("Use GPT-5.4 via `send_input` (same agent):", "Use Claude via `mcp__claude-review__review_reply_start` with the saved completed `threadId`:")
+    text = text.replace(
+        "If `/research-review` is invoked (preferred), it handles the external review internally. If you run the reviewer directly, use `spawn_agent` for Round 1 and `send_input` for follow-up rounds.",
+        "If `/research-review` is invoked (preferred), it handles the external review internally. If you run the reviewer directly, use `mcp__claude-review__review_start` for Round 1 and `mcp__claude-review__review_reply_start` plus `mcp__claude-review__review_status` for follow-up rounds.",
+    )
+    text = text.replace(
+        "If continuity helps, reuse the same reviewer agent via `send_input`",
+        "If continuity helps, reuse the same reviewer thread via `mcp__claude-review__review_reply_start` plus `mcp__claude-review__review_status`",
+    )
+    text = text.replace("`~/.claude/feishu.json`", "`~/.codex/feishu.json`")
     text = text.replace("GPT-5.4 responses", "Claude reviewer responses")
     text = text.replace("`agent_id`", "`thread_id`")
     text = text.replace('"agent_id"', '"thread_id"')
@@ -166,6 +228,15 @@ def transform_body(text: str) -> str:
     text = text.replace("ALWAYS use `reasoning_effort: xhigh` for maximum reasoning depth", "Always ask the Claude reviewer for strict, high-rigor feedback.")
     text = text.replace("mcp__codex__codex", "mcp__claude-review__review_start")
     text = text.replace("mcp__codex__codex-reply", "mcp__claude-review__review_reply_start")
+    text = text.replace(
+        "If `mcp__claude-review__review_start` is not available (no OpenAI API key), skip external review and proceed to Phase 6.",
+        "If `claude-review` MCP is not available or Claude CLI login is missing, skip external review and proceed to Phase 6.",
+    )
+    text = text.replace(
+        "External review skipped — gemini-review unavailable.",
+        "External review skipped — claude-review unavailable.",
+    )
+    text = text.replace("re-submit for another round via `send_input`", "re-submit for another round via `mcp__claude-review__review_reply_start` plus `mcp__claude-review__review_status`")
     text = re.sub(r"^-\s+\*{0,2}REVIEWER_MODEL.*$", REVIEWER_LINE, text, flags=re.MULTILINE)
     text = re.sub(
         r"## Prerequisites\n\n(?:- .*\n)+",
@@ -191,10 +262,7 @@ def generate_one(skill_name: str) -> None:
 
     frontmatter = match.group(1)
     body = content[match.end():].lstrip("\n")
-    name = extract_field(frontmatter, "name") or skill_name
-    description = normalize_description(extract_field(frontmatter, "description"))
-
-    output = build_frontmatter(name, description)
+    output = f"---\n{rewrite_frontmatter(frontmatter)}\n---\n\n"
     output += OVERRIDE_NOTE + "\n\n"
     output += transform_body(body).rstrip() + "\n"
 

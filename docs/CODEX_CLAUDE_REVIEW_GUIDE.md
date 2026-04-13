@@ -1,54 +1,54 @@
-# Codex + Claude Reviewer Guide
+# Codex + Claude Review Guide
 
-Run ARIS with:
+This is the **mainline ARIS path**:
 
-- **Codex** as the main executor
-- **Claude Code CLI** as the reviewer
-- the local `claude-review` MCP bridge as the transport layer
+- **Codex** executes
+- **Claude Code CLI** reviews
+- the local `claude-review` MCP bridge transports reviewer calls
 
-This guide is **additive** to the upstream Codex-native path. It does not replace `skills/skills-codex/`.
+If you are starting fresh on ARIS today, use this path first.
 
 ## Architecture
 
-- Base skill set: `skills/skills-codex/`
-- Reviewer override layer: `skills/skills-codex-claude-review/`
+- Base executor pack: `skills/skills-codex/`
+- Reviewer overlay: `skills/skills-codex-claude-review/`
 - Reviewer bridge: `mcp-servers/claude-review/`
 
-The install order matters:
+Install order matters:
 
 1. install `skills/skills-codex/*`
 2. install `skills/skills-codex-claude-review/*`
 3. register `claude-review` MCP
+
+`scripts/install_codex_claude_mainline.sh` enforces that order automatically.
 
 ## Install
 
 ```bash
 git clone https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep.git
 cd Auto-claude-code-research-in-sleep
-
-mkdir -p ~/.codex/skills
-cp -a skills/skills-codex/* ~/.codex/skills/
-cp -a skills/skills-codex-claude-review/* ~/.codex/skills/
-
-mkdir -p ~/.codex/mcp-servers/claude-review
-cp mcp-servers/claude-review/server.py ~/.codex/mcp-servers/claude-review/server.py
-codex mcp add claude-review -- python3 ~/.codex/mcp-servers/claude-review/server.py
+bash scripts/install_codex_claude_mainline.sh
 ```
 
-If your Claude login depends on a shell helper such as `claude-aws`, use the wrapper:
+If your Claude login depends on a wrapper such as `claude-aws`, use:
 
 ```bash
-cp mcp-servers/claude-review/run_with_claude_aws.sh ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
-chmod +x ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
-codex mcp add claude-review -- ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
+bash scripts/install_codex_claude_mainline.sh --reinstall --use-aws-wrapper
 ```
 
 Optional reviewer model override:
 
 ```bash
-codex mcp remove claude-review
-codex mcp add claude-review --env CLAUDE_REVIEW_MODEL=claude-opus-4-1 -- python3 ~/.codex/mcp-servers/claude-review/server.py
+bash scripts/install_codex_claude_mainline.sh --reinstall --review-model claude-opus-4-1
 ```
+
+Uninstall:
+
+```bash
+bash ~/.codex/.aris/codex-claude-mainline/uninstall_codex_claude_mainline.sh
+```
+
+That local uninstall helper is copied during install and only rolls back paths tracked by the ARIS install manifest.
 
 ## Verify
 
@@ -70,46 +70,83 @@ claude -p "Reply with exactly READY" --output-format json --tools ""
 codex -C /path/to/your/project
 ```
 
-## What gets overridden
+Maintainer smoke test:
 
-The overlay only replaces review-heavy skills:
+```bash
+bash scripts/smoke_test_codex_claude_mainline.sh
+```
 
-- `research-review`
-- `novelty-check`
-- `research-refine`
-- `auto-review-loop`
-- `paper-plan`
-- `paper-figure`
-- `paper-write`
+## Coverage
+
+The overlay now covers the predefined reviewer-aware Codex skills that previously depended on a secondary Codex reviewer or direct `mcp__codex__codex*` review calls:
+
+- `ablation-planner`
 - `auto-paper-improvement-loop`
+- `auto-review-loop`
+- `deep-innovation-loop`
+- `experiment-bridge`
+- `grant-proposal`
+- `idea-creator`
+- `idea-discovery`
+- `idea-discovery-robot`
+- `novelty-check`
+- `paper-figure`
+- `paper-plan`
+- `paper-poster`
+- `paper-slides`
+- `paper-write`
+- `paper-writing`
+- `rebuttal`
+- `research-refine`
+- `research-review`
+- `result-to-claim`
+- `training-check`
 
-Everything else still comes from the upstream `skills/skills-codex/` package.
+## Workflow embedding
 
-## Async reviewer flow
+This mainline should be understood as a layered workflow, not as "Claude reviews everything."
 
-For long paper or project reviews, use:
+- `Codex` owns execution, implementation, experiment launches, local file updates, and workflow state.
+- `Claude Code` owns the reviewer role for the predefined reviewer-aware skills routed through `claude-review`.
+- `research-wiki` is the long-term memory layer. Initialize it once, then let `/research-lit`, `/idea-creator`, and `/result-to-claim` keep it synchronized.
+- `deep-innovation-loop` is now inside the default `/research-pipeline` path. The practical sequence is:
+  `/idea-discovery -> implement -> /run-experiment -> innovation gate -> /deep-innovation-loop? -> /auto-review-loop`
+- Within `deep-innovation-loop`, Codex still owns implementation and experiments, while the external diagnosis/design/audit checkpoints now also flow through the Claude reviewer overlay.
+- `meta-optimize` is a maintenance loop after milestones, not a step in fragile experiment execution. Run it once artifacts such as `AUTO_REVIEW.md`, `innovation-logs/`, `refine-logs/`, `paper/`, or `rebuttal/` exist.
+
+This means the bridge boundary is narrow on purpose: Claude reviews reviewer-facing stages, while Codex keeps ownership of the main execution path and maintenance machinery.
+
+## Project Config
+
+Prefer a project-level `CODEX.md` for:
+
+- executor instructions
+- environment notes
+- `## Pipeline Status`
+
+`CODEX.md` is the only mainline project config name for this path.
+
+## Async Reviewer Flow
+
+For long paper or project reviews, prefer:
 
 - `review_start`
 - `review_reply_start`
 - `review_status`
 
-Why: in this host path, the review hop is:
+The call chain is:
 
 `Codex -> claude-review MCP -> local Claude CLI -> Claude backend`
 
-That extra local CLI hop is what makes long synchronous reviewer calls more likely to hit the observed Codex-hosted MCP timeout.
+The extra local CLI hop is the main reason long synchronous reviewer calls are more likely to hit the host MCP timeout.
 
-## Project config
+## Structured Output
 
-No special project config file is required for this path.
-
-- keep using your existing `CLAUDE.md`
-- keep your current project layout
-- only switch the installed Codex skill files and MCP registration
+The `claude-review` bridge now also accepts optional `jsonSchema` / `json_schema` arguments and forwards them to Claude CLI via `--json-schema`. Use this when a skill needs structured reviewer output.
 
 ## Maintenance
 
-Regenerate the overlay package with:
+Regenerate the overlay after upstream Codex skill updates:
 
 ```bash
 python3 tools/generate_codex_claude_review_overrides.py

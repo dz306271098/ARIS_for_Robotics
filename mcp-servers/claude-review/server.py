@@ -172,6 +172,18 @@ def serialize_job(job: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_json_schema(raw_value: Any) -> tuple[str | None, str | None]:
+    if raw_value is None:
+        return None, None
+    if isinstance(raw_value, str):
+        candidate = raw_value.strip()
+        return (candidate or None), None
+    try:
+        return json.dumps(raw_value, ensure_ascii=False), None
+    except (TypeError, ValueError):
+        return None, "jsonSchema must be a string or a JSON-serializable value"
+
+
 def build_command(
     prompt: str,
     *,
@@ -179,6 +191,7 @@ def build_command(
     model: str | None = None,
     system: str | None = None,
     tools: str | None = None,
+    json_schema: str | None = None,
 ) -> list[str]:
     bin_path = find_claude_bin()
     if not bin_path:
@@ -199,6 +212,8 @@ def build_command(
 
     selected_tools = DEFAULT_TOOLS if tools is None else tools
     cmd.extend(["--tools", selected_tools])
+    if json_schema:
+        cmd.extend(["--json-schema", json_schema])
     return cmd
 
 
@@ -209,6 +224,7 @@ def run_claude_review(
     model: str | None = None,
     system: str | None = None,
     tools: str | None = None,
+    json_schema: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     try:
         cmd = build_command(
@@ -217,6 +233,7 @@ def run_claude_review(
             model=model,
             system=system,
             tools=tools,
+            json_schema=json_schema,
         )
     except FileNotFoundError as exc:
         return None, str(exc)
@@ -264,6 +281,7 @@ def start_async_review(
     model: str | None = None,
     system: str | None = None,
     tools: str | None = None,
+    json_schema: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     job_id = uuid.uuid4().hex
     created_at = utc_now()
@@ -283,6 +301,7 @@ def start_async_review(
             "model": model,
             "system": system,
             "tools": tools,
+            "jsonSchema": json_schema,
         },
     }
 
@@ -356,6 +375,7 @@ def run_async_job(job_id: str) -> int:
             model=request.get("model"),
             system=request.get("system"),
             tools=request.get("tools"),
+            json_schema=request.get("jsonSchema"),
         )
     except Exception as exc:
         payload = None
@@ -453,6 +473,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                                 "system": {"type": "string", "description": "Optional system prompt"},
                                 "model": {"type": "string", "description": "Optional Claude model override"},
                                 "tools": {"type": "string", "description": "Optional Claude tools override, empty string disables tools"},
+                                "jsonSchema": {"description": "Optional JSON schema passed to Claude via --json-schema"},
+                                "json_schema": {"description": "Alias of jsonSchema"},
                             },
                             "required": ["prompt"],
                         },
@@ -469,6 +491,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                                 "system": {"type": "string", "description": "Optional system prompt override"},
                                 "model": {"type": "string", "description": "Optional Claude model override"},
                                 "tools": {"type": "string", "description": "Optional Claude tools override, empty string disables tools"},
+                                "jsonSchema": {"description": "Optional JSON schema passed to Claude via --json-schema"},
+                                "json_schema": {"description": "Alias of jsonSchema"},
                             },
                             "required": ["prompt"],
                         },
@@ -483,6 +507,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                                 "system": {"type": "string", "description": "Optional system prompt"},
                                 "model": {"type": "string", "description": "Optional Claude model override"},
                                 "tools": {"type": "string", "description": "Optional Claude tools override, empty string disables tools"},
+                                "jsonSchema": {"description": "Optional JSON schema passed to Claude via --json-schema"},
+                                "json_schema": {"description": "Alias of jsonSchema"},
                             },
                             "required": ["prompt"],
                         },
@@ -499,6 +525,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                                 "system": {"type": "string", "description": "Optional system prompt override"},
                                 "model": {"type": "string", "description": "Optional Claude model override"},
                                 "tools": {"type": "string", "description": "Optional Claude tools override, empty string disables tools"},
+                                "jsonSchema": {"description": "Optional JSON schema passed to Claude via --json-schema"},
+                                "json_schema": {"description": "Alias of jsonSchema"},
                             },
                             "required": ["prompt"],
                         },
@@ -523,6 +551,9 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
     if method == "tools/call":
         name = params.get("name", "")
         args = params.get("arguments", {}) or {}
+        json_schema, schema_error = normalize_json_schema(args.get("jsonSchema", args.get("json_schema")))
+        if schema_error:
+            return tool_error(request_id, schema_error)
 
         if name == "review":
             payload, error = run_claude_review(
@@ -530,6 +561,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 model=args.get("model"),
                 system=args.get("system"),
                 tools=args.get("tools"),
+                json_schema=json_schema,
             )
             return tool_error(request_id, error) if error else tool_success(request_id, payload or {})
 
@@ -543,6 +575,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 model=args.get("model"),
                 system=args.get("system"),
                 tools=args.get("tools"),
+                json_schema=json_schema,
             )
             return tool_error(request_id, error) if error else tool_success(request_id, payload or {})
 
@@ -552,6 +585,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 model=args.get("model"),
                 system=args.get("system"),
                 tools=args.get("tools"),
+                json_schema=json_schema,
             )
             return tool_error(request_id, error) if error else tool_success(request_id, payload or {})
 
@@ -565,6 +599,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 model=args.get("model"),
                 system=args.get("system"),
                 tools=args.get("tools"),
+                json_schema=json_schema,
             )
             return tool_error(request_id, error) if error else tool_success(request_id, payload or {})
 

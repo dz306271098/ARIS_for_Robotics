@@ -131,7 +131,7 @@ Save the rescue report to `findings.md` under `## Failure Analysis: [idea name]`
    - What was tested, what failed, rescue's root cause analysis
    - Constraints for future attempts (what NOT to try again)
    - If salvageable: the revised approach proposed by rescue
-2. Update CLAUDE.md Pipeline Status
+2. Update `CODEX.md` `## Pipeline Status` (fallback to `CLAUDE.md` only if the project still uses the legacy filename)
 3. Decide: fix implementation / try revised approach / pivot to next idea from IDEA_CANDIDATES.md
 
 #### `partial` — Claim partially supported

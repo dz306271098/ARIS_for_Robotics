@@ -1,7 +1,10 @@
 ---
 name: "rebuttal"
-description: "Workflow 4: Submission rebuttal pipeline. Parses external reviews, enforces coverage and grounding, drafts a safe text-only rebuttal under venue limits, and manages follow-up rounds."
+description: "Workflow 4: Submission rebuttal pipeline. Parses external reviews, enforces coverage and grounding, drafts a safe rebuttal under venue limits, and manages follow-up rounds."
+allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, Skill
+argument-hint: [paper-path-or-review-bundle]
 ---
+
 
 # Workflow 4: Rebuttal
 
@@ -11,184 +14,255 @@ Prepare and maintain a grounded, venue-compliant rebuttal for: **$ARGUMENTS**
 
 This skill is optimized for:
 
-- ICML-style **text-only rebuttal**
-- strict **character limits**
-- **multiple reviewers**
-- **follow-up rounds** after the initial rebuttal
-- safe drafting with **no fabrication**, **no overpromise**, and **full issue coverage**
+- text-only rebuttals with hard limits
+- multiple reviewers with overlapping concerns
+- follow-up rounds after the first response
+- grounded drafting with zero fabrication and explicit issue tracking
 
 This skill does **not**:
 
-- run new experiments automatically unless `AUTO_EXPERIMENT = true`
-- generate new theorem claims automatically
-- edit or upload a revised PDF
-- submit to OpenReview / CMT / HotCRP
+- invent experiments or derivations
+- promise unapproved work
+- edit or submit the final conference system entry for the user
 
 ## Lifecycle Position
 
 ```text
 Workflow 1:   idea-discovery
 Workflow 1.5: experiment-bridge
-Workflow 2:   auto-review-loop (pre-submission)
+Workflow 2:   auto-review-loop
 Workflow 3:   paper-writing
-Workflow 4:   rebuttal (post-submission external reviews)
+Workflow 4:   rebuttal
 ```
 
 ## Constants
 
-- **VENUE = `ICML`** — Default venue
-- **RESPONSE_MODE = `TEXT_ONLY`** — v1 default
-- **REVIEWER_MODEL = `gpt-5.4`** — Used via a secondary Codex agent for internal stress-testing
+- **VENUE = `ICML`**
+- **RESPONSE_MODE = `TEXT_ONLY`**
+- **REVIEWER_MODEL = `gpt-5.4`** — Used via a secondary Codex reviewer agent for stress-testing
 - **MAX_INTERNAL_DRAFT_ROUNDS = 2**
 - **MAX_STRESS_TEST_ROUNDS = 1**
 - **MAX_FOLLOWUP_ROUNDS = 3**
-- **AUTO_EXPERIMENT = false** — When `true`, invoke `/experiment-bridge` for reviewer concerns that require new evidence
-- **QUICK_MODE = false** — When `true`, only run Phase 0-3 and stop after strategy
+- **AUTO_EXPERIMENT = true** — Default restored: if reviewers need new evidence and the timeline allows it, automatically bridge into supplementary experiments
+- **QUICK_MODE = false**
 - **REBUTTAL_DIR = `rebuttal/`**
 
-> Override: `/rebuttal "paper/" — venue: NeurIPS, character limit: 5000`
+> Override example: `/rebuttal "paper/ + reviews" — venue: NeurIPS, character limit: 5000`
 
 ## Required Inputs
 
-1. **Paper source** — PDF, LaTeX directory, or narrative summary
-2. **Raw reviews** — pasted text, markdown, or PDF with reviewer IDs
-3. **Venue rules** — venue name, character/word limit, text-only or revised PDF allowed
-4. **Current stage** — initial rebuttal or follow-up round
+1. paper source: PDF, LaTeX, or structured narrative
+2. raw reviews: pasted text, markdown, or PDF
+3. venue rules: limit, format, revised-PDF policy
+4. current stage: first response or follow-up
 
 If venue rules or limit are missing, stop and ask before drafting.
 
 ## Safety Model
 
-Three hard gates. If any fails, do not finalize:
+Three hard gates. If any one fails, do not finalize.
 
-1. **Provenance gate** — every factual statement maps to a known source
-2. **Commitment gate** — every promise maps to already-done / approved-for-rebuttal / future-work-only
-3. **Coverage gate** — every reviewer concern ends in answered / deferred intentionally / needs user input
+1. **Provenance gate** — every factual statement must map to `paper`, `review`, `user_confirmed_result`, `user_confirmed_derivation`, or `future_work`
+2. **Commitment gate** — every promise must be `already_done`, `approved_for_rebuttal`, or `future_work_only`
+3. **Coverage gate** — every reviewer concern must end in `answered`, `deferred_intentionally`, or `needs_user_input`
 
 ## Workflow
 
 ### Phase 0: Resume or Initialize
 
-1. If `rebuttal/REBUTTAL_STATE.md` exists, resume from the recorded phase
-2. Otherwise, create `rebuttal/` and initialize the output documents
-3. Load the paper, reviews, venue rules, and any user-confirmed evidence
+1. If `rebuttal/REBUTTAL_STATE.md` exists, resume from it
+2. Otherwise create `rebuttal/` and initialize the working files
+3. Load paper, reviews, venue rules, and any already-approved new evidence
 
-### Phase 1: Validate Inputs and Normalize Reviews
+### Phase 1: Normalize Reviews
 
-1. Validate that venue rules are explicit
-2. Normalize all reviewer text into `rebuttal/REVIEWS_RAW.md` verbatim
-3. Record metadata in `rebuttal/REBUTTAL_STATE.md`
-4. If ambiguous, pause and ask
+Create `rebuttal/REVIEWS_RAW.md` with the raw review text verbatim.
 
-### Phase 2: Atomize and Classify Reviewer Concerns
+Record metadata in `rebuttal/REBUTTAL_STATE.md`:
+
+- venue
+- limit
+- response format
+- round
+- available evidence
+- blocked evidence requests
+
+### Phase 2: Atomize Reviewer Concerns
 
 Create `rebuttal/ISSUE_BOARD.md`.
 
 For each atomic concern, record:
 
-- `issue_id`
-- `reviewer`, `round`, `raw_anchor`
-- `issue_type`
-- `severity`
-- `reviewer_stance`
-- `response_mode`
-- `status`
+- `issue_id` such as `R1-C2`
+- reviewer and round
+- short raw anchor quote
+- `issue_type`: assumptions / theorem_rigor / novelty / empirical_support / baseline_comparison / complexity / significance / clarity / reproducibility / other
+- `severity`: critical / major / minor
+- `reviewer_stance`: positive / swing / negative / unknown
+- `response_mode`: direct_clarification / grounded_evidence / nearest_work_delta / assumption_hierarchy / narrow_concession / future_work_boundary
+- `status`: open / answered / deferred / needs_user_input
 
-### Phase 3: Build Strategy Plan
+No issue is allowed to disappear between phases.
+
+### Phase 3: Build the Strategy Plan
 
 Create `rebuttal/STRATEGY_PLAN.md`.
 
-1. Identify 2-4 global themes resolving shared concerns
-2. Choose a response mode per issue
-3. Build the character budget
-4. Identify blocked claims
-5. If unresolved blockers exist, pause and present them to the user
+It must include:
 
-**QUICK_MODE exit**: if `QUICK_MODE = true`, stop here and present `ISSUE_BOARD.md` + `STRATEGY_PLAN.md`.
+1. 2-4 global themes that resolve shared concerns
+2. a response mode per issue
+3. a character budget by section
+4. blocked claims or blocked promises
+5. evidence gaps that require either experiment, derivation, or concession
 
-### Phase 3.5: Evidence Sprint (when AUTO_EXPERIMENT = true)
+If `QUICK_MODE = true`, stop here and present `ISSUE_BOARD.md` plus `STRATEGY_PLAN.md`.
 
-**Skip entirely if `AUTO_EXPERIMENT` is `false`.**
+### Phase 3.5: Evidence Sprint
 
-If the strategy plan identifies issues that require new empirical evidence:
+If the strategy plan shows that reviewer concerns require new empirical evidence and `AUTO_EXPERIMENT = true`, automatically create `rebuttal/REBUTTAL_EXPERIMENT_PLAN.md` and invoke:
 
-1. Generate a mini experiment plan from the reviewer concerns
-2. Invoke `/experiment-bridge "rebuttal/REBUTTAL_EXPERIMENT_PLAN.md"`
-3. Wait for results, then update `ISSUE_BOARD.md`
-4. If experiments fail or are inconclusive, switch to `narrow_concession` or `future_work_boundary`
-5. Save experiment results to `rebuttal/REBUTTAL_EXPERIMENTS.md`
+```text
+/experiment-bridge "rebuttal/REBUTTAL_EXPERIMENT_PLAN.md"
+```
 
-### Phase 4: Draft Initial Rebuttal
+Use it only for concise, rebuttal-oriented experiments:
 
-Create `rebuttal/REBUTTAL_DRAFT_v1.md`.
+- missing baseline comparison
+- missing ablation
+- missing robustness or scale check
+- missing failure-case quantification
 
-Structure:
+If experiments fail or remain inconclusive:
 
-1. Short opener
-2. Per-reviewer numbered responses
-3. Short closing
+- do not fabricate a win
+- change the response mode to `narrow_concession` or `future_work_boundary`
+- record the outcome in `rebuttal/REBUTTAL_EXPERIMENTS.md`
 
-Also generate `rebuttal/PASTE_READY.txt` with exact character count.
+If `AUTO_EXPERIMENT = false`, pause and present the evidence gaps instead of running them.
+
+### Phase 4: Draft the Rebuttal
+
+Create `rebuttal/REBUTTAL_DRAFT_v1.md` and `rebuttal/PASTE_READY.txt`.
+
+Default structure:
+
+1. short opener with 2-4 global resolutions
+2. per-reviewer numbered responses
+3. short closing for the meta-reviewer
+
+Default response pattern per issue:
+
+- sentence 1: direct answer
+- sentence 2-4: grounded evidence
+- final sentence: implication for the paper or what was clarified
+
+Drafting heuristics:
+
+- evidence beats rhetoric
+- shared concerns belong in the opener
+- novelty disputes should name the closest work and the exact delta
+- theory disputes should separate core assumptions from technical assumptions
+- if the reviewer is correct, concede narrowly and move on
+- answer supportive reviewers too; do not ignore favorable framing
 
 ### Phase 5: Safety Validation
 
-Run all lints:
+Run all lints before finalizing:
 
-1. Coverage
-2. Provenance
-3. Commitment
-4. Tone
-5. Consistency
-6. Limit
+1. coverage
+2. provenance
+3. commitment
+4. tone
+5. consistency
+6. limit
 
-### Phase 6: Stress Test
+If over limit, compress in this order:
+
+1. redundancy
+2. soft phrasing
+3. opener length
+4. sentence-level wording
+
+Never drop a critical answer to save characters.
+
+### Phase 6: External Stress Test
+
+Run a reviewer stress test on the draft:
 
 ```text
 spawn_agent:
-  model: gpt-5.4
+  model: REVIEWER_MODEL
   reasoning_effort: xhigh
   message: |
-    Stress-test this rebuttal draft:
-    [raw reviews + issue board + draft + venue rules]
+    REBUTTAL STRESS TEST
 
-    1. Unanswered or weakly answered concerns?
-    2. Unsupported factual statements?
-    3. Risky or unapproved promises?
-    4. Tone problems?
-    5. Paragraph most likely to backfire with a meta-reviewer?
-    6. Minimal grounded fixes only. Do not invent evidence.
+    Reviews:
+    [raw reviews]
 
-    Verdict: safe to submit / needs revision
+    Issue board:
+    [normalized concerns]
+
+    Draft:
+    [current rebuttal]
+
+    Venue rules:
+    [limit and format]
+
+    Return:
+    1. verdict: safe_to_submit | needs_revision
+    2. unanswered_concerns: ranked list
+    3. unsupported_statements: ranked list
+    4. risky_promises: ranked list
+    5. tone_risks: ranked list
+    6. most_dangerous_paragraph: quote + reason
+    7. minimal_grounded_fixes: concrete edits only
+
+    Do not invent evidence.
 ```
 
-Save the full response to `rebuttal/MCP_STRESS_TEST.md`. If a hard safety blocker remains, revise before finalizing.
+Save the raw output to `rebuttal/CODEX_STRESS_TEST.md`.
 
-### Phase 7: Finalize — Two Versions
+If you revise the draft and want one more bounded pass, reuse the same reviewer thread:
+
+```text
+send_input:
+  target: [saved agent id]
+  message: |
+    Here is the revised rebuttal draft after applying your fixes.
+    Re-check only unresolved blockers and confirm whether it is now safe to submit.
+```
+
+### Phase 7: Finalize Two Deliverables
 
 Produce:
 
-1. **`rebuttal/PASTE_READY.txt`** — strict version, ready to paste
-2. **`rebuttal/REBUTTAL_DRAFT_rich.md`** — extended version with optional sections marked
-3. Update `rebuttal/REBUTTAL_STATE.md`
-4. Present the remaining risks and any lines needing manual approval
+1. **`rebuttal/PASTE_READY.txt`** — strict venue-compliant version
+2. **`rebuttal/REBUTTAL_DRAFT_rich.md`** — richer version with optional sections marked `[OPTIONAL - cut if over limit]`
+
+Update `rebuttal/REBUTTAL_STATE.md` with:
+
+- current phase
+- final character count
+- remaining manual approvals
+- unresolved risks
 
 ### Phase 8: Follow-Up Rounds
 
-When new reviewer comments arrive:
+When new comments arrive:
 
-1. Append them to `rebuttal/FOLLOWUP_LOG.md`
-2. Link to existing issues or create new ones
-3. Draft the delta reply only
-4. Re-run safety lints
-5. If continuity helps, reuse the same reviewer agent via `send_input`
-6. Escalate technically, not rhetorically
+1. append them verbatim to `rebuttal/FOLLOWUP_LOG.md`
+2. map each comment to an old or new issue
+3. write a delta reply only
+4. rerun safety lints
+5. if continuity helps, reuse the same reviewer thread via `send_input`
 
 ## Key Rules
 
-- Never fabricate evidence, numbers, derivations, citations, or links
-- Never overpromise. Only promise what the user explicitly approved.
-- Every reviewer concern must be tracked and accounted for
-- Preserve raw records
-- Shared concerns go in the opener; reviewer-specific details go in the per-reviewer sections
-- Answer friendly reviewers too
-- Respect the hard character limit
+- Never fabricate evidence, numbers, derivations, citations, or links.
+- Never promise work the user has not approved.
+- Keep every issue visible from raw review to final answer.
+- Preserve raw records and reviewer outputs verbatim.
+- Prefer narrow honest concessions over broad evasions.
+- Do not waste rebuttal budget on unwinnable arguments.
+- Respect the hard venue limit.

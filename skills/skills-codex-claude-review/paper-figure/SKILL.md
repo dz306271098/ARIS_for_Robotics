@@ -1,6 +1,8 @@
 ---
 name: "paper-figure"
-description: "Generate publication-quality figures and tables from experiment results. Use when user says \"画图\", \"作图\", \"generate figures\", \"paper figures\", or needs plots for a paper."
+description: "Generate publication-quality figures and tables from experiment results. Use when user says \\"画图\\", \\"作图\\", \\"generate figures\\", \\"paper figures\\", or needs plots for a paper."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent
+argument-hint: [figure-plan-or-data-path]
 ---
 
 > Override for Codex users who want **Claude Code**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.

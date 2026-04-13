@@ -2,7 +2,7 @@
 
 [English](SESSION_RECOVERY_GUIDE.md) | 中文版
 
-> 在 ARIS 工作流中跨会话和上下文压缩维护项目状态 — 核心设计是**项目 CLAUDE.md 中的 Pipeline Status**，Claude Code 用户可选 hook 自动化。
+> 在 ARIS 工作流中跨会话和上下文压缩维护项目状态 — 核心设计是**项目 `CODEX.md` 中的 Pipeline Status**（旧的 `CLAUDE.md` 仍兼容），Claude Code 用户可选 hook 自动化。
 
 ## 为什么需要会话恢复
 
@@ -15,11 +15,11 @@ ARIS 已经将部分状态持久化到文件（`REVIEW_STATE.json`、`AUTO_REVIE
 
 ## 核心方案：Pipeline Status
 
-最重要的一件事是在项目 `CLAUDE.md` 中维护一个 **`## Pipeline Status`** 段。这是一个轻量级、结构化的项目快照——30 秒读完，足以让任何 LLM 恢复工作。
+最重要的一件事是在项目 `CODEX.md` 中维护一个 **`## Pipeline Status`** 段。这是一个轻量级、结构化的项目快照——30 秒读完，足以让任何 LLM 恢复工作。
 
 ### Pipeline Status 包含什么
 
-在项目 `CLAUDE.md` 中添加：
+在项目 `CODEX.md` 中添加：
 
 ```yaml
 ## Pipeline Status
@@ -77,11 +77,11 @@ LLM 应在以下情况发生时**立即更新**：
 3. 项目笔记或日志文件（如有，恢复调试线索、决策理由）
 4. 如果 `active_tasks`/`training_status` 非空 → 检查远程 session，重建监控
 
-这在**任何平台**上都适用（Claude Code、Cursor、Trae、Codex CLI、OpenClaw）— 只是一个 Markdown 约定。
+这在**任何平台**上都适用（Codex CLI、Claude Code、Cursor、Trae、OpenClaw）— 只是一个 Markdown 约定。
 
-### 推荐的 CLAUDE.md 规则
+### 推荐的 `CODEX.md` 规则
 
-在项目 `CLAUDE.md` 中添加这些规则，让 LLM 知道何时以及如何维护状态：
+在项目 `CODEX.md` 中添加这些规则，让 LLM 知道何时以及如何维护状态：
 
 ```markdown
 ## 状态持久化规则
@@ -101,7 +101,7 @@ Pipeline Status 更新时机：
 
 ## 可选：Claude Code Hooks 自动化
 
-Pipeline Status 约定不依赖任何工具——LLM 只需要遵循 CLAUDE.md 中的规则。但实践中 LLM 有时会忘记，尤其是压缩后。Claude Code [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) 可以自动化恢复过程。
+Pipeline Status 约定不依赖任何工具——LLM 只需要遵循 `CODEX.md` 中的规则。但实践中 LLM 有时会忘记，尤其是压缩后。Claude Code [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) 可以自动化恢复过程。
 
 > **这些 hook 是 Claude Code 专属的。** 如果使用 Cursor、Trae 或其他平台，跳过这一节——上面的 Pipeline Status 约定就是你需要的全部。
 
@@ -146,7 +146,7 @@ touch "$FLAG"
 PROJECT_DIR=""
 SEARCH_DIR="$CWD"
 while [[ "$SEARCH_DIR" == "$RESEARCH_ROOT"/* ]]; do
-  if [ -f "$SEARCH_DIR/CLAUDE.md" ]; then
+  if [ -f "$SEARCH_DIR/CODEX.md" ] || [ -f "$SEARCH_DIR/CLAUDE.md" ]; then
     PROJECT_DIR="$SEARCH_DIR"
     break
   fi
@@ -157,7 +157,9 @@ done
 OUTPUT=""
 
 # 1. Read Pipeline Status
-STATUS=$(sed -n '/^## Pipeline Status/,/^## [^P]/p' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null | head -15 | sed '$d')
+CONFIG_FILE="$PROJECT_DIR/CODEX.md"
+[ -f "$CONFIG_FILE" ] || CONFIG_FILE="$PROJECT_DIR/CLAUDE.md"
+STATUS=$(sed -n '/^## Pipeline Status/,/^## [^P]/p' "$CONFIG_FILE" 2>/dev/null | head -15 | sed '$d')
 if [ -n "$STATUS" ]; then
   OUTPUT="[session-restore] Research project detected. Current state:\n$STATUS"
 fi
@@ -168,7 +170,7 @@ if [ -f "$PROJECT_DIR/docs/research_contract.md" ]; then
 fi
 
 # 3. Check for active training
-if grep -q "training_status:.*running" "$PROJECT_DIR/CLAUDE.md" 2>/dev/null; then
+if grep -q "training_status:.*running" "$CONFIG_FILE" 2>/dev/null; then
   OUTPUT="$OUTPUT\n\n[session-restore] Active training detected — check remote status and rebuild monitoring."
 fi
 
@@ -181,7 +183,7 @@ if [ -f "$PROJECT_DIR/REVIEW_STATE.json" ]; then
 fi
 
 # 5. Suggest stage-appropriate actions
-STAGE=$(grep -oP '(?<=stage:\s).*' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null | head -1 | tr -d ' ')
+STAGE=$(grep -oP '(?<=stage:\s).*' "$CONFIG_FILE" 2>/dev/null | head -1 | tr -d ' ')
 case "$STAGE" in
   idea-discovery)
     OUTPUT="$OUTPUT\n\n[session-restore] Stage: idea-discovery. Resume with /idea-discovery or /research-lit." ;;

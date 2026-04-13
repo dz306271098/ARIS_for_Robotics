@@ -1,7 +1,10 @@
 ---
 name: "mermaid-diagram"
 description: "Generate Mermaid diagrams from user requirements. Save .mmd and .md files to figures/ with syntax verification. Supports flowcharts, sequence diagrams, class diagrams, ER diagrams, Gantt charts, and many more diagram types."
+allowed-tools: Bash(*), Read, Write, Edit, Glob, Grep
+argument-hint: [diagram description or requirements]
 ---
+
 
 # Mermaid Diagram Generator
 

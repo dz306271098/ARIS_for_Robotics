@@ -1,210 +1,258 @@
 ---
 name: research-pipeline
-description: "Full research pipeline: Workflow 1 (idea discovery) → implementation → Workflow 2 (auto review loop). Goes from a broad research direction all the way to a submission-ready paper. Use when user says \"全流程\", \"full pipeline\", \"从找idea到投稿\", \"end-to-end research\", or wants the complete autonomous research lifecycle."
+description: "Full research pipeline: Workflow 1 (idea discovery) -> implementation -> method evolution -> review polish. Goes from a broad research direction all the way to a submission-ready paper. Use when user says \"全流程\", \"full pipeline\", \"从找idea到投稿\", \"end-to-end research\", or wants the complete autonomous research lifecycle."
 argument-hint: [research-direction]
 allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, Skill, Bash(codex*), Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
-# Full Research Pipeline: Idea → Experiments → Submission
+# Full Research Pipeline: Idea -> Experiments -> Submission
 
 End-to-end autonomous research workflow for: **$ARGUMENTS**
 
 ## Constants
 
-- **AUTO_PROCEED = true** — When `true`, Gate 1 auto-selects the top-ranked idea (highest pilot signal + novelty confirmed) and continues to implementation. When `false`, always waits for explicit user confirmation before proceeding.
-- **ARXIV_DOWNLOAD = false** — When `true`, `/research-lit` downloads the top relevant arXiv PDFs during literature survey. When `false` (default), only fetches metadata via arXiv API. Passed through to `/idea-discovery` → `/research-lit`.
-- **HUMAN_CHECKPOINT = false** — When `true`, the auto-review loops (Stage 4) pause after each round's review to let you see the score and provide custom modification instructions before fixes are implemented. When `false` (default), loops run fully autonomously. Passed through to `/auto-review-loop`.
-- **DEEP_INNOVATION = false** — When `true`, Stage 4 uses `/deep-innovation-loop` (40+ rounds of deep research-innovation cycles: diagnose root cause → research literature → design innovative variants → implement → evaluate → reflect → evolve) instead of the standard `/auto-review-loop` (4 rounds of review-fix). Use this for projects that require genuine methodological innovation, not just iterative polishing. Passed through to Stage 4.
+- **AUTO_PROCEED = true** — When `true`, Gate 1 auto-selects the top-ranked idea and continues. When `false`, always wait for explicit confirmation.
+- **ARXIV_DOWNLOAD = false** — When `true`, `/research-lit` downloads the top relevant arXiv PDFs during literature survey.
+- **HUMAN_CHECKPOINT = false** — When `true`, review-style loops pause after each round so the user can modify the plan before fixes are implemented.
+- **RESEARCH_WIKI = auto** — `auto`: use `research-wiki/` if it already exists. `true`: initialize it if missing, then keep it in the loop. `false`: ignore wiki integration even if the directory exists.
+- **DEEP_INNOVATION = auto** — `auto`: after initial experiments, run an innovation gate and invoke `/deep-innovation-loop` when structural headroom remains. `true`: always run `/deep-innovation-loop` before final review polish. `false`: skip deep innovation and go directly to `/auto-review-loop`.
+- **META_OPTIMIZE = false** — When `true`, finish with a report-only `/meta-optimize` pass for harness maintenance. Never auto-apply patches.
 
-> 💡 Override via argument, e.g., `/research-pipeline "topic" — AUTO_PROCEED: false, human checkpoint: true`.
+> 💡 Override via argument, e.g. `/research-pipeline "topic" — AUTO_PROCEED: false, DEEP_INNOVATION: true, RESEARCH_WIKI: true`.
 
 ## Full Autonomy Principle
 
-This pipeline is designed to run **fully autonomously without human intervention**. At every decision point:
+This pipeline is designed to run with minimal supervision:
 
-1. **Never block waiting for user input** — make the best decision based on available data, document the reasoning, and continue.
-2. **Auto-select at forks** — when multiple options exist (ideas, variants, fix strategies), apply quantitative criteria to select the best one. Log the decision and alternatives.
-3. **Auto-recover from failures** — when experiments fail, web searches hang, or reviews are harsh, diagnose the issue, apply the best fix, and continue. Exhaust at least 2 approaches before flagging as unresolvable.
-4. **Auto-infer missing context** — when required files are absent (RESEARCH_BRIEF.md, EXPERIMENT_PLAN.md), infer the needed information from whatever IS available (CLAUDE.md, existing code, prior outputs).
-5. **Document all autonomous decisions** — every auto-decision is logged with reasoning so the user can review after the fact. Format: `[AUTO-DECISION] Chose X over Y because Z`.
-
-All downstream skills inherit this principle. No sub-skill should stop the pipeline to ask the user a question unless there is genuinely zero context to make any decision.
+1. **Never block without reason** — if enough evidence exists to make a defensible choice, make it and log the reasoning.
+2. **Auto-select at forks** — idea choice, implementation path, and innovation/polish routing should be based on evidence, not hesitation.
+3. **Auto-recover** — when experiments fail, diagnose, fix, and retry before declaring a hard blocker.
+4. **Use durable memory when available** — `CODEX.md`, `research-wiki/`, `refine-logs/`, `AUTO_REVIEW.md`, and `innovation-logs/` are part of the working state, not optional afterthoughts.
+5. **Log autonomous decisions** — write `[AUTO-DECISION]` notes into the relevant artifact whenever the pipeline chooses a path on the user's behalf.
 
 ## Overview
 
-This skill chains the entire research lifecycle into a single pipeline:
+The mainline path is now:
 
-```
-/idea-discovery → implement → /run-experiment → /auto-review-loop → submission-ready
-├── Workflow 1 ──┤            ├────────── Workflow 2 ──────────────┤
+```text
+/idea-discovery -> implement -> /run-experiment -> innovation gate -> /deep-innovation-loop? -> /auto-review-loop -> submission-ready
 ```
 
-It orchestrates two major workflows plus the implementation bridge between them.
+Sidecar systems that should stay attached to this mainline:
+
+- **Research Wiki** — long-horizon memory for papers, ideas, experiments, and claims
+- **Meta Optimize** — maintenance loop for improving the harness after enough project evidence accumulates
 
 ## Pipeline
 
+### Stage 0: Project Memory Setup
+
+Before launching the main research work, handle durable memory.
+
+**Research Wiki routing**
+
+- If `RESEARCH_WIKI = true` and `research-wiki/` does not exist, initialize it:
+  ```text
+  /research-wiki init
+  ```
+- If `RESEARCH_WIKI = auto` and `research-wiki/` exists, use it automatically.
+- If `research-wiki/query_pack.md` is missing or obviously stale, rebuild it before ideation:
+  ```bash
+  python3 tools/research_wiki.py rebuild_query_pack research-wiki/
+  ```
+
+Use `CODEX.md` plus `RESEARCH_BRIEF.md` as the authoritative project context. If both exist, treat `CODEX.md` as the project dashboard and `RESEARCH_BRIEF.md` as richer problem context.
+
 ### Stage 1: Idea Discovery (Workflow 1)
 
-If `RESEARCH_BRIEF.md` exists in the project root, it will be automatically loaded as detailed context (replaces one-line prompt). See `templates/RESEARCH_BRIEF_TEMPLATE.md`.
+If `RESEARCH_BRIEF.md` exists in the project root, load it as detailed context.
 
-Invoke the idea discovery pipeline:
+Invoke:
 
-```
+```text
 /idea-discovery "$ARGUMENTS"
 ```
 
-This internally runs: `/research-lit` → `/idea-creator` → `/novelty-check` → `/research-review`
+This internally runs:
 
-**Output:** `IDEA_REPORT.md` with ranked, validated, pilot-tested ideas.
-
-**🚦 Gate 1 — Human Checkpoint:**
-
-After `IDEA_REPORT.md` is generated, **pause and present the top ideas to the user**:
-
-```
-📋 Idea Discovery complete. Top ideas:
-
-1. [Idea 1 title] — Pilot: POSITIVE (+X%), Novelty: CONFIRMED
-2. [Idea 2 title] — Pilot: WEAK POSITIVE (+Y%), Novelty: CONFIRMED
-3. [Idea 3 title] — Pilot: NEGATIVE, eliminated
-
-Recommended: Idea 1. Shall I proceed with implementation?
+```text
+/research-lit -> /idea-creator -> /novelty-check -> /research-review -> /research-refine-pipeline
 ```
 
-**If AUTO_PROCEED=false:** Wait for user confirmation before continuing. The user may:
-- **Approve an idea** → proceed to Stage 2.
-- **Pick a different idea** → proceed with their choice.
-- **Request changes** (e.g., "combine Idea 1 and 3", "focus more on X") → update the idea prompt with user feedback, re-run `/idea-discovery` with refined constraints, and present again.
-- **Reject all ideas** → collect feedback on what's missing, re-run Stage 1 with adjusted research direction. Repeat until the user commits to an idea.
-- **Stop here** → save current state to `IDEA_REPORT.md` for future reference.
+**Primary outputs**
 
-**If AUTO_PROCEED=true:** Present the top ideas, wait 10 seconds for user input. If no response, auto-select the #1 ranked idea (highest pilot signal + novelty confirmed) and proceed to Stage 2. Log: `"AUTO_PROCEED: selected Idea 1 — [title]"`.
+- `IDEA_REPORT.md`
+- `refine-logs/FINAL_PROPOSAL.md`
+- `refine-logs/EXPERIMENT_PLAN.md`
+- `refine-logs/EXPERIMENT_TRACKER.md`
 
-> ⚠️ **This gate waits for user confirmation when AUTO_PROCEED=false.** When `true`, it auto-selects the top idea after presenting results. The rest of the pipeline (Stages 2-4) is expensive (GPU time + multiple review rounds), so set `AUTO_PROCEED=false` if you want to manually choose which idea to pursue.
+**Gate 1**
+
+After `IDEA_REPORT.md` is ready:
+
+- If `AUTO_PROCEED = false`, wait for explicit idea selection.
+- If `AUTO_PROCEED = true`, present the ranking, wait briefly for user input, then auto-select the best evidence-backed idea.
+
+If `research-wiki/` is enabled, Stage 1 should already:
+
+- ingest relevant papers via `/research-lit`
+- read `query_pack.md` before ideation
+- write recommended and killed ideas back into `research-wiki/ideas/`
 
 ### Stage 2: Implementation
 
-Once the user confirms which idea to pursue:
+Once the idea is chosen:
 
-1. **Read the idea details** from `IDEA_REPORT.md` (hypothesis, experimental design, pilot code)
+1. Read the selected idea and refined proposal from `IDEA_REPORT.md` and `refine-logs/`.
+2. Implement the full experiment:
+   - scale pilot code to full experiments
+   - expose hyperparameters cleanly
+   - add metrics, logs, and result serialization
+   - follow the project codebase conventions
+3. Perform a local code sanity review before deployment.
 
-2. **Implement the full experiment**:
-   - Extend pilot code to full scale (multi-seed, full dataset, proper baselines)
-   - Add proper evaluation metrics and logging (wandb if configured)
-   - Write clean, reproducible experiment scripts
-   - Follow existing codebase conventions
+### Stage 3: Deploy Experiments
 
-3. **Code review**: Before deploying, do a self-review:
-   - Are all hyperparameters configurable via argparse?
-   - Is the random seed fixed and controllable?
-   - Are results saved to JSON/CSV for later analysis?
-   - Is there proper logging for debugging?
+Deploy the initial experiment suite:
 
-### Stage 3: Deploy Experiments (Workflow 2 — Part 1)
-
-Deploy the full-scale experiments:
-
-```
+```text
 /run-experiment [experiment command]
 ```
 
-**What this does:**
-- Check GPU availability on configured servers
-- Sync code to remote server
-- Launch experiments in screen sessions with proper CUDA_VISIBLE_DEVICES
-- Verify experiments started successfully
+Monitor and collect:
 
-**Monitor progress:**
-
-```
+```text
 /monitor-experiment [server]
 ```
 
-Wait for experiments to complete. Collect results.
+At the end of Stage 3, you should have enough evidence to decide whether the project needs deep method evolution or only review-driven polish.
 
-### Stage 4: Method Evolution (Workflow 2 — Part 2)
+### Stage 4: Method Evolution Gate
 
-Once initial results are in, start the improvement loop.
+This stage is now part of the mainline workflow.
 
-**If DEEP_INNOVATION = true** (for projects requiring genuine methodological innovation):
+#### Case A: `DEEP_INNOVATION = true`
 
-```
+Always invoke:
+
+```text
 /deep-innovation-loop "$ARGUMENTS — [chosen idea title]" — baseline: [PRIMARY_BASELINE], venue: [VENUE]
 ```
 
-**What this does (40+ rounds):**
-1. GPT-5.4 xhigh diagnoses root causes (not just symptoms)
-2. Claude Code researches literature for techniques addressing root causes
-3. GPT-5.4 proposes innovative method variants with "1+1>2" fusion design
-4. Claude Code implements the best variant, runs experiments
-5. Both reflect on results, update technique library and evolution log
-6. Repeat until score ≥ 8/10 or convergence plateau
+Then run a shorter paper-level polish loop:
 
-**Output:** `innovation-logs/FINAL_METHOD.md`, `innovation-logs/EVOLUTION_LOG.md`, `innovation-logs/TECHNIQUE_LIBRARY.md`
-
-After deep-innovation-loop completes, optionally run `/auto-review-loop` for 2-3 rounds of final paper-level polish.
-
-**If DEEP_INNOVATION = false** (default — quick iterative polishing):
-
+```text
+/auto-review-loop "$ARGUMENTS — [chosen idea title] — post deep innovation polish"
 ```
+
+#### Case B: `DEEP_INNOVATION = auto` (default)
+
+Run an **innovation gate** after initial experiments. Enter `/deep-innovation-loop` if any of these are true:
+
+- the initial result is negative, weak, or inconclusive
+- the intended claim is still not well supported
+- weaknesses are structural rather than cosmetic
+- the top idea clearly has novelty headroom but the current method realization is not exploiting it
+- the project is long-horizon and should accumulate `innovation-logs/` rather than stop at a quick polish loop
+
+If the project already looks strong and mainly needs paper-level tightening, log:
+
+```text
+[AUTO-DECISION] Skipping deep innovation because the main claim is already supported and remaining issues are primarily review-polish items.
+```
+
+Then go directly to:
+
+```text
 /auto-review-loop "$ARGUMENTS — [chosen idea title]"
 ```
 
-**What this does (up to 4 rounds):**
-1. GPT-5.4 xhigh reviews the work (score, weaknesses, minimum fixes)
-2. Claude Code implements fixes (code changes, new experiments, reframing)
-3. Deploy fixes, collect new results
-4. Re-review → repeat until score ≥ 6/10 or 4 rounds reached
+If the gate decides the method still needs structural evolution, invoke:
 
-**Output:** `AUTO_REVIEW.md` with full review history and final assessment.
+```text
+/deep-innovation-loop "$ARGUMENTS — [chosen idea title]" — baseline: [PRIMARY_BASELINE], venue: [VENUE]
+```
+
+and follow it with:
+
+```text
+/auto-review-loop "$ARGUMENTS — [chosen idea title] — post deep innovation polish"
+```
+
+#### Case C: `DEEP_INNOVATION = false`
+
+Skip deep innovation and go directly to:
+
+```text
+/auto-review-loop "$ARGUMENTS — [chosen idea title]"
+```
 
 ### Stage 5: Final Summary
 
-After the auto-review loop completes, write a final status report:
+After the method-evolution stage and final review polish, write a final status report:
 
 ```markdown
 # Research Pipeline Report
 
 **Direction**: $ARGUMENTS
 **Chosen Idea**: [title]
-**Date**: [start] → [end]
-**Pipeline**: idea-discovery → implement → run-experiment → auto-review-loop
+**Date**: [start] -> [end]
+**Pipeline**: idea-discovery -> implement -> run-experiment -> deep-innovation? -> auto-review-loop
 
 ## Journey Summary
-- Ideas generated: X → filtered to Y → piloted Z → chose 1
-- Implementation: [brief description of what was built]
-- Experiments: [number of GPU experiments, total compute time]
-- Review rounds: N/4, final score: X/10
-- [If DEEP_INNOVATION=true] Innovation rounds: N, method evolution: v0 → vN, techniques explored: M, final vs baseline improvement: [metrics]
+- Ideas generated: X -> filtered to Y -> piloted Z -> chose 1
+- Implementation: [what was built]
+- Experiments: [number of runs, total compute time]
+- Deep innovation: [skipped / auto-entered / forced], rounds: [N]
+- Final review rounds: [N], final score: [X/10]
+
+## Durable Memory
+- CODEX.md Pipeline Status updated: [yes/no]
+- Research Wiki updated: [yes/no]
+- Key artifacts: [list]
 
 ## Final Status
-- [ ] Ready for submission / [ ] Needs manual follow-up
+- [ ] Ready for submission
+- [ ] Needs manual follow-up
 
-## Remaining TODOs (if any)
-- [items flagged by reviewer that weren't addressed]
-
-## Files Changed
-- [list of key files created/modified]
+## Remaining TODOs
+- [items]
 ```
+
+### Stage 5.5: Harness Maintenance (Optional)
+
+If `META_OPTIMIZE = true`, or if the project has accumulated substantial artifact history, finish with:
+
+```text
+/meta-optimize "research-pipeline"
+```
+
+Use this only to generate a maintenance report and candidate patches for the harness. Do **not** auto-apply any patch from inside `research-pipeline`.
+
+Recommended trigger points:
+
+- after one full end-to-end project
+- after repeated `auto-review-loop` stalls
+- after a long `deep-innovation-loop` plateau
+- after paper or rebuttal workflows reveal recurring harness friction
 
 ## Key Rules
 
-- **Large file handling**: If the Write tool fails due to file size, immediately retry using Bash (`cat << 'EOF' > file`) to write in chunks. Do NOT ask the user for permission — just do it silently.
-
-- **Human checkpoint after Stage 1 is controlled by AUTO_PROCEED.** When `false`, do not proceed without user confirmation. When `true`, auto-select the top idea after presenting results.
-- **Stages 2-4 can run autonomously** once the user confirms the idea. This is the "sleep and wake up to results" part.
-- **If Stage 4 ends at round 4 without positive assessment**, stop and report remaining issues. Do not loop forever.
-- **Budget awareness**: Track total GPU-hours across the pipeline. Flag if approaching user-defined limits.
-- **Documentation**: Every stage updates its own output file. The full history should be self-contained.
-- **Fail gracefully**: If any stage fails (no good ideas, experiments crash, review loop stuck), report clearly and suggest alternatives rather than forcing forward.
+- **Keep `CODEX.md` current.** Stage changes, active tasks, and next actions belong in `## Pipeline Status`.
+- **Research Wiki is mainline memory, not decoration.** If enabled, let `/research-lit`, `/idea-creator`, and `/result-to-claim` update it continuously.
+- **Deep innovation is now a mainline stage.** The default `auto` mode should decide whether to enter it; it is no longer purely an out-of-band optional extra.
+- **Meta Optimize is maintenance, not research execution.** Use it after evidence accumulates; never let it block the research deliverables.
+- **Fail gracefully.** If a stage cannot complete, write the blocker, preserve the artifacts, and propose the next-best continuation path.
 
 ## Typical Timeline
 
 | Stage | Duration | Can sleep? |
 |-------|----------|------------|
-| 1. Idea Discovery | 30-60 min | Yes if AUTO_PROCEED=true |
-| 2. Implementation | 15-60 min | Yes (autonomous after Gate 1) |
-| 3. Deploy | 5 min + experiment time | Yes ✅ |
-| 4. Auto Review | 1-4 hours (depends on experiments) | Yes ✅ |
+| 0. Memory setup | 1-5 min | Yes |
+| 1. Idea discovery | 30-60 min | Yes |
+| 2. Implementation | 15-60 min | Yes |
+| 3. Initial deployment | 5 min + experiment time | Yes |
+| 4. Deep innovation / review polish | 1 hour to overnight | Yes |
+| 5. Final summary | 5-15 min | Yes |
 
-**Sweet spot**: Run Stage 1-2 in the evening, launch Stage 3-4 before bed, wake up to a reviewed paper.
+**Sweet spot**: run Stages 0-3 in the evening, let Stage 4 evolve overnight, and wake up to a stabilized method plus a review-ready project state.

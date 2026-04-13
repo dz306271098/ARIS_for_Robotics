@@ -296,7 +296,7 @@ Web operations (WebSearch, WebFetch) can hang and block the pipeline. Apply stri
 - Always estimate compute cost. An idea that needs 1000 GPU-hours is not actionable for most researchers.
 - "Apply X to Y" is the lowest form of research idea. Push for deeper questions.
 - Include eliminated ideas in the report — they save future time by documenting dead ends.
-- **If the user's direction is too broad** (e.g., "NLP", "computer vision", "reinforcement learning"), **autonomously narrow it** by reading `RESEARCH_BRIEF.md`, `CLAUDE.md`, and any existing project files to infer a specific sub-direction. If enough context exists, proceed with the inferred narrowing and document the decision: `"AUTO-NARROWED: [original broad direction] → [specific sub-direction] based on [context source]"`. Only ask the user to narrow if no project context is available at all AND the direction is a single generic word.
+- **If the user's direction is too broad** (e.g., "NLP", "computer vision", "reinforcement learning"), **autonomously narrow it** by reading `RESEARCH_BRIEF.md`, `CODEX.md` (fallback `CLAUDE.md`), and any existing project files to infer a specific sub-direction. If enough context exists, proceed with the inferred narrowing and document the decision: `"AUTO-NARROWED: [original broad direction] → [specific sub-direction] based on [context source]"`. Only ask the user to narrow if no project context is available at all AND the direction is a single generic word.
 
 ## Composing with Other Skills
 

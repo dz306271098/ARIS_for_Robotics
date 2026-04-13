@@ -53,7 +53,7 @@
     <rect x="37" y="91" width="7" height="7" fill="#444"/>
     <rect x="44" y="91" width="7" height="7" fill="#444"/>
   </g>
-  <text x="212" y="88" text-anchor="middle" fill="#4A9EDA" font-size="7px" font-weight="bold">Claude Code</text>
+  <text x="212" y="88" text-anchor="middle" fill="#4A9EDA" font-size="7px" font-weight="bold">Codex</text>
 
   <!-- ====== Code editor panel (top area) ====== -->
   <rect x="30" y="100" width="170" height="95" fill="#2d2d2d" rx="6"/>

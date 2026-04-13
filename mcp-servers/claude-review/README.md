@@ -13,6 +13,7 @@ Bridge Codex-first ARIS workflows to the local Claude Code CLI.
   - `review_start`
   - `review_reply_start`
   - `review_status`
+- Accepts optional `jsonSchema` / `json_schema` arguments and forwards them to Claude CLI via `--json-schema`
 
 The synchronous tools return a JSON string containing `threadId` and `response`.
 The asynchronous start tools return a JSON string containing `jobId` and `status`, and `review_status` later returns the final `threadId` and `response`.
@@ -49,6 +50,15 @@ codex mcp add claude-review -- ~/.codex/mcp-servers/claude-review/run_with_claud
 - By default the reviewer gets **no tools**. This matches the original ARIS pattern where the external reviewer only sees the prompt context prepared by the executor.
 - `threadId` is the native Claude session id and can be passed directly to `review_reply`.
 - `jobId` is a bridge-local background task id stored on disk under `~/.codex/state/claude-review/jobs/` by default, so status can be resumed across MCP server restarts.
+- `jsonSchema` is useful when a reviewer call needs structured JSON output without changing the narrow review-tool contract.
+
+## Workflow boundary
+
+This bridge is only the reviewer transport layer inside the Codex-first mainline.
+
+- Use it for reviewer-aware stages such as `idea-creator`, `auto-review-loop`, `result-to-claim`, and paper/rebuttal review flows that explicitly call the reviewer.
+- Do not treat it as the owner of `research-wiki` or `meta-optimize`. Those remain local memory and maintenance layers driven by Codex-side workflow skills.
+- In the default `research-pipeline`, `deep-innovation-loop` now sits before the final `auto-review-loop` polish step when the innovation gate says more structural work is needed.
 
 ## When to use sync vs async
 
