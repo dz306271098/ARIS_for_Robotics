@@ -84,6 +84,14 @@ cp mcp-servers/claude-review/server.py ~/.codex/mcp-servers/claude-review/server
 codex mcp add claude-review -- python3 ~/.codex/mcp-servers/claude-review/server.py
 ```
 
+If your Claude access depends on proxies, prefer the repo installer instead:
+
+```bash
+bash scripts/install_codex_claude_mainline.sh --reinstall
+```
+
+The installer now copies common proxy env vars from the current shell into the `claude-review` MCP config. If you register the MCP server manually, you need to pass the same proxy env vars with `--env` or Codex-managed reviewer calls may still fail.
+
 If your Claude login depends on a wrapper such as `claude-aws`, use:
 
 ```bash
@@ -96,12 +104,17 @@ Optional reviewer model override:
 
 ```bash
 codex mcp remove claude-review
-codex mcp add claude-review --env CLAUDE_REVIEW_MODEL=claude-opus-4-1 -- python3 ~/.codex/mcp-servers/claude-review/server.py
+codex mcp add claude-review \
+  --env CLAUDE_REVIEW_MODEL='claude-opus-4-6[1m]' \
+  --env CLAUDE_REVIEW_FALLBACK_MODEL='claude-opus-4-6' \
+  -- python3 ~/.codex/mcp-servers/claude-review/server.py
 ```
 
 ## Notes
 
 - Prefer the async `review_start` / `review_reply_start` + `review_status` flow for long prompts.
+- The default reviewer chain is `claude-opus-4-6[1m]` first, then `claude-opus-4-6`.
+- The fallback model is used only when the MCP call does not pass an explicit `model`.
 - `CODEX.md` is the recommended project config name for this path.
 - `CODEX.md` is the only mainline project config name for this path.
 - `research-wiki` and `meta-optimize` are intentionally inherited from the base Codex pack rather than overridden here.

@@ -130,6 +130,8 @@ python3 --version
 claude -p "Reply with exactly READY" --output-format json --tools ""
 ```
 
+如果你的 Claude 访问依赖代理，先在当前 shell 里导出对应的代理环境变量，再运行安装器。安装器会默认把这些代理变量一并写入 `claude-review` 的 MCP 配置。
+
 ### 3.2 首次安装
 
 ```bash
@@ -144,6 +146,7 @@ bash scripts/install_codex_claude_mainline.sh
 - 叠加 `skills/skills-codex-claude-review/*`
 - 安装 `mcp-servers/claude-review/server.py`
 - 注册 `claude-review` MCP
+- 自动继承当前 shell 中已有的常见代理环境变量到 `claude-review` MCP
 - 写入安装 manifest
 - 复制本地可执行卸载脚本到 `~/.codex/.aris/codex-claude-mainline/`
 
@@ -161,6 +164,21 @@ codex mcp get claude-review --json
 ```bash
 claude -p "Reply with exactly READY" --output-format json --tools ""
 ```
+
+最后跑一次运行时健康检查：
+
+```bash
+bash scripts/check_claude_review_runtime.sh
+```
+
+这个检查会覆盖四层：
+
+- Claude CLI 直连
+- 直接启动 bridge
+- 已安装的 `claude-review` MCP
+- 宿主机 `Codex -> mcp__claude_review__review`
+
+如果 direct CLI 正常、但已安装 MCP 失败，而且当前 shell 里存在代理变量而 MCP 配置里缺失，脚本会提示重新执行安装器。
 
 然后进入你的项目目录启动 Codex：
 
@@ -180,7 +198,18 @@ codex -C /path/to/your/project
 ### 3.4 固定审稿模型
 
 ```bash
-bash scripts/install_codex_claude_mainline.sh --reinstall --review-model claude-opus-4-1
+bash scripts/install_codex_claude_mainline.sh \
+  --reinstall \
+  --review-model 'claude-opus-4-6[1m]' \
+  --review-fallback-model 'claude-opus-4-6'
+```
+
+默认情况下，`claude-review` 会优先使用 `claude-opus-4-6[1m]`，失败时回退到 `claude-opus-4-6`。这个回退只对未显式传 `model` 的 reviewer 调用生效。
+
+安装器默认也会把当前 shell 中已有的代理变量写入 `claude-review` MCP。如果你明确不希望这样做，可以加：
+
+```bash
+--no-inherit-proxy-env
 ```
 
 ### 3.5 使用 AWS wrapper
@@ -222,6 +251,7 @@ bash ~/.codex/.aris/codex-claude-mainline/uninstall_codex_claude_mainline.sh
 
 ```bash
 bash scripts/smoke_test_codex_claude_mainline.sh
+bash scripts/check_claude_review_runtime.sh
 ```
 
 ---

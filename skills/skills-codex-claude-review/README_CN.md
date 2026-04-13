@@ -70,16 +70,37 @@ cp -a skills/skills-codex-claude-review/* ~/.codex/skills/
 ```bash
 mkdir -p ~/.codex/mcp-servers/claude-review
 cp mcp-servers/claude-review/server.py ~/.codex/mcp-servers/claude-review/server.py
-codex mcp add claude-review -- python3 ~/.codex/mcp-servers/claude-review/server.py
+codex mcp add claude-review \
+  --env CLAUDE_REVIEW_MODEL='claude-opus-4-6[1m]' \
+  --env CLAUDE_REVIEW_FALLBACK_MODEL='claude-opus-4-6' \
+  -- python3 ~/.codex/mcp-servers/claude-review/server.py
 ```
+
+如果你的 Claude 访问依赖代理，优先直接运行仓库安装器：
+
+```bash
+bash scripts/install_codex_claude_mainline.sh --reinstall
+```
+
+安装器会默认把当前 shell 里的常见代理环境变量写进 `claude-review` MCP。手工 `codex mcp add` 时也需要把相同代理变量通过 `--env` 传进去，否则 direct CLI 可能成功，但 `mcp__claude_review__review` 仍会失败。
 
 如果你的 Claude 登录依赖 wrapper，再补：
 
 ```bash
 cp mcp-servers/claude-review/run_with_claude_aws.sh ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
 chmod +x ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
-codex mcp add claude-review -- ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
+codex mcp add claude-review \
+  --env CLAUDE_REVIEW_MODEL='claude-opus-4-6[1m]' \
+  --env CLAUDE_REVIEW_FALLBACK_MODEL='claude-opus-4-6' \
+  -- ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
 ```
+
+默认 reviewer 模型链是：
+
+- 首选 `claude-opus-4-6[1m]`
+- 回退 `claude-opus-4-6`
+
+这个回退只在 MCP 调用没有显式传 `model` 时生效。
 
 ## 为什么需要这个包
 
@@ -112,4 +133,5 @@ python3 tools/generate_codex_claude_review_overrides.py
 python3 tools/check_codex_mainline_parity.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
+bash scripts/check_claude_review_runtime.sh
 ```

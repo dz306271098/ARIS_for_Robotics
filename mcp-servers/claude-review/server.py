@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -25,7 +26,8 @@ sys.stdin = os.fdopen(sys.stdin.fileno(), "rb", buffering=0)
 
 SERVER_NAME = os.environ.get("CLAUDE_REVIEW_SERVER_NAME", "claude-review")
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
-DEFAULT_MODEL = os.environ.get("CLAUDE_REVIEW_MODEL", "")
+DEFAULT_MODEL = os.environ.get("CLAUDE_REVIEW_MODEL", "claude-opus-4-6[1m]").strip()
+DEFAULT_FALLBACK_MODEL = os.environ.get("CLAUDE_REVIEW_FALLBACK_MODEL", "claude-opus-4-6").strip()
 DEFAULT_SYSTEM = os.environ.get("CLAUDE_REVIEW_SYSTEM", "")
 DEFAULT_TOOLS = os.environ.get("CLAUDE_REVIEW_TOOLS", "")
 DEFAULT_TIMEOUT_SEC = int(os.environ.get("CLAUDE_REVIEW_TIMEOUT_SEC", "600"))
@@ -184,6 +186,25 @@ def normalize_json_schema(raw_value: Any) -> tuple[str | None, str | None]:
         return None, "jsonSchema must be a string or a JSON-serializable value"
 
 
+def normalize_model_name(raw_value: Any) -> str | None:
+    if raw_value is None:
+        return None
+    candidate = str(raw_value).strip()
+    return candidate or None
+
+
+def resolve_model_candidates(explicit_model: Any) -> list[str | None]:
+    requested_model = normalize_model_name(explicit_model)
+    if requested_model:
+        return [requested_model]
+
+    candidates: list[str] = []
+    for candidate in (DEFAULT_MODEL, DEFAULT_FALLBACK_MODEL):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    return candidates or [None]
+
+
 def build_command(
     prompt: str,
     *,
@@ -202,9 +223,8 @@ def build_command(
     if session_id:
         cmd.extend(["--resume", session_id])
 
-    selected_model = model or DEFAULT_MODEL
-    if selected_model:
-        cmd.extend(["--model", selected_model])
+    if model:
+        cmd.extend(["--model", model])
 
     selected_system = system or DEFAULT_SYSTEM
     if selected_system:
@@ -217,7 +237,7 @@ def build_command(
     return cmd
 
 
-def run_claude_review(
+def run_single_claude_review(
     prompt: str,
     *,
     session_id: str | None = None,
@@ -238,7 +258,7 @@ def run_claude_review(
     except FileNotFoundError as exc:
         return None, str(exc)
 
-    debug_log(f"RUN {' '.join(cmd)}")
+    debug_log(f"RUN {' '.join(shlex.quote(part) for part in cmd)}")
     try:
         result = subprocess.run(
             cmd,
@@ -272,6 +292,54 @@ def run_claude_review(
         "duration_ms": payload.get("duration_ms"),
         "stop_reason": payload.get("stop_reason"),
     }, None
+
+
+def run_claude_review(
+    prompt: str,
+    *,
+    session_id: str | None = None,
+    model: str | None = None,
+    system: str | None = None,
+    tools: str | None = None,
+    json_schema: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    candidates = resolve_model_candidates(model)
+    explicit_model = normalize_model_name(model)
+    attempt_errors: list[tuple[str, str]] = []
+
+    for index, candidate in enumerate(candidates, start=1):
+        label = candidate or "<default-cli-model>"
+        debug_log(
+            f"MODEL_ATTEMPT index={index}/{len(candidates)} "
+            f"explicit={'yes' if explicit_model else 'no'} model={label}"
+        )
+        payload, error = run_single_claude_review(
+            prompt,
+            session_id=session_id,
+            model=candidate,
+            system=system,
+            tools=tools,
+            json_schema=json_schema,
+        )
+        if error is None:
+            if attempt_errors:
+                debug_log(
+                    f"MODEL_FALLBACK_SUCCESS succeeded_model={label} "
+                    f"previous_errors={json.dumps(attempt_errors, ensure_ascii=False)}"
+                )
+            return payload, None
+
+        attempt_errors.append((label, error))
+        debug_log(f"MODEL_ATTEMPT_FAILED model={label} error={error}")
+
+        if explicit_model:
+            break
+
+    if len(attempt_errors) == 1:
+        return None, attempt_errors[0][1]
+
+    summary = "; ".join(f"{label}: {error}" for label, error in attempt_errors)
+    return None, f"Claude review failed for all default models. {summary}"
 
 
 def start_async_review(

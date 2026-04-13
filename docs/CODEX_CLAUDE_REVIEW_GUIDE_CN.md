@@ -43,16 +43,25 @@
 bash scripts/install_codex_claude_mainline.sh
 ```
 
+如果你当前 shell 已经设置了代理环境变量，安装器会默认把这些代理变量一并写入 `claude-review` 的 MCP 配置。需要禁用这个行为时，显式加：
+
+```bash
+bash scripts/install_codex_claude_mainline.sh --no-inherit-proxy-env
+```
+
 如果你的 Claude 登录依赖 wrapper：
 
 ```bash
 bash scripts/install_codex_claude_mainline.sh --reinstall --use-aws-wrapper
 ```
 
-如果你要固定 reviewer 模型：
+如果你要固定主 reviewer 模型，并保留默认回退链：
 
 ```bash
-bash scripts/install_codex_claude_mainline.sh --reinstall --review-model claude-opus-4-1
+bash scripts/install_codex_claude_mainline.sh \
+  --reinstall \
+  --review-model 'claude-opus-4-6[1m]' \
+  --review-fallback-model 'claude-opus-4-6'
 ```
 
 卸载优先使用安装时复制到本地状态目录的脚本：
@@ -69,6 +78,25 @@ bash ~/.codex/.aris/codex-claude-mainline/uninstall_codex_claude_mainline.sh
 codex mcp list
 codex mcp get claude-review --json
 claude -p "Reply with exactly READY" --output-format json --tools ""
+```
+
+运行时健康检查：
+
+```bash
+bash scripts/check_claude_review_runtime.sh
+```
+
+这个脚本现在会同时检查：
+
+- `claude -p` 直连
+- 直接启动 `server.py`
+- 已安装的 `claude-review` MCP
+- 宿主机 `Codex -> mcp__claude_review__review`
+
+如果当前 shell 有代理变量，但已安装的 MCP 配置里缺少这些变量，脚本会明确提示重新执行：
+
+```bash
+bash scripts/install_codex_claude_mainline.sh --reinstall
 ```
 
 ---
@@ -191,17 +219,27 @@ Codex -> claude-review MCP -> 本地 Claude CLI -> Claude 后端
 
 bridge 还支持可选的 `jsonSchema` / `json_schema`，并透传给 Claude CLI 的 `--json-schema`。某个 skill 需要结构化 reviewer 输出时，直接复用这条能力即可。
 
+默认 reviewer 模型链是：
+
+- 首选 `claude-opus-4-6[1m]`
+- 回退 `claude-opus-4-6`
+
+这个回退只在 MCP 调用**没有显式传 `model`**时生效；如果某个 skill 或手工调用显式传了 `model`，bridge 会按该值直连，不自动回退。
+
+如果你所在环境需要代理，`claude-review` 能否通过 Codex 托管路径成功，取决于这些代理变量是否被注册进 MCP 配置；仅仅 direct CLI 可用还不够。
+
 ---
 
 ## 6. 维护者回归流程
 
-修改主线 skill、overlay、安装器或 bridge 后，至少跑这四条：
+修改主线 skill、overlay、安装器或 bridge 后，至少跑这五条：
 
 ```bash
 python3 tools/check_codex_mainline_parity.py
 python3 tools/generate_codex_claude_review_overrides.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
+bash scripts/check_claude_review_runtime.sh
 ```
 
 推荐顺序：
@@ -209,7 +247,8 @@ bash scripts/smoke_test_codex_claude_mainline.sh
 1. 先跑 `tools/check_codex_mainline_parity.py`
 2. 再重生 overlay
 3. 再看 `git diff --check`
-4. 最后跑安装链 smoke test
+4. 先跑安装链 smoke test
+5. 最后跑真实 runtime 健康检查
 
 如果修改涉及 reviewer-aware skill，还要同时看：
 
