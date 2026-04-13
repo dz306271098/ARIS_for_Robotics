@@ -51,6 +51,17 @@
 
 不能回退成“单包混写所有 reviewer 路径”，也不能把 overlay 重新写成手工长期分叉的主来源。
 
+仓库还保留两条非默认 reviewer 支路：
+
+- `skills/skills-codex-gemini-review/` + `mcp-servers/gemini-review/`
+- `skills/skills-codex/auto-review-loop-minimax/` + `mcp-servers/minimax-chat/`
+
+它们虽然不是默认安装链的一部分，但也必须继续遵守 Codex 命名和路径规则：
+
+- 不能重新写回 `~/.claude/...`
+- 不能重新把项目配置入口写回 `CLAUDE.md` / `AGENTS.md`
+- 不能把 Claude-era 安装路径重新带回公开说明
+
 ### 1.4 工作流嵌入规则
 
 这三个能力现在都已经是主线的一部分，不是边缘附件：
@@ -164,6 +175,7 @@ bash scripts/smoke_test_codex_claude_mainline.sh
 下面这些一旦出现，基本都说明主线在向旧语义回退：
 
 - README、guide、tool 或 skill 又重新出现 `CLAUDE.md` / `AGENTS.md`
+- 保留的 Gemini / MiniMax reviewer 支路又重新出现 `~/.claude/...` 或其他 Claude-era 路径
 - 主线 skill 又出现 `/codex:rescue`、`/codex:adversarial-review`
 - 主线 frontmatter 又出现 `Skill(codex:rescue)`、`Skill(codex:adversarial-review)`、`Bash(codex*)`
 - `deep-innovation-loop` 又被写回“非主线能力”或“边缘实验能力”

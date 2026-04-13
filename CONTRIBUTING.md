@@ -29,7 +29,13 @@ Thank you for your interest in contributing to ARIS! This document provides guid
 
 ### Skill Development
 
-Skills are Markdown files located in `skills/`. Each skill has:
+This repository is now centered on the Codex-first mainline. Most skill changes should target:
+
+- `skills/skills-codex/`
+- `skills/skills-codex-claude-review/`
+- `skills/skills-codex-gemini-review/` only when you are maintaining the retained Gemini reviewer branch
+
+Each skill has:
 
 - **Frontmatter**: YAML metadata (name, description, allowed-tools)
 - **Content**: The skill instructions
@@ -51,14 +57,16 @@ Instructions here...
 ### Testing Your Changes
 
 Before submitting:
-1. Install your modified skill: `cp -r skills/your-skill ~/.claude/skills/`
-2. Test in Claude Code: `/your-skill test argument`
-3. Verify the skill works as expected
+1. Install the modified skill into `~/.codex/skills/`
+2. If you changed default reviewer behavior, regenerate the overlay: `python3 tools/generate_codex_claude_review_overrides.py`
+3. Run the mainline check: `python3 tools/check_codex_mainline_parity.py`
+4. Run the install-chain smoke test: `bash scripts/smoke_test_codex_claude_mainline.sh`
+5. Verify the skill works as expected
 
 ## Pull Request Process
 
 1. Make sure your changes are well-documented
-2. Update README.md if you add new skills or features
+2. Update `README_CN.md` and the relevant mainline guide if you add new skills or features
 3. Keep PRs focused on a single change
 4. Write clear commit messages
 
@@ -76,7 +84,7 @@ Before submitting:
 
 ## Questions?
 
-Feel free to open an issue for any questions or join our WeChat group (QR code in README).
+Feel free to open an issue for any questions.
 
 ## License
 

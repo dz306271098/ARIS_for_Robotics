@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CLI helper for searching and downloading arXiv papers.
 
-Used by the ``arxiv`` skill (skills/arxiv/SKILL.md).
+Used by the Codex skill-pack ``arxiv`` skill.
 
 Commands
 --------

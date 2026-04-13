@@ -3,10 +3,11 @@
 
 Checks:
 1. Every skills-codex skill has complete frontmatter for name/description/argument-hint/allowed-tools.
-2. Mainline docs and tools do not reference CLAUDE.md or AGENTS.md.
-3. Mainline skills do not keep legacy /codex:* review commands or stale codex-specific tool declarations.
-4. Claude-review overlay skill descriptions round-trip cleanly from the Codex source descriptions.
-5. Reviewer-aware skills that use spawn_agent/send_input are covered by the Claude overlay generator.
+2. The repo only keeps the expected Codex skill roots and retained reviewer branches.
+3. Mainline docs plus retained reviewer branches do not reference CLAUDE.md / AGENTS.md / .claude-era paths.
+4. Mainline skills do not keep legacy /codex:* review commands or stale codex-specific tool declarations.
+5. Claude-review overlay skill descriptions round-trip cleanly from the Codex source descriptions.
+6. Reviewer-aware skills that use spawn_agent/send_input are covered by the Claude overlay generator.
 """
 
 from __future__ import annotations
@@ -23,14 +24,53 @@ CLAUDE_OVERLAY_SKILLS = ROOT / "skills" / "skills-codex-claude-review"
 GENERATOR = ROOT / "tools" / "generate_codex_claude_review_overrides.py"
 CHECK_PATHS = [
     ROOT / "skills" / "skills-codex",
-    ROOT / "skills" / "skills-codex-claude-review",
+    ROOT / "skills" / "skills-codex-gemini-review",
     ROOT / "README_CN.md",
-    ROOT / "docs" / "CODEX_CLAUDE_REVIEW_GUIDE.md",
     ROOT / "docs" / "CODEX_CLAUDE_REVIEW_GUIDE_CN.md",
+    ROOT / "docs" / "INERTIAL_ODOMETRY_GUIDE_CN.md",
+    ROOT / "skills" / "skills-codex" / "README_CN.md",
+    ROOT / "skills" / "skills-codex-claude-review" / "README_CN.md",
+    ROOT / "CONTRIBUTING.md",
+    ROOT / "CONTRIBUTING_CN.md",
+    ROOT / "scripts" / "install_codex_claude_mainline.sh",
+    ROOT / "scripts" / "uninstall_codex_claude_mainline.sh",
+    ROOT / "scripts" / "smoke_test_codex_claude_mainline.sh",
+    ROOT / "mcp-servers" / "gemini-review",
+    ROOT / "mcp-servers" / "minimax-chat",
     ROOT / "tools" / "research_wiki.py",
 ]
 REQUIRED_FRONTMATTER_FIELDS = ("name", "description", "argument-hint", "allowed-tools")
-FORBIDDEN_PATTERNS = ("CLAUDE.md", "AGENTS.md")
+ALLOWED_TOP_LEVEL_SKILL_DIRS = {
+    "skills-codex",
+    "skills-codex-claude-review",
+    "skills-codex-gemini-review",
+}
+REQUIRED_PRESENT_PATHS = [
+    ROOT / "skills" / "skills-codex",
+    ROOT / "skills" / "skills-codex-claude-review",
+    ROOT / "skills" / "skills-codex-gemini-review",
+    ROOT / "skills" / "skills-codex" / "auto-review-loop-minimax",
+    ROOT / "mcp-servers" / "claude-review",
+    ROOT / "mcp-servers" / "gemini-review",
+    ROOT / "mcp-servers" / "minimax-chat",
+]
+FORBIDDEN_PRESENT_PATHS = [
+    ROOT / "skills" / "shared-references",
+    ROOT / "skills" / "skills-codex" / "auto-review-loop-llm",
+    ROOT / "mcp-servers" / "llm-chat",
+    ROOT / "templates" / "claude-hooks",
+    ROOT / "tools" / "meta_opt" / "check_ready.sh",
+    ROOT / "tools" / "meta_opt" / "log_event.sh",
+]
+FORBIDDEN_PATTERNS = (
+    "CLAUDE.md",
+    "AGENTS.md",
+    "~/.claude",
+    ".claude/",
+    "templates/claude-hooks",
+    "auto-review-loop-llm",
+    "llm-chat",
+)
 LEGACY_MAINLINE_SKILL_PATTERNS = (
     "/codex:rescue",
     "/codex:adversarial-review",
@@ -99,6 +139,22 @@ def iter_skill_files(root: Path):
 
 def main() -> int:
     problems: list[str] = []
+
+    skill_root_dirs = {path.name for path in ROOT.joinpath("skills").iterdir() if path.is_dir()}
+    extra_roots = sorted(skill_root_dirs - ALLOWED_TOP_LEVEL_SKILL_DIRS)
+    missing_roots = sorted(ALLOWED_TOP_LEVEL_SKILL_DIRS - skill_root_dirs)
+    if extra_roots:
+        problems.append("Unexpected top-level skill directories present: " + ", ".join(extra_roots))
+    if missing_roots:
+        problems.append("Expected top-level skill directories missing: " + ", ".join(missing_roots))
+
+    for path in REQUIRED_PRESENT_PATHS:
+        if not path.exists():
+            problems.append(f"Required Codex-path artifact missing: {path.relative_to(ROOT)}")
+
+    for path in FORBIDDEN_PRESENT_PATHS:
+        if path.exists():
+            problems.append(f"Forbidden legacy/sidecar path still present: {path.relative_to(ROOT)}")
 
     for skill in iter_skill_files(CODEX_SKILLS):
         frontmatter = parse_frontmatter(skill)

@@ -1,44 +1,63 @@
 # `skills-codex` 说明
 
-这是 ARIS 的 **Codex 原生执行技能包**。
+这是 ARIS 当前的 **Codex 主线基础技能包**。
+
+公开主线只围绕这一条路径说明：
+
+- `Codex` 负责执行
+- `Claude Code CLI` 通过 overlay 承担 reviewer 角色
+
+也就是说，`skills/skills-codex/` 是主线底座，`skills/skills-codex-claude-review/` 是其上的 reviewer 覆盖层。
+
+仓库还保留两个**非默认** reviewer 支路：
+
+- `skills/skills-codex-gemini-review/`
+- `skills/skills-codex/auto-review-loop-minimax/`
+
+它们都不是当前公开主线的一部分，只作为可选 reviewer 分支保留。
 
 ## 这个包现在的定位
 
-`skills/skills-codex/` 已经切成 ARIS 的 **Codex 主线基础包**。安装到 `~/.codex/skills/` 后，可作为以下三条路径的共同底座：
+`skills/skills-codex/` 负责提供：
 
-- 纯 Codex 执行
-- Codex 执行 + Claude Code 审阅（`skills-codex-claude-review/`）
-- Codex 执行 + Gemini 审阅（`skills-codex-gemini-review/`）
+- 主工作流编排
+- 项目状态与工件约定
+- 实验、论文、rebuttal 等执行阶段
+- reviewer-aware 技能的基础表达
 
-本次同步补齐了之前 Codex 包里缺失的能力面，包括：
+当前主线里，以下能力已经是底座的一部分，不再是边缘附加件：
 
+- `research-wiki`
 - `deep-innovation-loop`
 - `meta-optimize`
-- `research-wiki`
-- `semantic-scholar`
-- `system-profile`
-- `vast-gpu`
-- `training-check`
 - `result-to-claim`
+- `training-check`
 - `ablation-planner`
 - `rebuttal`
 
 其中 `shared-references/` 是支持目录，不算可直接调用的 skill。
 
-## 这些能力如何嵌入主线
+## 主线嵌入方式
 
-这些补齐过来的能力现在不是边缘附加件，而是主线的一部分：
+当前默认主链路是：
 
-- `research-wiki` 是长期研究记忆层。建议在 `CODEX.md` 和 `RESEARCH_BRIEF.md` 基本稳定后初始化一次，然后让 `/research-lit`、`/idea-creator`、`/result-to-claim` 持续更新它。
-- `deep-innovation-loop` 现在已经进入默认 `/research-pipeline` 主线，实际链路是：
-  `/idea-discovery -> implement -> /run-experiment -> innovation gate -> /deep-innovation-loop? -> /auto-review-loop`
-- `meta-optimize` 不放进脆弱的实验执行中间，而是在阶段性工件已经累计起来之后，作为维护环去优化 harness 本身。它读取的重点证据包括 `AUTO_REVIEW.md`、`innovation-logs/`、`refine-logs/`、`paper/`、`rebuttal/` 和 `CODEX.md`。
+```text
+/idea-discovery
+-> /research-refine-pipeline
+-> implement
+-> /run-experiment
+-> innovation gate
+-> /deep-innovation-loop?
+-> /auto-review-loop
+-> /result-to-claim
+-> /paper-writing
+```
 
-可以把三者简单理解为：
+三个需要明确的层：
 
-- `research-wiki` = 记忆层
-- `deep-innovation-loop` = 主线进化阶段
-- `meta-optimize` = 维护层
+- `research-wiki` = 长期记忆层
+- `deep-innovation-loop` = 主线方法进化阶段
+- `meta-optimize` = 里程碑后的维护环
 
 ## 安装
 
@@ -47,20 +66,25 @@ mkdir -p ~/.codex/skills
 cp -a skills/skills-codex/* ~/.codex/skills/
 ```
 
-如果你还要叠加审稿 overlay，必须先装这个基础包，再覆盖安装 overlay。
+如果你要走当前公开主线，接下来再安装：
+
+```bash
+cp -a skills/skills-codex-claude-review/* ~/.codex/skills/
+```
 
 ## 项目配置命名
 
-Codex 主线路径下，推荐把项目级配置和状态文件命名为 `CODEX.md`：
+当前主线路径下，项目级配置和状态文件统一使用：
 
-- `CODEX.md`：主线路径唯一配置名
-- 本包内主线 skill、工具和文档都按读取 `CODEX.md` 设计
+- `CODEX.md`
+
+本包内主线 skill、工具和说明都围绕 `CODEX.md` 设计，不再以其他项目级配置文件名作为公开入口。
 
 ## 边界说明
 
-这个包只负责迁移 **skill 文件和支持引用**，不负责你的完整运行环境。你仍然需要自行准备：
+这个包只负责技能文件与支持引用，不负责你的完整运行环境。你仍然需要自行准备：
 
 - Python / LaTeX / GPU / SSH 环境
-- MCP server
-- API key 或 CLI 登录态
+- Claude CLI 登录态
+- `claude-review` MCP 注册
 - 项目自己的 `CODEX.md`、数据集和代码仓库

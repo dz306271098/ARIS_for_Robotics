@@ -426,7 +426,7 @@ Invoke `/research-review` on the complete draft for grant-type-specific evaluati
 - Provides ranked action items for improvement
 - All feedback saved to `grant-proposal/GRANT_REVIEW.md`
 
-> ⚠️ **External review fallback**: If reviewer agents are unavailable, skip external review. Note "External review skipped — no reviewer agent available. Consider running `/auto-review-loop-llm` separately." in `GRANT_REVIEW.md`. The proposal is still usable without external review.
+> ⚠️ **External review fallback**: If reviewer agents are unavailable, skip external review. Note "External review skipped — no reviewer agent available." in `GRANT_REVIEW.md`. The proposal is still usable without external review.
 
 If `/research-review` is invoked (preferred), it handles the external review internally. If you run the reviewer directly, use `spawn_agent` for Round 1 and `send_input` for follow-up rounds.
 

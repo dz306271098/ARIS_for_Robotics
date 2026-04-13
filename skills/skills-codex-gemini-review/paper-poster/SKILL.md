@@ -1083,7 +1083,7 @@ Next steps:
 - **Do NOT hallucinate citations.** Use only references from the paper's bibliography.
 - **Include QR code placeholder** or code link for paper/code repository.
 - **Font size minimums (article class)**: Title ≥84pt, section headers ≥40pt, body ≥34pt, captions ≥26pt, references ≥30pt, stat numbers ≥66pt.
-- **Feishu notifications are optional.** If `~/.claude/feishu.json` exists, send notifications. Otherwise skip.
+- **Feishu notifications are optional.** If `~/.codex/feishu.json` exists, send notifications. Otherwise skip.
 
 ## Parameter Pass-Through
 

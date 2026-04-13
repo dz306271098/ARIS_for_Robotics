@@ -551,7 +551,7 @@ Next steps:
 - **Do NOT hallucinate citations.** Reference only papers cited in the paper.
 - **Opening hook matters**: Never start with "In this paper, we..." — start with the problem or a provocative question.
 - **Font size minimums**: Title ≥28pt, body ≥20pt, footnotes ≥14pt.
-- **Feishu notifications are optional.** If `~/.claude/feishu.json` exists, send notifications. If absent, skip.
+- **Feishu notifications are optional.** If `~/.codex/feishu.json` exists, send notifications. If absent, skip.
 
 ## Parameter Pass-Through
 

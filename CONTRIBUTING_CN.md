@@ -29,7 +29,13 @@
 
 ### Skill 开发
 
-Skills 是位于 `skills/` 目录下的 Markdown 文件。每个 Skill 包含：
+当前仓库以 Codex 主线为中心。大多数技能修改应落在：
+
+- `skills/skills-codex/`
+- `skills/skills-codex-claude-review/`
+- `skills/skills-codex-gemini-review/`（仅当你在维护保留的 Gemini reviewer 支路）
+
+每个 Skill 包含：
 
 - **Frontmatter**：YAML 元数据（name、description、allowed-tools）
 - **内容**：Skill 的指令说明
@@ -51,14 +57,16 @@ allowed-tools: Read, Write, Bash(*)
 ### 测试你的更改
 
 提交前请：
-1. 安装你修改的 Skill：`cp -r skills/your-skill ~/.claude/skills/`
-2. 在 Claude Code 中测试：`/your-skill 测试参数`
-3. 验证 Skill 按预期工作
+1. 将你修改的技能安装到 `~/.codex/skills/`
+2. 如果改动默认主线 reviewer 逻辑，重生 overlay：`python3 tools/generate_codex_claude_review_overrides.py`
+3. 运行主线检查：`python3 tools/check_codex_mainline_parity.py`
+4. 运行安装链冒烟测试：`bash scripts/smoke_test_codex_claude_mainline.sh`
+5. 验证技能按预期工作
 
 ## Pull Request 流程
 
 1. 确保你的更改有完善的文档说明
-2. 如果添加了新的 Skill 或功能，请更新 README.md
+2. 如果添加了新的 Skill 或功能，请更新 `README_CN.md` 和相关主线说明
 3. 保持 PR 聚焦于单一更改
 4. 编写清晰的提交信息
 
@@ -76,7 +84,7 @@ allowed-tools: Read, Write, Bash(*)
 
 ## 有问题？
 
-欢迎提交 Issue 提问，或加入我们的微信群（二维码见 README）。
+欢迎提交 Issue 提问。
 
 ## 许可证
 

@@ -25,14 +25,15 @@ It does **not** optimize the research artifact directly. Papers, code, and exper
 
 In the current Codex executor + Claude reviewer mainline, `meta-optimize` should be treated as a **maintenance loop** that runs after evidence has accumulated.
 
-It supports two evidence modes:
+Use it in **artifact-first** mode:
 
-| Mode | When to use | Required input |
-|------|-------------|----------------|
-| **Artifact-first** | Default for Codex mainline | `AUTO_REVIEW.md`, `innovation-logs/`, `refine-logs/`, `findings.md`, `paper/`, `rebuttal/`, `CODEX.md` |
-| **Event-log enhanced** | Optional, when you also collect hook logs | `.aris/meta/events.jsonl` plus the artifacts above |
-
-Hook logs are helpful but no longer mandatory. If `.aris/meta/events.jsonl` does not exist, analyze the project artifacts instead of erroring out.
+- `AUTO_REVIEW.md`
+- `innovation-logs/`
+- `refine-logs/`
+- `findings.md`
+- `paper/`
+- `rebuttal/`
+- `CODEX.md`
 
 ## Recommended Workflow Embedding
 
@@ -62,38 +63,17 @@ Use `meta-optimize` at milestone boundaries, not in the middle of a fragile expe
 
 Never auto-apply harness patches from inside a main research workflow. Generate a report first, review it, then explicitly apply a selected change.
 
-## Optional Logging Enhancement
-
-If you want passive event logs in addition to artifact analysis, merge:
-
-```text
-templates/claude-hooks/meta_logging.json
-```
-
-into any Claude Code sessions you still run for auxiliary work. This writes:
-
-- project log: `.aris/meta/events.jsonl`
-- global log: `~/.aris/meta/events.jsonl`
-
-and uses:
-
-- `tools/meta_opt/log_event.sh`
-- `tools/meta_opt/check_ready.sh`
-
-The hook path is optional enhancement, not a hard prerequisite for the Codex mainline.
-
 ## Workflow
 
 ### Step 0: Determine Available Evidence
 
 Check for evidence in this order:
 
-1. `.aris/meta/events.jsonl`
-2. `AUTO_REVIEW.md`, `REVIEW_STATE.json`
-3. `innovation-logs/INNOVATION_STATE.json`, `innovation-logs/EVOLUTION_LOG.md`, `innovation-logs/score-history.csv`
-4. `refine-logs/EXPERIMENT_PLAN.md`, `refine-logs/EXPERIMENT_TRACKER.md`, `EXPERIMENT_LOG.md`, `findings.md`
-5. `paper/`, `PAPER_IMPROVEMENT_LOG.md`, `rebuttal/`
-6. `CODEX.md` for current defaults, recurring overrides, and project-level constraints
+1. `AUTO_REVIEW.md`, `REVIEW_STATE.json`
+2. `innovation-logs/INNOVATION_STATE.json`, `innovation-logs/EVOLUTION_LOG.md`, `innovation-logs/score-history.csv`
+3. `refine-logs/EXPERIMENT_PLAN.md`, `refine-logs/EXPERIMENT_TRACKER.md`, `EXPERIMENT_LOG.md`, `findings.md`
+4. `paper/`, `PAPER_IMPROVEMENT_LOG.md`, `rebuttal/`
+5. `CODEX.md` for current defaults, recurring overrides, and project-level constraints
 
 If **none** of these are present, stop and report:
 
@@ -102,18 +82,6 @@ Insufficient evidence for meta-optimize. Finish at least one major workflow stag
 ```
 
 ### Step 1: Build an Evidence Summary
-
-#### If event logs exist
-
-Analyze:
-
-- most-invoked skills
-- repeated parameter overrides
-- repeated tool failures
-- sessions between optimizations
-- manual interruptions and recurring user corrections
-
-#### Always analyze artifacts
 
 Look for:
 
@@ -179,7 +147,7 @@ Output:
 # ARIS Meta-Optimization Report
 
 **Target**: [skill or all]
-**Evidence mode**: artifact-first | event-log enhanced
+**Evidence mode**: artifact-first
 
 ## Proposed Changes
 - [change 1]

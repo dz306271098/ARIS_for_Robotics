@@ -1,17 +1,22 @@
-# Codex + Claude 审稿指南
+# Codex + Claude 主线维护指南
 
-这是 ARIS 当前的 **主线路径**：
+这份文档只服务当前公开主线：
 
-- **Codex** 负责执行
-- **Claude Code CLI** 负责审稿
-- 通过本地 `claude-review` MCP bridge 传输审稿请求
+- `Codex` 负责执行
+- `Claude Code CLI` 负责审稿
+- 本地 `claude-review` MCP bridge 负责传输 reviewer 请求
 
-如果你现在是第一次用 ARIS，优先走这条路径。
+如果你只是使用主线，优先阅读 [`README_CN.md`](../README_CN.md)。
+如果你要维护 overlay、bridge、安装器或主线技能，再看这份文档。
 
-## 架构
+---
+
+## 1. 架构分层
+
+当前主线路径固定拆成三层：
 
 - 基础执行技能包：`skills/skills-codex/`
-- 审稿覆盖层：`skills/skills-codex-claude-review/`
+- Claude 审稿覆盖层：`skills/skills-codex-claude-review/`
 - 审稿 bridge：`mcp-servers/claude-review/`
 
 安装顺序必须保持：
@@ -20,134 +25,196 @@
 2. 再安装 `skills/skills-codex-claude-review/*`
 3. 最后注册 `claude-review` MCP
 
-`scripts/install_codex_claude_mainline.sh` 会自动按这个顺序执行。
+这一点不能回退成“单包混写 reviewer 实现”，也不能回退成“Claude 重新承担主线编排器”。
 
-## 安装
+主线角色边界固定为：
+
+- `Codex`：实现、改代码、跑实验、维护状态、串联工作流
+- `Claude Code`：承担 reviewer-aware 技能中的外部审稿角色
+- `claude-review`：只做 reviewer transport，不做主线编排
+
+---
+
+## 2. 安装与运行
+
+推荐直接使用仓库里的安装脚本：
 
 ```bash
-git clone https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep.git
-cd Auto-claude-code-research-in-sleep
 bash scripts/install_codex_claude_mainline.sh
 ```
 
-如果你的 Claude 登录依赖 `claude-aws` 之类的 wrapper，改用：
+如果你的 Claude 登录依赖 wrapper：
 
 ```bash
 bash scripts/install_codex_claude_mainline.sh --reinstall --use-aws-wrapper
 ```
 
-如果你想固定 Claude 审稿模型：
+如果你要固定 reviewer 模型：
 
 ```bash
 bash scripts/install_codex_claude_mainline.sh --reinstall --review-model claude-opus-4-1
 ```
 
-卸载：
+卸载优先使用安装时复制到本地状态目录的脚本：
 
 ```bash
 bash ~/.codex/.aris/codex-claude-mainline/uninstall_codex_claude_mainline.sh
 ```
 
-这个本地卸载脚本会在安装时自动复制过去，并且只回滚 ARIS 安装器实际接管过的路径。
+这个本地脚本会按 manifest 精确回滚安装器接管过的路径，而不是粗暴删除整目录。
 
-## 验证
-
-1. 检查 MCP 注册：
+安装后最小验证：
 
 ```bash
 codex mcp list
-```
-
-2. 检查 Claude CLI 登录：
-
-```bash
+codex mcp get claude-review --json
 claude -p "Reply with exactly READY" --output-format json --tools ""
 ```
 
-3. 在项目中启动 Codex：
+---
 
-```bash
-codex -C /path/to/your/project
+## 3. Overlay 覆盖范围
+
+Claude reviewer overlay 的覆盖范围以：
+
+- `tools/generate_codex_claude_review_overrides.py`
+
+中的 `TARGET_SKILLS` 为唯一来源。
+
+当前覆盖的 reviewer-aware 技能是：
+
+```text
+ablation-planner
+experiment-bridge
+deep-innovation-loop
+idea-creator
+idea-discovery
+idea-discovery-robot
+research-review
+novelty-check
+research-refine
+auto-review-loop
+grant-proposal
+paper-plan
+paper-figure
+paper-poster
+paper-slides
+paper-write
+paper-writing
+auto-paper-improvement-loop
+result-to-claim
+rebuttal
+training-check
 ```
 
-维护者冒烟测试：
+维护规则：
+
+- 主线 skill 负责表达 reviewer 意图
+- overlay 负责把 reviewer 调用改写到 `claude-review`
+- overlay 不应该长期手工分叉；改完上游主线 skill 后，应重新生成 overlay
+
+重生命令：
 
 ```bash
-bash scripts/smoke_test_codex_claude_mainline.sh
+python3 tools/generate_codex_claude_review_overrides.py
 ```
 
-## 覆盖范围
+---
 
-当前 overlay 已覆盖 `skills/skills-codex/` 里所有预定义的 reviewer-aware Codex 技能，这些技能之前依赖二级 Codex reviewer 或直接 `mcp__codex__codex*` 审稿调用：
+## 4. Workflow 嵌入方式
 
-- `ablation-planner`
-- `auto-paper-improvement-loop`
-- `auto-review-loop`
-- `deep-innovation-loop`
-- `experiment-bridge`
-- `grant-proposal`
-- `idea-creator`
-- `idea-discovery`
-- `idea-discovery-robot`
-- `novelty-check`
-- `paper-figure`
-- `paper-plan`
-- `paper-poster`
-- `paper-slides`
-- `paper-write`
-- `paper-writing`
-- `rebuttal`
-- `research-refine`
-- `research-review`
-- `result-to-claim`
-- `training-check`
+这条主线不是“Claude 审所有东西”，而是分层协作。
 
-## 工作流嵌入方式
+主线实际链路是：
 
-这条主线不是“Claude 审所有东西”，而是分层协作：
+```text
+/idea-discovery
+-> /research-refine-pipeline
+-> implement
+-> /run-experiment
+-> innovation gate
+-> /deep-innovation-loop?
+-> /auto-review-loop
+-> /result-to-claim
+-> /paper-writing
+```
 
-- `Codex` 负责执行、实现、实验启动、本地文件修改和状态维护。
-- `Claude Code` 负责 reviewer-aware 技能里的外部审稿角色，这些调用都通过 `claude-review` bridge 进入。
-- `research-wiki` 是长期研究记忆层。初始化一次之后，让 `/research-lit`、`/idea-creator`、`/result-to-claim` 持续同步即可。
-- `deep-innovation-loop` 已经进入默认 `/research-pipeline` 路径。实际链路是：
-  `/idea-discovery -> implement -> /run-experiment -> innovation gate -> /deep-innovation-loop? -> /auto-review-loop`
-- 在 `deep-innovation-loop` 内，Codex 仍负责实现与实验执行，但其中外部诊断、设计审查、实现审查这些 reviewer checkpoint 现在也统一走 Claude overlay。
-- `meta-optimize` 是里程碑后的维护环，不插在脆弱实验执行中间。等 `AUTO_REVIEW.md`、`innovation-logs/`、`refine-logs/`、`paper/`、`rebuttal/` 等工件积累起来后再跑。
+三个容易被误解的能力必须单独说明：
 
-所以边界要理解清楚：Claude 负责审稿，Codex 负责主线执行与维护层。
+`research-wiki`
 
-## 项目配置命名
+- 是长期研究记忆层
+- 推荐让 `/research-lit`、`/idea-creator`、`/result-to-claim` 持续回写
+- 它不是 reviewer transport 的一部分
 
-这条 Codex 主线路径下，推荐使用项目级 `CODEX.md` 来存放：
+`deep-innovation-loop`
 
-- 执行器说明
-- 环境说明
-- `## Pipeline Status`
+- 已经进入默认 `/research-pipeline`
+- 它不是边缘功能，也不是 out-of-band 小插件
+- 其中外部诊断、设计审查和实现审查这些 reviewer checkpoint 统一走 Claude overlay
 
-这条路径下，`CODEX.md` 是唯一主线项目配置名。
+`meta-optimize`
 
-## 异步审稿流程
+- 是里程碑后的维护环
+- 它分析 `AUTO_REVIEW.md`、`innovation-logs/`、`refine-logs/`、`paper/`、`rebuttal/` 等工件
+- 它不应该插在脆弱实验执行中间
 
-遇到长论文或长项目审稿时，优先使用：
+所以边界必须保持清楚：
+
+- Claude 负责 reviewer role
+- Codex 负责主线执行、记忆层与维护层的调用和编排
+
+---
+
+## 5. Reviewer 传输细节
+
+`claude-review` bridge 提供两类接口：
+
+同步：
+
+- `review`
+- `review_reply`
+
+异步：
 
 - `review_start`
 - `review_reply_start`
 - `review_status`
 
-实际链路是：
+遇到长论文、长项目审稿或大 prompt 时，优先走异步接口：
 
-`Codex -> claude-review MCP -> 本地 Claude CLI -> Claude 后端`
+```text
+Codex -> claude-review MCP -> 本地 Claude CLI -> Claude 后端
+```
 
-多出来的本地 CLI hop，就是长同步调用更容易撞上宿主 MCP 超时的主要原因。
+之所以要有异步接口，是因为本地 CLI 这一跳会让长同步调用更容易撞上宿主超时。
 
-## 结构化输出
+bridge 还支持可选的 `jsonSchema` / `json_schema`，并透传给 Claude CLI 的 `--json-schema`。某个 skill 需要结构化 reviewer 输出时，直接复用这条能力即可。
 
-`claude-review` bridge 现在额外支持可选的 `jsonSchema` / `json_schema` 参数，并透传给 Claude CLI 的 `--json-schema`。当某个 skill 需要结构化 reviewer 输出时，直接走这条能力即可。
+---
 
-## 维护
+## 6. 维护者回归流程
 
-上游 Codex skill 更新后，重新生成 overlay：
+修改主线 skill、overlay、安装器或 bridge 后，至少跑这四条：
 
 ```bash
+python3 tools/check_codex_mainline_parity.py
 python3 tools/generate_codex_claude_review_overrides.py
+git diff --check
+bash scripts/smoke_test_codex_claude_mainline.sh
 ```
+
+推荐顺序：
+
+1. 先跑 `tools/check_codex_mainline_parity.py`
+2. 再重生 overlay
+3. 再看 `git diff --check`
+4. 最后跑安装链 smoke test
+
+如果修改涉及 reviewer-aware skill，还要同时看：
+
+- `skills/skills-codex-claude-review/`
+- [`README_CN.md`](../README_CN.md)
+- [`docs/CODEX_MAINLINE_PARITY_RULES_CN.md`](CODEX_MAINLINE_PARITY_RULES_CN.md)
+
+不要只改 skill，不改主线文档。
