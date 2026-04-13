@@ -5,7 +5,8 @@ Checks:
 1. Every skills-codex skill has complete frontmatter for name/description/argument-hint/allowed-tools.
 2. Mainline docs and tools do not reference CLAUDE.md or AGENTS.md.
 3. Mainline skills do not keep legacy /codex:* review commands or stale codex-specific tool declarations.
-4. Reviewer-aware skills that use spawn_agent/send_input are covered by the Claude overlay generator.
+4. Claude-review overlay skill descriptions round-trip cleanly from the Codex source descriptions.
+5. Reviewer-aware skills that use spawn_agent/send_input are covered by the Claude overlay generator.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_SKILLS = ROOT / "skills" / "skills-codex"
+CLAUDE_OVERLAY_SKILLS = ROOT / "skills" / "skills-codex-claude-review"
 GENERATOR = ROOT / "tools" / "generate_codex_claude_review_overrides.py"
 CHECK_PATHS = [
     ROOT / "skills" / "skills-codex",
@@ -50,6 +52,34 @@ def parse_frontmatter(path: Path) -> dict[str, str]:
         key, value = line.split(":", 1)
         frontmatter[key.strip()] = value.strip()
     return frontmatter
+
+
+def extract_field(frontmatter_text: str, field: str) -> str:
+    pattern = re.compile(rf"^{re.escape(field)}:\s*(.+)$", re.MULTILINE)
+    match = pattern.search(frontmatter_text)
+    if not match:
+        return ""
+    value = match.group(1).strip()
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        try:
+            value = ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            value = value[1:-1]
+    return value
+
+
+def frontmatter_text(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    match = re.match(r"^---\n(.*?)\n---\n?", text, re.S)
+    return match.group(1) if match else ""
+
+
+def normalize_overlay_description(text: str) -> str:
+    text = text or "Claude-review override for a Codex-native ARIS skill."
+    text = text.replace("GPT using a secondary Codex agent", "Claude via claude-review MCP")
+    text = text.replace("using a secondary Codex agent", "using Claude Code via claude-review MCP")
+    text = text.replace("via GPT-5.4 xhigh review", "via Claude review through claude-review MCP")
+    return text
 
 
 def load_overlay_targets() -> set[str]:
@@ -96,6 +126,21 @@ def main() -> int:
                 problems.append(
                     f"{skill.relative_to(ROOT)} contains legacy mainline review pattern: {pattern}"
                 )
+
+    for overlay_skill in iter_skill_files(CLAUDE_OVERLAY_SKILLS):
+        source_skill = CODEX_SKILLS / overlay_skill.parent.name / "SKILL.md"
+        if not source_skill.exists():
+            continue
+
+        source_desc = normalize_overlay_description(
+            extract_field(frontmatter_text(source_skill), "description")
+        )
+        overlay_desc = extract_field(frontmatter_text(overlay_skill), "description")
+        if overlay_desc != source_desc:
+            problems.append(
+                f"{overlay_skill.relative_to(ROOT)} description mismatch: "
+                f"expected normalized source description {source_desc!r}, got {overlay_desc!r}"
+            )
 
     overlay_targets = load_overlay_targets()
     reviewer_aware = set()

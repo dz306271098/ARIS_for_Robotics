@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 import shutil
 from pathlib import Path
@@ -87,13 +88,19 @@ def normalize_description(text: str) -> str:
     return text
 
 
+def yaml_double_quoted_scalar(text: str) -> str:
+    # JSON string literals are valid YAML double-quoted scalars and handle
+    # backslashes, quotes, and control characters consistently.
+    return json.dumps(text, ensure_ascii=False)
+
+
 def rewrite_frontmatter(frontmatter: str) -> str:
     description = normalize_description(extract_field(frontmatter, "description"))
-    safe_desc = description.replace('"', '\\"')
+    description_literal = yaml_double_quoted_scalar(description)
 
     if DESCRIPTION_LINE_RE.search(frontmatter):
         frontmatter = DESCRIPTION_LINE_RE.sub(
-            lambda match: f'{match.group(1)}"{safe_desc}"',
+            lambda match: f"{match.group(1)}{description_literal}",
             frontmatter,
             count=1,
         )
@@ -102,11 +109,11 @@ def rewrite_frontmatter(frontmatter: str) -> str:
         inserted = False
         for index, line in enumerate(lines):
             if line.startswith("name:"):
-                lines.insert(index + 1, f'description: "{safe_desc}"')
+                lines.insert(index + 1, f"description: {description_literal}")
                 inserted = True
                 break
         if not inserted:
-            lines.insert(0, f'description: "{safe_desc}"')
+            lines.insert(0, f"description: {description_literal}")
         frontmatter = "\n".join(lines)
 
     frontmatter = frontmatter.replace("mcp__codex__codex-reply", "mcp__claude-review__review_reply_start")
@@ -120,6 +127,13 @@ def rewrite_frontmatter(frontmatter: str) -> str:
             "mcp__claude-review__review_reply_start",
             "mcp__claude-review__review_reply_start, mcp__claude-review__review_status",
             1,
+        )
+
+    rewritten_description = extract_field(frontmatter, "description")
+    if rewritten_description != description:
+        raise ValueError(
+            "overlay frontmatter description round-trip mismatch: "
+            f"expected {description!r}, got {rewritten_description!r}"
         )
     return frontmatter
 

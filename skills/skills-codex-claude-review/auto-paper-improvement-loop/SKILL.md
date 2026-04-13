@@ -1,6 +1,6 @@
 ---
 name: "auto-paper-improvement-loop"
-description: "Autonomously improve a generated paper via Claude review through claude-review MCP → implement fixes → recompile, for 2 rounds. Use when user says \\"改论文\\", \\"improve paper\\", \\"论文润色循环\\", \\"auto improve\\", or wants to iteratively polish a generated paper."
+description: "Autonomously improve a generated paper via Claude review through claude-review MCP → implement fixes → recompile, for 2 rounds. Use when user says \\\"改论文\\\", \\\"improve paper\\\", \\\"论文润色循环\\\", \\\"auto improve\\\", or wants to iteratively polish a generated paper."
 allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent
 argument-hint: [paper-directory]
 ---
