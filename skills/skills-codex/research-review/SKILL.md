@@ -109,9 +109,9 @@ send_input:
     [contested claims, experiments, narrative structure]
 ```
 
-### Step 4: Agreement Checkpoint
+### Step 4: Convergence Memo / Agreement Checkpoint
 
-After round 3, or earlier if the discussion starts circling, force a convergence memo inside `RESEARCH_REVIEW.md`:
+After round 3, or earlier if the discussion starts circling, force a convergence memo inside `RESEARCH_REVIEW.md`. This is the reference form for the shared reviewer-resolution pattern used by the execution loops:
 
 ```markdown
 ## Agreement Checkpoint

@@ -6,7 +6,7 @@
 - `Claude Code CLI` 负责审稿
 - 本地 `claude-review` MCP bridge 负责传输 reviewer 请求
 
-如果你只是使用主线，优先阅读 [`README_CN.md`](../README_CN.md)。
+如果你只是使用主线，优先阅读 [`README.md`](../README.md)。
 如果你要维护 overlay、bridge、安装器或主线技能，再看这份文档。
 
 ---
@@ -32,6 +32,11 @@
 - `Codex`：实现、改代码、跑实验、维护状态、串联工作流
 - `Claude Code`：承担 reviewer-aware 技能中的外部审稿角色
 - `claude-review`：只做 reviewer transport，不做主线编排
+
+所有会改代码的执行型 workflow 现在还共享两条硬协议：
+
+- **Mandatory Test Gate**：每次写完代码后，先过模块测试和 workflow smoke test，再允许部署或进入下一轮 review
+- **Reviewer Resolution Protocol**：每条 reviewer 反馈都必须分类并在有争议时回到同一 thread 讨论，直到收敛到 fix / analysis / experiment / claim change
 
 ---
 
@@ -253,7 +258,7 @@ bash scripts/check_claude_review_runtime.sh
 如果修改涉及 reviewer-aware skill，还要同时看：
 
 - `skills/skills-codex-claude-review/`
-- [`README_CN.md`](../README_CN.md)
+- [`README.md`](../README.md)
 - [`docs/CODEX_MAINLINE_PARITY_RULES_CN.md`](CODEX_MAINLINE_PARITY_RULES_CN.md)
 
 不要只改 skill，不改主线文档。

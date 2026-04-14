@@ -118,9 +118,9 @@ mcp__claude-review__review_reply_start:
 
 After this start call, immediately save the returned `jobId` and poll `mcp__claude-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
-### Step 4: Agreement Checkpoint
+### Step 4: Convergence Memo / Agreement Checkpoint
 
-After round 3, or earlier if the discussion starts circling, force a convergence memo inside `RESEARCH_REVIEW.md`:
+After round 3, or earlier if the discussion starts circling, force a convergence memo inside `RESEARCH_REVIEW.md`. This is the reference form for the shared reviewer-resolution pattern used by the execution loops:
 
 ```markdown
 ## Agreement Checkpoint

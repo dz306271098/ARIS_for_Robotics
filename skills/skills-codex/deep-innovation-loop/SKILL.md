@@ -56,6 +56,9 @@ This is NOT a review-fix loop. This is a **research program** that discovers, sy
 | `VENUE` | RAL | Target venue (IEEE Robotics and Automation Letters) |
 | `DOMAIN` | robotics | Research domain (override for your specific sub-domain, e.g., manipulation, navigation, locomotion) |
 | `PRIMARY_BASELINE` | "" | Primary comparison baseline (must be specified by user, e.g., PointNet++, RRT*, DAgger, SLAM baseline) |
+| `MANDATORY_TEST_GATE` | true | Every implementation round must pass the shared execution test gate before deployment or review handoff |
+| `CONVERGENCE_MEMO_ROUND` | 3 | After 3 dispute turns on one reviewer issue, write a convergence memo |
+| `MAX_REVIEW_DISPUTE_ROUNDS` | 5 | After 5 dispute turns, stop debating and request a resolution-only action plan |
 
 Override inline: `/deep-innovation-loop "improve robot manipulation" — baseline: DAgger, venue: CoRL, domain: manipulation, max rounds: 40, human checkpoint: true`
 
@@ -89,6 +92,7 @@ innovation-logs/
 │   ├── research.md                 #   Literature search results
 │   ├── innovation.md               #   Proposed method variants
 │   ├── results.md                  #   Experiment results
+│   ├── test-gate.md                #   Mandatory test gate evidence
 │   └── reflection.md               #   Reflection and decisions
 └── FINAL_METHOD.md                 # Best method description at termination
 ```
@@ -607,7 +611,7 @@ spawn_agent:
     - minor_issues
 ```
 - If verdict = `approve` → proceed to Step 1.5
-- If verdict = `needs-attention` → apply **Review Feedback Verification Protocol** (see `../shared-references/codex-context-integrity.md`):
+- If verdict = `needs-attention` → apply the shared **Reviewer Resolution Protocol** (see `../shared-references/reviewer-resolution-protocol.md`):
   - Evaluate each finding for correctness
   - Agreed findings → fix
   - Disputed findings → submit rebuttal to the same reviewer thread for adjudication:
@@ -618,6 +622,8 @@ send_input:
     Re-check these disputed findings against the actual diff and design spec:
     [disputed items + executor evidence]
     ```
+  - After `CONVERGENCE_MEMO_ROUND` turns on the same issue, append a `Convergence Memo` to `innovation-logs/round-NN/test-gate.md`
+  - After `MAX_REVIEW_DISPUTE_ROUNDS`, stop debating and ask for the minimum resolution action only
   - After disputes resolve, fix all confirmed issues and re-run the audit
 - **This step is NOT skippable** — every code change must pass external review before deployment
 
@@ -647,7 +653,7 @@ spawn_agent:
     [diff summary]
 ```
 
-If the audit returns `needs-attention`, apply **Review Feedback Verification Protocol**. Disputed findings should go back through the saved audit thread rather than being hand-waved locally.
+If the audit returns `needs-attention`, apply the shared **Reviewer Resolution Protocol**. Disputed findings should go back through the saved audit thread rather than being hand-waved locally.
 
 **Step 1.5b: Design Review** (fresh reviewer thread reads the design and the code together):
 
@@ -692,8 +698,38 @@ Variant: [name and description]
     Flag issues as CRITICAL (must fix) / MAJOR (should fix) / MINOR.
 ```
 
-- If issues are found: apply **Review Feedback Verification Protocol**. Confirmed CRITICAL issues must be fixed and re-reviewed, with at most 2 review rounds before you either pass or explicitly log residual risk.
+- If issues are found: apply the shared **Reviewer Resolution Protocol**. Confirmed CRITICAL issues must be fixed and re-reviewed; disputed issues must go back through the same saved reviewer thread with concrete executor evidence.
 - If reviewer delegation is unavailable: skip review and proceed with self-review only
+
+**Step 1.6: Mandatory Test Gate**
+
+Before any sanity run or deployment, execute the shared **Mandatory Test Gate** from `../shared-references/execution-test-gate.md`.
+
+Requirements:
+
+1. Build a **Change Map** for changed modules, entrypoints, configs, and metrics.
+2. Run at least one **module test** per changed module.
+3. If no relevant tests exist yet, add the smallest credible module test first.
+4. Run one **workflow smoke test** on the smallest real train / eval / inference path for this variant.
+5. Record the evidence in `innovation-logs/round-NN/test-gate.md`.
+
+Use this fixed structure:
+
+```markdown
+## Mandatory Test Gate
+- change map:
+- module tests:
+- workflow smoke test:
+- gate status:
+
+## Convergence Memo
+- settled:
+- contested:
+- unknown:
+- minimum resolution path:
+```
+
+If the gate fails, stop, fix the implementation, and re-run both the gate and the relevant audit thread.
 
 **Step 2: Sanity check**
 - Run a quick sanity test (smallest dataset / fewest epochs) to verify no crashes

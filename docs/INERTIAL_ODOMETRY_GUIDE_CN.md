@@ -342,6 +342,6 @@ next: collect results and decide deep innovation gate
 
 如果你要看主线本身的维护说明，回到：
 
-- [`README_CN.md`](../README_CN.md)
+- [`README.md`](../README.md)
 - [`docs/CODEX_CLAUDE_REVIEW_GUIDE_CN.md`](CODEX_CLAUDE_REVIEW_GUIDE_CN.md)
 - [`docs/CODEX_MAINLINE_PARITY_RULES_CN.md`](CODEX_MAINLINE_PARITY_RULES_CN.md)

@@ -363,6 +363,11 @@ project/
 
 当前最推荐的实际使用方式是模块化串联，而不是一上来把所有事情交给一条超长命令。
 
+所有会改代码的执行型 workflow 现在都共享两条硬协议：
+
+- **Mandatory Test Gate**：每次写完代码后，先过模块测试和 workflow smoke test，再允许部署、复审或进入下一轮
+- **Reviewer Resolution Protocol**：每条 reviewer 反馈都要分类为 accepted / narrowed / rebutted / unresolved；有争议时必须带证据回同一 reviewer thread 讨论直到收敛
+
 ### 5.1 推荐主流程
 
 1. `/idea-discovery`
@@ -425,13 +430,13 @@ project/
 
 阶段三 `experiment-bridge`
 
-- 读取实验计划、实现代码、做本地审查、部署实验、收集初轮结果
+- 读取实验计划、实现代码、做本地审查、通过 Mandatory Test Gate、部署实验、收集初轮结果
 - 它是研究规划和工程执行之间的桥
 
 阶段四 `deep-innovation-loop` 与 `auto-review-loop`
 
 - `deep-innovation-loop` 处理结构性问题和方法进化
-- `auto-review-loop` 处理多轮 reviewer feedback、修复与复审
+- `auto-review-loop` 处理多轮 reviewer feedback、争议收敛、修复、测试与复审
 - 两者不是互斥关系。当前主线通常是：
   初轮实验后先判断是否需要深度方法进化，然后再进入最终 review polish
 
@@ -663,13 +668,14 @@ Meta Optimize：
 
 ## 10. 维护者检查
 
-如果你修改了主线 skill、overlay、安装器或 bridge，至少跑这四条：
+如果你修改了主线 skill、overlay、安装器或 bridge，至少跑这五条：
 
 ```bash
 python3 tools/check_codex_mainline_parity.py
 python3 tools/generate_codex_claude_review_overrides.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
+bash scripts/check_claude_review_runtime.sh
 ```
 
 推荐顺序：
@@ -677,7 +683,8 @@ bash scripts/smoke_test_codex_claude_mainline.sh
 1. 先跑 `check_codex_mainline_parity.py`
 2. 再重生 overlay
 3. 再看 `git diff --check`
-4. 最后跑安装链 smoke test
+4. 先跑安装链 smoke test
+5. 最后跑真实 runtime 健康检查
 
 如果你在维护主线，而不是单纯使用主线，再配合阅读：
 
@@ -690,7 +697,7 @@ bash scripts/smoke_test_codex_claude_mainline.sh
 
 ### 11.1 当前保留的主线文档
 
-- 主手册：[`README_CN.md`](README_CN.md)
+- 主手册：[`README.md`](README.md)
 - 主线维护说明：[`docs/CODEX_CLAUDE_REVIEW_GUIDE_CN.md`](docs/CODEX_CLAUDE_REVIEW_GUIDE_CN.md)
 - 主线不回退基线：[`docs/CODEX_MAINLINE_PARITY_RULES_CN.md`](docs/CODEX_MAINLINE_PARITY_RULES_CN.md)
 - 领域化落地示例：[`docs/INERTIAL_ODOMETRY_GUIDE_CN.md`](docs/INERTIAL_ODOMETRY_GUIDE_CN.md)

@@ -47,6 +47,8 @@ Workflow 4:   rebuttal
 - **AUTO_EXPERIMENT = true** — Default restored: if reviewers need new evidence and the timeline allows it, automatically bridge into supplementary experiments
 - **QUICK_MODE = false**
 - **REBUTTAL_DIR = `rebuttal/`**
+- **MANDATORY_TEST_GATE = true** — Any code written for rebuttal evidence must pass the shared execution test gate through `/experiment-bridge`. See `../shared-references/execution-test-gate.md`.
+- **REVIEWER_RESOLUTION_PROTOCOL = true** — Disputed stress-test findings must go back through the same reviewer dialogue until they are accepted, narrowed, rebutted, or converted into a minimum action. See `../shared-references/reviewer-resolution-protocol.md`.
 
 > Override example: `/rebuttal "paper/ + reviews" — venue: NeurIPS, character limit: 5000`
 
@@ -126,6 +128,8 @@ If the strategy plan shows that reviewer concerns require new empirical evidence
 ```text
 /experiment-bridge "rebuttal/REBUTTAL_EXPERIMENT_PLAN.md"
 ```
+
+Do not bypass `/experiment-bridge` with ad-hoc rebuttal code changes. The supplementary code path must still pass the **Mandatory Test Gate** and produce executable evidence before the rebuttal can cite it.
 
 Use it only for concise, rebuttal-oriented experiments:
 
@@ -224,6 +228,15 @@ After this start call, immediately save the returned `jobId` and poll `mcp__clau
 
 Save the raw output to `rebuttal/CODEX_STRESS_TEST.md`.
 
+Apply the shared **Reviewer Resolution Protocol** to the stress-test findings:
+
+- classify each finding as `accepted`, `narrowed`, `rebutted`, or `unresolved`
+- for `narrowed`, `rebutted`, or `unresolved` items, continue the same reviewer thread with concrete evidence only
+- after 3 rounds on the same disputed point, append a `Convergence Memo` to `rebuttal/CODEX_STRESS_TEST.md`
+- at `MAX_FOLLOWUP_ROUNDS`, stop open-ended argument and request the minimum grounded resolution only
+
+No disputed blocker is allowed to stay as vague reviewer disagreement.
+
 If you revise the draft and want one more bounded pass, reuse the same reviewer thread:
 
 ```
@@ -269,3 +282,4 @@ When new comments arrive:
 - Prefer narrow honest concessions over broad evasions.
 - Do not waste rebuttal budget on unwinnable arguments.
 - Respect the hard venue limit.
+- Do not cite new empirical evidence unless the supporting code path passed the Mandatory Test Gate.

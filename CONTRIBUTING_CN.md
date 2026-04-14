@@ -66,7 +66,7 @@ allowed-tools: Read, Write, Bash(*)
 ## Pull Request 流程
 
 1. 确保你的更改有完善的文档说明
-2. 如果添加了新的 Skill 或功能，请更新 `README_CN.md` 和相关主线说明
+2. 如果添加了新的 Skill 或功能，请更新 `README.md` 和相关主线说明
 3. 保持 PR 聚焦于单一更改
 4. 编写清晰的提交信息
 

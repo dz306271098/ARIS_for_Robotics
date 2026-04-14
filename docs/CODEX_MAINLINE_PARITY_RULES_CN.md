@@ -2,7 +2,7 @@
 
 > 这份文档是“旧主线语义回填”的压缩基线。
 >
-> 它的用途不是替代 `README_CN.md`，而是给维护者一份**审查主线是否又回退**的固定对照表。
+> 它的用途不是替代 `README.md`，而是给维护者一份**审查主线是否又回退**的固定对照表。
 >
 > 如果主线文档、skill、overlay、安装器之间出现冲突，优先以仓库当前实现和自动化校验为准，尤其是：
 >
@@ -121,19 +121,34 @@ Claude reviewer overlay 的维护基线是：
 
 如果安装器再次出现“overlay 覆盖后卸载恢复错层级内容”的问题，也属于主线回退。
 
+### 1.8 执行与争议收敛协议
+
+所有会改代码的执行型 workflow 必须继续保持两条硬协议：
+
+- **Mandatory Test Gate**
+  - 写完代码后，必须先过模块测试和 workflow smoke test
+  - 如果项目没有现成测试，先补最小测试，再继续部署或复审
+- **Reviewer Resolution Protocol**
+  - reviewer 反馈必须归类为 accepted / narrowed / rebutted / unresolved
+  - 有争议时必须回到同一 reviewer thread 继续讨论
+  - 3 轮后必须写 convergence memo，5 轮后必须转成 resolution-only action plan
+
+如果这些协议从主线 skill 中消失，也属于回退。
+
 ---
 
 ## 2. 自动化守门
 
 ### 2.1 主要校验入口
 
-维护主线时，至少要跑这四条：
+维护主线时，至少要跑这五条：
 
 ```bash
 python3 tools/check_codex_mainline_parity.py
 python3 tools/generate_codex_claude_review_overrides.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
+bash scripts/check_claude_review_runtime.sh
 ```
 
 ### 2.2 这些命令分别守什么
@@ -144,12 +159,15 @@ bash scripts/smoke_test_codex_claude_mainline.sh
   - 主线 skill 是否重新出现旧 `/codex:*` reviewer 语义或旧 codex-specific tool 壳
   - overlay `description` 是否和主线规范化描述一致
   - overlay target 是否覆盖全部 reviewer-aware skills
+  - 关键执行型 skill 是否仍保留 Mandatory Test Gate / Reviewer Resolution Protocol / Convergence Memo
 - `tools/generate_codex_claude_review_overrides.py`
   - 重新生成 Claude overlay，验证生成链没有坏
 - `git diff --check`
   - 防止文档、skill、生成结果里引入格式问题
 - `scripts/smoke_test_codex_claude_mainline.sh`
   - 验证安装、重装、卸载和回滚链路
+- `scripts/check_claude_review_runtime.sh`
+  - 验证 direct CLI、direct bridge、installed MCP、宿主机 `Codex -> mcp__claude_review__review` 都正常
 
 ### 2.3 推荐的审查顺序
 
@@ -158,13 +176,14 @@ bash scripts/smoke_test_codex_claude_mainline.sh
 1. 先跑 `tools/check_codex_mainline_parity.py`
 2. 再重生 overlay
 3. 再看 `git diff --check`
-4. 最后跑安装链 smoke test
+4. 先跑安装链 smoke test
+5. 最后跑真实 runtime 健康检查
 
 如果修改涉及 reviewer-aware skill，必须同时看：
 
 - 生成后的 `skills/skills-codex-claude-review/`
 - `CODEX_CLAUDE_REVIEW_GUIDE*.md`
-- `README_CN.md`
+- `README.md`
 
 不要只改 skill，不改主线说明。
 
@@ -193,9 +212,9 @@ bash scripts/smoke_test_codex_claude_mainline.sh
 
 在自动化校验通过后，再人工确认这几条：
 
-- `README_CN.md` 仍明确写着当前主线是 Codex 执行 + Claude 审稿
-- `README_CN.md` 仍明确写着 `deep-innovation-loop` 在主线路径里
-- `README_CN.md` 仍明确写着 `research-wiki` 是长期记忆层、`meta-optimize` 是维护环
+- `README.md` 仍明确写着当前主线是 Codex 执行 + Claude 审稿
+- `README.md` 仍明确写着 `deep-innovation-loop` 在主线路径里
+- `README.md` 仍明确写着 `research-wiki` 是长期记忆层、`meta-optimize` 是维护环
 - `docs/CODEX_CLAUDE_REVIEW_GUIDE_CN.md` 的覆盖范围仍和 overlay 实现一致
 - `skills/skills-codex/README_CN.md` 没有把补齐能力重新降级为边缘附加件
 

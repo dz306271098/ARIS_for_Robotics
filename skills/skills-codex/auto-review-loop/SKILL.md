@@ -25,6 +25,9 @@ Autonomously iterate: review -> implement fixes -> validate -> re-review, until 
 - **HUMAN_CHECKPOINT = false** — When `true`, pause after each round's review and wait for user guidance before implementation.
 - **COMPACT = false** — When `true`, prefer `EXPERIMENT_LOG.md` and `findings.md` over raw logs during recovery and append one-line findings after each round.
 - **RESEARCH_DRIVEN_FIX = true** — When `true`, convert critical weaknesses into root-cause hypotheses, search literature for principles, and choose a fix strategy instead of blindly applying the reviewer's minimum fix.
+- **MANDATORY_TEST_GATE = true** — Any round that changes code must pass the shared execution test gate before experiments or re-review. See `../shared-references/execution-test-gate.md`.
+- **CONVERGENCE_MEMO_ROUND = 3** — After 3 dispute turns on the same reviewer issue, force a convergence memo.
+- **MAX_REVIEW_DISPUTE_ROUNDS = 5** — After 5 dispute turns, stop debating and request a resolution-only action plan. See `../shared-references/reviewer-resolution-protocol.md`.
 
 > Override example: `/auto-review-loop "robot manipulation" — max rounds: 6, compact: true, human checkpoint: true`
 
@@ -137,6 +140,31 @@ Then run **review feedback verification** before implementing anything:
 - If a finding is partially wrong, narrow it to the real issue.
 - If a finding is clearly wrong, document the rebuttal with evidence in `AUTO_REVIEW.md` and do not implement a fake fix just to satisfy the reviewer.
 
+#### Phase B.2: Reviewer Dispute Resolution
+
+For every finding, classify it as `accepted`, `narrowed`, `rebutted`, or `unresolved` using the shared **Reviewer Resolution Protocol** from `../shared-references/reviewer-resolution-protocol.md`.
+
+For every `narrowed`, `rebutted`, or `unresolved` item, continue the same reviewer thread with concrete evidence:
+
+```text
+send_input:
+  target: [saved reviewer agent id]
+  message: |
+    Re-check only these disputed findings against the actual evidence:
+
+    - disputed item:
+    - executor evidence:
+    - requested outcome: accept / narrow / withdraw / specify the minimum resolution action
+
+    Do not restate the whole review. Resolve only the listed items.
+```
+
+Rules:
+
+- After `CONVERGENCE_MEMO_ROUND` turns on the same issue, append a `Convergence Memo` to `AUTO_REVIEW.md`.
+- After `MAX_REVIEW_DISPUTE_ROUNDS`, stop open-ended argument and request a resolution-only action plan.
+- No blocking weakness may proceed into implementation while still unclassified.
+
 **Stop condition**:
 
 - stop immediately if the overall score satisfies `POSITIVE_THRESHOLD` for the target venue and no verified blocking weaknesses remain
@@ -196,6 +224,20 @@ Prioritization rules:
 - skip fixes that require unavailable data or infrastructure
 - do not burn major GPU budget until the implementation and small-scale validation look credible
 
+#### Phase C.4: Mandatory Test Gate
+
+Before launching experiments or moving to re-review, execute the shared **Mandatory Test Gate** from `../shared-references/execution-test-gate.md`.
+
+Requirements:
+
+1. Build a **Change Map** for every changed module, entrypoint, config, and result path.
+2. Run at least one **module test** per changed module.
+3. If the project has no relevant tests yet, add the smallest credible module test first.
+4. Run a **workflow smoke test** on the smallest real end-to-end path touched by the fix.
+5. Record the evidence directly in `AUTO_REVIEW.md`.
+
+Static inspection is not enough. A failed test gate blocks the next review round.
+
 #### Phase C.5: Validate the Fix
 
 Do not advance to the next review round until validation passes.
@@ -234,8 +276,18 @@ Append to `AUTO_REVIEW.md`:
 ### Feedback Verification
 - accepted:
   - [...]
+- narrowed:
+  - [...]
 - rebutted:
   - [...]
+- unresolved:
+  - [...]
+
+### Convergence Memo
+- settled:
+- contested:
+- unknown:
+- minimum resolution path:
 
 ### Strategy Chosen
 - root cause:
@@ -244,6 +296,12 @@ Append to `AUTO_REVIEW.md`:
 
 ### Actions Taken
 - [...]
+
+### Mandatory Test Gate
+- change map:
+- module tests:
+- workflow smoke test:
+- gate status:
 
 ### Results
 - mean +/- std:

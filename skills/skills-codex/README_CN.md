@@ -37,6 +37,11 @@
 
 其中 `shared-references/` 是支持目录，不算可直接调用的 skill。
 
+所有会改代码的执行型 workflow 还共享两条硬协议：
+
+- `Mandatory Test Gate`：写完代码后必须先过模块测试和 workflow smoke test
+- `Reviewer Resolution Protocol`：reviewer 反馈有争议时必须回 thread 讨论到收敛
+
 ## 主线嵌入方式
 
 当前默认主链路是：

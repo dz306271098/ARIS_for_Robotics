@@ -25,7 +25,7 @@ GENERATOR = ROOT / "tools" / "generate_codex_claude_review_overrides.py"
 CHECK_PATHS = [
     ROOT / "skills" / "skills-codex",
     ROOT / "skills" / "skills-codex-gemini-review",
-    ROOT / "README_CN.md",
+    ROOT / "README.md",
     ROOT / "docs" / "CODEX_CLAUDE_REVIEW_GUIDE_CN.md",
     ROOT / "docs" / "INERTIAL_ODOMETRY_GUIDE_CN.md",
     ROOT / "skills" / "skills-codex" / "README_CN.md",
@@ -49,6 +49,8 @@ REQUIRED_PRESENT_PATHS = [
     ROOT / "skills" / "skills-codex",
     ROOT / "skills" / "skills-codex-claude-review",
     ROOT / "skills" / "skills-codex-gemini-review",
+    ROOT / "skills" / "skills-codex" / "shared-references" / "execution-test-gate.md",
+    ROOT / "skills" / "skills-codex" / "shared-references" / "reviewer-resolution-protocol.md",
     ROOT / "skills" / "skills-codex" / "auto-review-loop-minimax",
     ROOT / "mcp-servers" / "claude-review",
     ROOT / "mcp-servers" / "gemini-review",
@@ -78,6 +80,31 @@ LEGACY_MAINLINE_SKILL_PATTERNS = (
     "Skill(codex:rescue)",
     "Skill(codex:adversarial-review)",
 )
+PROTOCOL_SKILL_MARKERS = {
+    ROOT / "skills" / "skills-codex" / "experiment-bridge" / "SKILL.md": (
+        "Mandatory Test Gate",
+        "Reviewer Resolution Protocol",
+        "Convergence Memo",
+        "IMPLEMENTATION_TEST_GATE.md",
+    ),
+    ROOT / "skills" / "skills-codex" / "auto-review-loop" / "SKILL.md": (
+        "Phase B.2: Reviewer Dispute Resolution",
+        "Mandatory Test Gate",
+        "Convergence Memo",
+        "`accepted`, `narrowed`, `rebutted`, or `unresolved`",
+    ),
+    ROOT / "skills" / "skills-codex" / "deep-innovation-loop" / "SKILL.md": (
+        "Mandatory Test Gate",
+        "Reviewer Resolution Protocol",
+        "Convergence Memo",
+        "test-gate.md",
+    ),
+    ROOT / "skills" / "skills-codex" / "rebuttal" / "SKILL.md": (
+        "Mandatory Test Gate",
+        "Reviewer Resolution Protocol",
+        "Convergence Memo",
+    ),
+}
 
 
 def parse_frontmatter(path: Path) -> dict[str, str]:
@@ -210,6 +237,14 @@ def main() -> int:
         problems.append(
             "Overlay generator missing reviewer-aware skills: " + ", ".join(missing_overlay)
         )
+
+    for skill_path, markers in PROTOCOL_SKILL_MARKERS.items():
+        text = skill_path.read_text(encoding="utf-8")
+        missing_markers = [marker for marker in markers if marker not in text]
+        if missing_markers:
+            problems.append(
+                f"{skill_path.relative_to(ROOT)} missing protocol markers: {', '.join(missing_markers)}"
+            )
 
     if problems:
         print("Codex mainline parity check failed:\n")

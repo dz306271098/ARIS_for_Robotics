@@ -66,7 +66,7 @@ Before submitting:
 ## Pull Request Process
 
 1. Make sure your changes are well-documented
-2. Update `README_CN.md` and the relevant mainline guide if you add new skills or features
+2. Update `README.md` and the relevant mainline guide if you add new skills or features
 3. Keep PRs focused on a single change
 4. Write clear commit messages
 

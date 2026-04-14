@@ -32,6 +32,8 @@ refine-logs/FINAL_PROPOSAL.md
 - **COMPACT = false** — When `true`, (1) read `IDEA_CANDIDATES.md` instead of full `IDEA_REPORT.md` if available, (2) append experiment results to `EXPERIMENT_LOG.md` after collection.
 - **BASELINE_COMPARISON = ""** — When set (e.g., your strongest baseline such as DAgger, PPO, RRT*, or PointNet++), automatically include this baseline in all comparison tables. Compute delta metrics (Δ = method - baseline) with significance indicators.
 - **ITERATIVE_VARIANTS = false** — When `true`, support testing multiple method variants within the same bridge session. Useful for rapid variant comparison during deep innovation loops.
+- **MANDATORY_TEST_GATE = true** — Every implementation round must pass the shared execution test gate before sanity runs or deployment. See `../shared-references/execution-test-gate.md`.
+- **REVIEWER_RESOLUTION_PROTOCOL = true** — Disputed reviewer findings must be pushed back through the same dialogue until they are accepted, narrowed, rebutted, or resolved via a minimum action. See `../shared-references/reviewer-resolution-protocol.md`.
 
 > Override: `/experiment-bridge "EXPERIMENT_PLAN.md" — compact: true, base repo: https://github.com/org/project`
 
@@ -132,7 +134,12 @@ mcp__claude-review__review_start:
 After this start call, immediately save the returned `jobId` and poll `mcp__claude-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
 - If verdict = `approve` -> proceed to Phase 2.5
-- If verdict = `needs-attention` -> verify each finding against the actual code, fix confirmed issues, then re-run the review
+- If verdict = `needs-attention` -> apply the **Reviewer Resolution Protocol**:
+  - accepted findings -> fix directly
+  - narrowed / rebutted / unresolved findings -> continue the same reviewer dialogue with concrete code evidence
+  - after 3 dispute turns on the same issue -> write a `Convergence Memo` in `refine-logs/IMPLEMENTATION_TEST_GATE.md`
+  - after 5 turns -> stop debating and ask for the minimum resolution action only
+  - re-run the review only after every blocking item is either confirmed or explicitly rebutted
 - **This step is NOT skippable** — every code change must pass this gate
 
 ### Phase 2.5: Cross-Model Code Review (when CODE_REVIEW = true)
@@ -164,6 +171,46 @@ mcp__claude-review__review_start:
 After this start call, immediately save the returned `jobId` and poll `mcp__claude-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
 If CRITICAL issues remain, fix them and re-run the review before Phase 3.
+
+### Phase 2.6: Mandatory Test Gate
+
+Before any sanity run or deployment, execute the shared **Mandatory Test Gate** from `../shared-references/execution-test-gate.md`.
+
+Requirements for every implementation round:
+
+1. Build a **Change Map** covering changed modules, entrypoints, configs, and expected behavior shifts.
+2. Run at least one **module test** for every changed module.
+3. If the project has no relevant tests yet, add the smallest credible module test first.
+4. Run one **workflow smoke test** that exercises the actual train / eval / inference path on the smallest viable input.
+5. Record the full evidence in `refine-logs/IMPLEMENTATION_TEST_GATE.md`.
+
+Use this fixed record block:
+
+```markdown
+## Mandatory Test Gate
+
+### Change Map
+- module / entrypoint:
+- intended effect:
+
+### Module Tests
+| Target | Command / test | Expected | Actual | Status |
+|--------|----------------|----------|--------|--------|
+
+### Workflow Smoke Test
+- workflow:
+- command:
+- smallest input / config:
+- expected:
+- actual:
+- status:
+
+### Decision
+- gate status:
+- remaining blockers:
+```
+
+If any required test fails, stop, fix the code, and re-run the gate. Static inspection alone never clears this phase.
 
 ### Phase 3: Sanity Check (if SANITY_FIRST = true)
 
@@ -259,6 +306,11 @@ As experiments complete:
 - [X/Y] must-run experiments completed
 - Main result: [positive/negative/inconclusive]
 - Ready for /auto-review-loop: [YES/NO]
+
+## Test Gate
+- record: refine-logs/IMPLEMENTATION_TEST_GATE.md
+- gate status: PASS / FAIL
+- workflow smoke status: PASS / FAIL
 
 ## Next Step
 → /auto-review-loop "[topic]"

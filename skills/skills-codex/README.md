@@ -25,6 +25,11 @@ It mirrors the current repository skill surface that is practical to run from Co
 
 `shared-references/` is included as a support directory and is intentionally not a callable skill.
 
+All code-writing execution workflows now share two hard protocols:
+
+- `Mandatory Test Gate` — after code changes, pass module tests plus a workflow smoke test before deploy or re-review
+- `Reviewer Resolution Protocol` — disputed reviewer findings must go back through the same review thread until they converge
+
 ## Mainline workflow embedding
 
 These newer support skills are not sidecars anymore. In the current mainline they fit together like this:
