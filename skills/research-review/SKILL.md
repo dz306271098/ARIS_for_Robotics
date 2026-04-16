@@ -125,3 +125,7 @@ Update project memory/notes with key review conclusions.
 
 ### For mock review:
 "Please write a mock NeurIPS review with: Summary, Strengths, Weaknesses, Questions for Authors, Score, Confidence, and What Would Move Toward Accept."
+
+## Review Tracing
+
+After each `codex exec` reviewer call, save the trace following `../shared-references/review-tracing.md`. Use `bash tools/save_trace.sh` or write files directly to `.aris/traces/research-review/<date>_run<NN>/`. Respect the `--- trace:` parameter (default: `full`).

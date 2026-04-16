@@ -13,7 +13,7 @@ Draft a LaTeX paper based on: **$ARGUMENTS**
 
 - **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex CLI for section review. Must be an OpenAI model.
 - **TARGET_VENUE = `ICLR`** — Default venue. Supported: `ICLR`, `NeurIPS`, `ICML`, `CVPR` (also ICCV/ECCV), `ACL` (also EMNLP/NAACL), `AAAI`, `ACM` (ACM MM, SIGIR, KDD, CHI, etc.), `IEEE_JOURNAL` (IEEE Transactions / Letters, e.g., T-PAMI, JSAC, TWC, TCOM, TSP, TIP), `IEEE_CONF` (IEEE conferences, e.g., ICC, GLOBECOM, INFOCOM, ICASSP), `RAL` (IEEE Robotics and Automation Letters). Determines style file and formatting.
-- **ANONYMOUS = true** — If true, use anonymous author block. Set `false` for camera-ready. Note: most IEEE venues do NOT use anonymous submission — set `false` for IEEE.
+- **ANONYMOUS = true** — If true, use anonymous author block. Set `false` for camera-ready. **Auto-detect:** if `TARGET_VENUE` is `IEEE_JOURNAL`, `IEEE_CONF`, or `RAL`, automatically set `ANONYMOUS = false` (most IEEE venues do NOT use anonymous submission). Override with explicit `— anonymous: true` if needed.
 - **MAX_PAGES = 9** — Main body page limit. For ML conferences: counts from first page to end of Conclusion section, references and appendix NOT counted. **For IEEE venues: references ARE counted toward the page limit.** Typical limits: IEEE journal = no strict limit (but 12-14 pages typical for Transactions, 4-5 for Letters), IEEE conference = 5-8 pages including references, RAL = 8 pages total (6 base + 2 overlength; references and figures INCLUDED in count).
 - **DBLP_BIBTEX = true** — Fetch real BibTeX from DBLP/CrossRef instead of LLM-generated entries. Eliminates hallucinated citations. Zero install required. Set `false` to use legacy behavior (LLM search + `[VERIFY]` markers).
 

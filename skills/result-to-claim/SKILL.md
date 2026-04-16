@@ -35,6 +35,12 @@ Assemble the key information:
 - The intended claim these experiments were designed to test
 - Any known confounds or caveats
 
+### Step 1.5: Check Experiment Audit
+
+If `EXPERIMENT_AUDIT.json` does not exist in the project, invoke `/experiment-audit` first.
+If it exists but contains `CRITICAL` findings, address those before proceeding to claim assessment.
+See `../shared-references/experiment-integrity.md`.
+
 ### Step 2: Codex Judgment
 
 Send the collected results to Codex for objective evaluation:
@@ -125,7 +131,7 @@ Save the rescue report to `findings.md` under `## Failure Analysis: [idea name]`
 - **Fundamental flaw** → record postmortem, pivot to next idea
 - **Salvageable with revised approach** → implement the revised approach → **mandatory `/codex:adversarial-review --scope working-tree`** → re-run
 
-> **Rule: ANY code change before re-running experiments must pass adversarial review. No exceptions.**
+> **Rule: ANY code change before re-running experiments must pass adversarial review + Post-Coding Verification Protocol (`../shared-references/post-coding-verification.md`): module test → integration test → regression check. No exceptions.**
 
 1. Record postmortem in findings.md (Research Findings section):
    - What was tested, what failed, rescue's root cause analysis

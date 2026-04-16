@@ -30,6 +30,7 @@ Each phase builds on the previous one's output. The final deliverables are a val
 - **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex MCP. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`). Passed to sub-skills.
 - **ARXIV_DOWNLOAD = false** — When `true`, `/research-lit` downloads the top relevant arXiv PDFs during Phase 1. When `false` (default), only fetches metadata. Passed through to `/research-lit`.
 - **COMPACT = false** — When `true`, generate compact summary files for short-context models and session recovery. Writes `IDEA_CANDIDATES.md` (top 3-5 ideas only) at the end of this workflow. Downstream skills read this instead of the full `IDEA_REPORT.md`.
+- **EFFORT = balanced** — Work intensity level. Options: `lite`, `balanced`, `max`, `beast`. Passed to all sub-skills. See `../shared-references/effort-contract.md`. Pass `— effort: $EFFORT` to sub-skills (research-lit, idea-creator, novelty-check, research-review).
 - **REF_PAPER = false** — Reference paper to base ideas on. Accepts: local PDF path, arXiv URL, or any paper URL. When set, the paper is summarized first (`REF_PAPER_SUMMARY.md`), then idea generation uses it as context. Combine with `base repo` for "improve this paper with this codebase" workflows.
 
 > 💡 These are defaults. Override by telling the skill, e.g., `/idea-discovery "topic" — ref paper: https://arxiv.org/abs/2406.04329` or `/idea-discovery "topic" — compact: true`.
@@ -164,7 +165,7 @@ Which ideas should I validate further? Or should I regenerate with different con
 ```
 
 - **User picks ideas** (or no response + AUTO_PROCEED=true) → proceed to Phase 3 with top-ranked ideas.
-- **User unhappy with all ideas** → collect feedback ("what's missing?", "what direction do you prefer?"), update the prompt with user's constraints, and re-run Phase 2 (idea generation). Repeat until the user selects at least 1 idea.
+- **User unhappy with all ideas** → collect feedback ("what's missing?", "what direction do you prefer?"), update the prompt with user's constraints, and re-run Phase 2 (idea generation). **Max 3 re-runs.** After 3rd re-run, if user still unsatisfied, exit skill and suggest manual direction adjustment.
 - **User wants to adjust scope** → go back to Phase 1 with refined direction.
 
 ### Phase 3: Deep Novelty Verification
@@ -295,6 +296,10 @@ Write `IDEA_CANDIDATES.md` — a lean summary of the top 3-5 surviving ideas:
 ```
 
 This file is intentionally small (~30 lines) so downstream skills and session recovery can read it without loading the full `IDEA_REPORT.md` (~200+ lines).
+
+## Output Tracking
+
+Update `MANIFEST.md` following `../shared-references/output-manifest.md`.
 
 ## Key Rules
 

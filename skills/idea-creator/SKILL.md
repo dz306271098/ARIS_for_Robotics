@@ -184,7 +184,7 @@ Before committing to a full research effort, run cheap pilot experiments to get 
    - If rescue identifies **fundamental flaw** → eliminate with documented reason
    - If rescue proposes **revised approach** → implement the revised approach → **mandatory `/codex:adversarial-review --scope working-tree`** → re-pilot
 
-   > **Rule: ANY code fix before re-piloting must pass adversarial review.**
+   > **Rule: ANY code fix before re-piloting must pass adversarial review + Post-Coding Verification Protocol (`../shared-references/post-coding-verification.md`): module test → integration test → regression check.**
 
 5. **Re-rank based on empirical evidence + rescue analysis**: Update the idea ranking. An idea with positive pilot signal jumps ahead. An idea with negative pilot BUT salvageable rescue analysis may stay ranked (with note). An idea confirmed fundamentally flawed is eliminated.
 

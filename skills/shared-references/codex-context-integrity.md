@@ -8,6 +8,13 @@ Use this reference whenever interacting with GPT-5.4 via any channel. Ensures GP
 - Read before invoking `/codex:adversarial-review` or `/codex:rescue`.
 - Read when deciding which tool to use for a given interaction.
 
+## Related References
+
+- `reviewer-independence.md` — Content isolation rules between executor and reviewer
+- `reviewer-routing.md` — Dynamic reviewer backend selection (`— reviewer:` parameter)
+- `review-tracing.md` — Save full prompt/response pairs for audit and meta-optimize
+- `effort-contract.md` — Work intensity levels (lite / balanced / max / beast)
+
 ## Three Tools — When to Use Each
 
 ARIS has three tools for GPT-5.4 interaction. Choose based on the task:
@@ -98,6 +105,7 @@ After ANY code modification → /codex:adversarial-review --scope working-tree
 ```
 
 - **NOT skippable** — no code change enters experiments or next phase without adversarial review
+- After review passes, Claude (executor) MUST run the **Post-Coding Verification Protocol** (`post-coding-verification.md`): module test → integration test → regression check
 - After receiving review results, Claude (executor) MUST follow the **Review Feedback Verification Protocol** below
 
 ## Review Feedback Verification Protocol

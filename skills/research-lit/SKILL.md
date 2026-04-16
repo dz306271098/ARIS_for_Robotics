@@ -41,20 +41,15 @@ This skill checks multiple sources **in priority order**. All are optional — i
 ### Source Selection
 
 Parse `$ARGUMENTS` for a `— sources:` directive:
-- **If `— sources:` is specified**: Only search the listed sources (comma-separated). Valid values: `zotero`, `obsidian`, `local`, `web`, `semantic-scholar`, `all`.
+- **If `— sources:` is specified**: Only search the listed sources (comma-separated). Valid values: `zotero`, `obsidian`, `local`, `web`, `semantic-scholar`, `deepxiv`, `alphaxiv`, `all`.
 - **If not specified**: Default to `all` — search every available source in priority order, **including Semantic Scholar**.
 - **To exclude Semantic Scholar**: Use `— no-s2` or `— sources: zotero, local, web`.
 
 Examples:
 ```
-/research-lit "diffusion models"                                    → all (includes S2)
-/research-lit "diffusion models" — sources: all                     → all (includes S2)
-/research-lit "diffusion models" — no-s2                            → all except Semantic Scholar
+/research-lit "diffusion models"                                    → all (default, includes S2)
 /research-lit "diffusion models" — sources: zotero                  → Zotero only
-/research-lit "diffusion models" — sources: zotero, web             → Zotero + web
-/research-lit "diffusion models" — sources: local                   → local PDFs only
-/research-lit "topic" — sources: obsidian, local, web               → skip Zotero + S2
-/research-lit "topic" — sources: web, semantic-scholar              → web + S2 API only
+/research-lit "diffusion models" — no-s2                            → all except Semantic Scholar
 ```
 
 ### Source Table
@@ -66,6 +61,8 @@ Examples:
 | 3 | **Local PDFs** | `local` | `Glob: papers/**/*.pdf, literature/**/*.pdf` | Raw PDF content (first 3 pages) |
 | 4 | **Web search** | `web` | Always available (WebSearch) | arXiv, Semantic Scholar, Google Scholar |
 | 5 | **Semantic Scholar API** | `semantic-scholar` | `tools/semantic_scholar_fetch.py` exists | Published venue papers (IEEE, ACM, Springer) with structured metadata: citation counts, venue info, TLDR. **Runs by default** as part of `all`. Skip with `— no-s2` |
+| 6 | **DeepXiv** | `deepxiv` | `tools/deepxiv_fetch.py` exists or `deepxiv` CLI on PATH | Progressive paper reading: search → brief → head → section. Avoids loading full papers too early. `pip install deepxiv-sdk` to enable. Opt-in: `— sources: deepxiv` |
+| 7 | **AlphaXiv** | `alphaxiv` | Always available (WebFetch) | LLM-optimized single-paper summaries via alphaxiv.org. Tiered fallback: overview → full markdown → LaTeX source. Use for fast relevance filtering of arXiv papers |
 
 > **Graceful degradation**: If no MCP servers are configured, the skill works exactly as before (local PDFs + web search). Zotero and Obsidian are pure additions.
 
@@ -465,16 +462,9 @@ Web operations (WebSearch, WebFetch) can hang indefinitely and block the entire 
    - Semantic Scholar API via `python tools/semantic_scholar_fetch.py` (more reliable than WebSearch)
    - State clearly in the output: "Web search was unavailable; results based on local/API sources only"
 
-5. **Prefer API tools over web scraping**: For arXiv and Semantic Scholar, ALWAYS prefer the dedicated Python tools (`tools/arxiv_fetch.py`, `tools/semantic_scholar_fetch.py`) over WebSearch/WebFetch. These are faster, more reliable, and have built-in error handling:
-   ```bash
-   # arXiv — reliable, structured results
-   python tools/arxiv_fetch.py search "robot manipulation"
-   
-   # Semantic Scholar — reliable, published venue papers
-   python tools/semantic_scholar_fetch.py search "robot manipulation" --year 2024-2026
-   ```
+5. **Equal priority for API tools and WebSearch/WebFetch.** Use BOTH `python tools/arxiv_fetch.py` / `python tools/semantic_scholar_fetch.py` AND `WebSearch` / `WebFetch` for every query. Run them in parallel when possible. Neither is preferred over the other — both must be used to maximize coverage and avoid missed papers.
 
-6. **Sub-agent timeout**: When launching an Agent for web research, keep the scope narrow (one specific query, not "search everything"). Broad agents are more likely to hang.
+6. **Sub-agent scope:** Agent calls for web research may handle multiple related queries in a single session. No artificial per-query limitation. Sub-agents should be given freedom to explore broadly to maximize discovery.
 
 ## Key Rules
 - Always include paper citations (authors, year, venue)

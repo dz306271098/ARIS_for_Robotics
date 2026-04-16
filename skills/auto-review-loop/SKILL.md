@@ -118,12 +118,7 @@ Be brutally honest. Read the actual files — do not rely on any summaries."
 
 Read the structured JSON result from `/tmp/aris-review-round-N.json` — auto-parseable scores, verdict, and weakness lists.
 
-For Round 2+, use `codex exec resume --last` to continue the prior session with accumulated context:
-```bash
-codex exec resume --last --sandbox read-only \
-  --output-schema "$SCHEMA_PATH" -o /tmp/aris-review-round-N.json \
-  "[Round N update] Since last review: [actions taken]. Read latest files and re-score."
-```
+For Round 2+, use `codex exec resume --last` to continue the prior session with accumulated context. See the **Round 2+ Template** section below for the full prompt pattern.
 
 #### Phase B: Parse Assessment
 
@@ -198,12 +193,7 @@ When `RESEARCH_DRIVEN_FIX = true` (default), for each critical weakness identifi
    a. Search arXiv + Semantic Scholar for techniques addressing this root cause.
       **Web resilience**: Prefer API tools (`python tools/arxiv_fetch.py search "query"`, `python tools/semantic_scholar_fetch.py search "query"`) over WebSearch. If WebSearch/WebFetch hangs (~60s), abandon immediately and continue with available results. Phase B.5 must NEVER block the pipeline.
    b. Look for solutions in adjacent domains (control theory, reinforcement learning, computer vision, motion planning)
-   c. **Extract distilled principles** — for each relevant technique found, apply the Principle Extraction Protocol from `../shared-references/principle-extraction.md`:
-      - Layer 1: What did the paper specifically do? (surface method)
-      - Layer 2: WHY does it work? (underlying principle — one sentence, no paper-specific nouns)
-      - Layer 3: How does this generalize beyond the paper's domain? (domain-agnostic formulation)
-      - Layer 4: How does this principle re-specialize for OUR problem? (adaptation)
-      - Layer 5: What must NOT be copied? (anti-copying guard)
+   c. **Extract distilled principles** — for each relevant technique, apply the 5-layer Principle Extraction Protocol from `../shared-references/principle-extraction.md` (surface method → underlying principle → generalization → adaptation → anti-copying guard)
    d. Propose 2-3 fix strategies grounded in the distilled principles, not in transplanted methods:
       - Strategy A: Minimal fix (as reviewer suggested)
       - Strategy B: Novel design inspired by a distilled principle (cite the principle, not the paper's method)
@@ -237,6 +227,10 @@ After completing code changes, ALWAYS run an adversarial review before proceedin
   - Disputed findings → submit rebuttal via `/codex:rescue` for adjudication
   - After disputes resolved, fix all confirmed issues → re-run adversarial-review
 - **This step is NOT skippable** — every code change must pass adversarial review
+
+**Step C.1.7: Post-Coding Verification**
+
+After adversarial review passes, run the **Post-Coding Verification Protocol** (`../shared-references/post-coding-verification.md`). All 3 layers (module test → integration test → regression check) must pass before proceeding. If any fails, fix and re-run C.1.5 + C.1.7. Log results to `AUTO_REVIEW.md`.
 
 **Step C.2: Quick hyperparameter sensitivity** — for the changed component:
 - Identify the 2-3 key hyperparameters affected by the fix (e.g., learning rate, loss weight, hidden dimension)
@@ -433,3 +427,7 @@ Re-score on the same 5 dimensions. Return structured JSON.
 ```
 
 If `resume --last` fails (session expired), start a fresh `codex exec` with full prompt instead.
+
+## Review Tracing
+
+After each `codex exec` reviewer call, save the trace following `../shared-references/review-tracing.md`. Use `bash tools/save_trace.sh` or write files directly to `.aris/traces/auto-review-loop/<date>_run<NN>/`. Respect the `--- trace:` parameter (default: `full`).

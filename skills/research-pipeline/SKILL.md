@@ -14,6 +14,7 @@ End-to-end autonomous research workflow for: **$ARGUMENTS**
 - **AUTO_PROCEED = true** — When `true`, Gate 1 auto-selects the top-ranked idea (highest pilot signal + novelty confirmed) and continues to implementation. When `false`, always waits for explicit user confirmation before proceeding.
 - **ARXIV_DOWNLOAD = false** — When `true`, `/research-lit` downloads the top relevant arXiv PDFs during literature survey. When `false` (default), only fetches metadata via arXiv API. Passed through to `/idea-discovery` → `/research-lit`.
 - **HUMAN_CHECKPOINT = false** — When `true`, the auto-review loops (Stage 4) pause after each round's review to let you see the score and provide custom modification instructions before fixes are implemented. When `false` (default), loops run fully autonomously. Passed through to `/auto-review-loop`.
+- **EFFORT = balanced** — Work intensity level. Options: `lite`, `balanced`, `max`, `beast`. Passed to all sub-skills. See `../shared-references/effort-contract.md`.
 - **DEEP_INNOVATION = false** — When `true`, Stage 4 uses `/deep-innovation-loop` (40+ rounds of deep research-innovation cycles: diagnose root cause → research literature → design innovative variants → implement → evaluate → reflect → evolve) instead of the standard `/auto-review-loop` (4 rounds of review-fix). Use this for projects that require genuine methodological innovation, not just iterative polishing. Passed through to Stage 4.
 
 > 💡 Override via argument, e.g., `/research-pipeline "topic" — AUTO_PROCEED: false, human checkpoint: true`.
@@ -50,7 +51,7 @@ If `RESEARCH_BRIEF.md` exists in the project root, it will be automatically load
 Invoke the idea discovery pipeline:
 
 ```
-/idea-discovery "$ARGUMENTS"
+/idea-discovery "$ARGUMENTS" — effort: $EFFORT
 ```
 
 This internally runs: `/research-lit` → `/idea-creator` → `/novelty-check` → `/research-review`
@@ -105,7 +106,7 @@ Once the user confirms which idea to pursue:
 Deploy the full-scale experiments:
 
 ```
-/run-experiment [experiment command]
+/run-experiment [experiment command] — effort: $EFFORT
 ```
 
 **What this does:**
@@ -129,7 +130,7 @@ Once initial results are in, start the improvement loop.
 **If DEEP_INNOVATION = true** (for projects requiring genuine methodological innovation):
 
 ```
-/deep-innovation-loop "$ARGUMENTS — [chosen idea title]" — baseline: [PRIMARY_BASELINE], venue: [VENUE]
+/deep-innovation-loop "$ARGUMENTS — [chosen idea title]" — baseline: [PRIMARY_BASELINE], venue: [VENUE], effort: $EFFORT
 ```
 
 **What this does (40+ rounds):**
@@ -142,12 +143,12 @@ Once initial results are in, start the improvement loop.
 
 **Output:** `innovation-logs/FINAL_METHOD.md`, `innovation-logs/EVOLUTION_LOG.md`, `innovation-logs/TECHNIQUE_LIBRARY.md`
 
-After deep-innovation-loop completes, optionally run `/auto-review-loop` for 2-3 rounds of final paper-level polish.
+After deep-innovation-loop completes, run `/auto-review-loop` with `— max rounds: 2, compact: true` for final paper-level polish. The auto-review-loop reads `innovation-logs/EVOLUTION_LOG.md` and `innovation-logs/FINAL_METHOD.md` as input context. Results flow into Stage 5 (paper writing) through the standard `AUTO_REVIEW.md` output.
 
 **If DEEP_INNOVATION = false** (default — quick iterative polishing):
 
 ```
-/auto-review-loop "$ARGUMENTS — [chosen idea title]"
+/auto-review-loop "$ARGUMENTS — [chosen idea title]" — effort: $EFFORT
 ```
 
 **What this does (up to 4 rounds):**

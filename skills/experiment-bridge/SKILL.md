@@ -118,6 +118,10 @@ After ANY code changes in Phase 2, ALWAYS run an adversarial review:
   - After disputes resolved, fix all confirmed issues → re-run adversarial-review
 - **This step is NOT skippable** — every code change must pass adversarial review
 
+### Phase 2.35: Post-Coding Verification
+
+After adversarial review passes, run the **Post-Coding Verification Protocol** (`../shared-references/post-coding-verification.md`). All 3 layers (module test → integration test → regression check) must pass before proceeding to Phase 2.5. If any fails, fix and re-run Phase 2.3 + 2.35. Log results to the experiment log.
+
 ### Phase 2.5: Cross-Model Code Review (when CODE_REVIEW = true)
 
 **Skip this step if `CODE_REVIEW` is `false`.**
@@ -312,6 +316,16 @@ Let GPT-5.4 independently read and interpret the raw experiment results:
 
 Append rescue findings to the results summary. If rescue flags critical issues (e.g., unfair baselines, data leakage), these must be addressed before handoff.
 
+### Phase 5.47: Experiment Integrity Audit
+
+Before passing results downstream, verify experiment integrity:
+
+1. Invoke `/experiment-audit` to run cross-model integrity verification
+2. If `EXPERIMENT_AUDIT.json` reports any `CRITICAL` findings → halt and fix before proceeding
+3. See `../shared-references/experiment-integrity.md` for prohibited patterns
+
+This audit runs automatically; no user intervention needed unless critical issues are found.
+
 ### Phase 5.5: Write Compact Log (when COMPACT = true)
 
 **Skip entirely if `COMPACT` is `false`.**
@@ -383,10 +397,7 @@ Save rescue report. Then:
    ```
    **Web resilience**: If searches hang (~60s), abandon and skip. This phase is advisory, not blocking.
 
-4. **Extract principles** (not methods): For the 2-3 most relevant papers found, apply the Principle Extraction Protocol from `../shared-references/principle-extraction.md`:
-   - Layer 2: What is the underlying principle? (WHY does this work, one sentence, no paper nouns)
-   - Layer 4: How does this principle adapt to our problem?
-   - Layer 5: What must NOT be copied?
+4. **Extract principles** (not methods): For the 2-3 most relevant papers, apply the Principle Extraction Protocol from `../shared-references/principle-extraction.md` (focus on Layers 2, 4, 5: underlying principle → adaptation → anti-copying guard)
 
 5. **Document in results summary**: Append a `## Failure Diagnosis and Principles for Retry` section:
    ```markdown
@@ -419,6 +430,10 @@ Tracker: refine-logs/EXPERIMENT_TRACKER.md
 Ready for Workflow 2:
 → /auto-review-loop "[topic]"
 ```
+
+## Output Tracking
+
+Update `MANIFEST.md` following `../shared-references/output-manifest.md`.
 
 ## Key Rules
 

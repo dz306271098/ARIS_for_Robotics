@@ -497,34 +497,20 @@ Save to `refine-logs/round-N-refinement.md`:
 
 ### Phase 4: Re-evaluation (Round 2+)
 
-Send the revised proposal back to GPT-5.4 in the **same thread**:
+Use the same review protocol as Phase 2, but via `codex exec resume --last` to continue the prior session. Same 7 scoring dimensions, same output format, same verdict rule (READY only if overall >= 9 and no blocking issue).
 
 ```bash
 codex exec resume --last --sandbox read-only -m gpt-5.4 "[Round N re-evaluation]. Read the project files directly.
 
-I revised the proposal based on your feedback.
-First, check whether the original Problem Anchor is still preserved.
-Second, judge whether the method is now more concrete, more focused, and more current.
-
-Key changes:
+Key changes since last review:
 1. [Method change 1]
 2. [Method change 2]
-3. [Simplification / modernization / pushback if any]
 
 === REVISED PROPOSAL ===
 [Paste the FULL revised proposal]
 === END REVISED PROPOSAL ===
 
-Please:
-- Re-score the same 7 dimensions and overall
-- State whether the Problem Anchor is preserved or drifted
-- State whether the dominant contribution is now sharper or still too broad
-- State whether the method is simpler or still overbuilt
-- State whether the frontier leverage is now appropriate or still old-school / forced
-- Focus new critiques on missing mechanism, weak training signal, weak integration point, pseudo-novelty, or unnecessary complexity
-- Use the same verdict rule: READY only if overall score >= 9 and no blocking issue remains
-
-Same output format: 7 scores, overall score, verdict, drift warning, simplification opportunities, modernization opportunities, remaining action items."
+Re-score all 7 dimensions. Same output format as Round 1."
 ```
 
 Save review to `refine-logs/round-N-review.md`.

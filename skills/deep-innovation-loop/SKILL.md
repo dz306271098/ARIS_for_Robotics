@@ -55,7 +55,9 @@ This is NOT a review-fix loop. This is a **research program** that discovers, sy
 | `COMPACT` | false | When true, use compact logs for session recovery |
 | `VENUE` | RAL | Target venue (IEEE Robotics and Automation Letters) |
 | `DOMAIN` | robotics | Research domain (override for your specific sub-domain, e.g., manipulation, navigation, locomotion) |
-| `PRIMARY_BASELINE` | "" | Primary comparison baseline (must be specified by user, e.g., PointNet++, RRT*, DAgger, SLAM baseline) |
+| `PRIMARY_BASELINE` | "" | **REQUIRED.** Primary comparison baseline (e.g., PointNet++, RRT*, DAgger, SLAM baseline). If empty at startup, halt and ask user. |
+
+**Startup check:** If `PRIMARY_BASELINE` is empty and cannot be inferred from `CLAUDE.md` or `EXPERIMENT_PLAN.md`, halt immediately and ask the user to specify a baseline. Do NOT proceed with an empty baseline.
 
 Override inline: `/deep-innovation-loop "improve robot manipulation" — baseline: DAgger, venue: CoRL, domain: manipulation, max rounds: 40, human checkpoint: true`
 
@@ -561,6 +563,10 @@ After implementing the variant, ALWAYS run an adversarial review:
   - After disputes resolved, fix all confirmed issues → re-run adversarial-review
 - **This step is NOT skippable** — every code change must pass adversarial review before deployment
 
+**Step 1.2: Post-Coding Verification**
+
+After adversarial review passes, run the **Post-Coding Verification Protocol** (`../shared-references/post-coding-verification.md`). All 3 layers (module test → integration test → regression check) must pass before proceeding. If any fails, fix and re-run Step 1.1 + 1.2. Log results to `EVOLUTION_LOG.md`.
+
 **Step 1.5: Experiment Design + Code Review (Dual Channel)**
 
 Before deploying, run BOTH an independent file-based audit AND a dialogue-based design review:
@@ -1029,3 +1035,7 @@ The `deep-innovation-loop` can be invoked from `/research-pipeline` by setting `
 ```
 
 This chains: `/idea-discovery` → implement → `/deep-innovation-loop` → `/auto-review-loop` (polish) → `/paper-write`
+
+## Review Tracing
+
+After each `codex exec` reviewer call, save the trace following `../shared-references/review-tracing.md`. Use `bash tools/save_trace.sh` or write files directly to `.aris/traces/deep-innovation-loop/<date>_run<NN>/`. Respect the `--- trace:` parameter (default: `full`).

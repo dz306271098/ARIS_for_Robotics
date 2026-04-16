@@ -29,6 +29,7 @@ In this hybrid pack, the pipeline itself is unchanged, but `paper-plan` and `pap
 - **REVIEWER_MODEL = `gpt-5.4`** — Model used via Codex MCP for plan review, figure review, writing review, and improvement loop.
 - **AUTO_PROCEED = true** — Auto-continue between phases. Set `false` to pause and wait for user approval after each phase.
 - **HUMAN_CHECKPOINT = false** — When `true`, the improvement loop (Phase 5) pauses after each round's review to let you see the score and provide custom modification instructions. When `false` (default), the loop runs fully autonomously. Passed through to `/auto-paper-improvement-loop`.
+- **EFFORT = balanced** — Work intensity level. Options: `lite`, `balanced`, `max`, `beast`. Passed to all sub-skills. See `../shared-references/effort-contract.md`.
 
 > Override inline: `/paper-writing "NARRATIVE_REPORT.md" — venue: NeurIPS, human checkpoint: true`
 > IEEE example: `/paper-writing "NARRATIVE_REPORT.md" — venue: IEEE_JOURNAL`
@@ -170,6 +171,59 @@ Invoke `/paper-compile` to build the PDF:
 Shall I proceed with the improvement loop?
 ```
 
+### Phase 4.5: Proof Verification (theory papers only)
+
+**Skip this phase if the paper contains no theorems, lemmas, or proofs.**
+
+Check whether the compiled paper uses theorem environments:
+
+```bash
+THEOREM_ENVS=$(grep -rn '\\begin{theorem}\|\\begin{lemma}\|\\begin{proposition}\|\\begin{corollary}\|\\begin{proof}' paper/sections/ paper/main.tex 2>/dev/null || true)
+```
+
+If `THEOREM_ENVS` is non-empty, invoke the proof-checker skill:
+
+```
+/proof-checker "paper/"
+```
+
+**What this does:**
+- Verify all proof steps (hypothesis discharge, interchange justification, etc.)
+- Check for logic gaps, quantifier errors, missing domination conditions
+- Attempt counterexamples on key lemmas
+- Generate `PROOF_AUDIT.md` with issue list and severity ratings
+
+**Blocking rule:**
+- If `PROOF_AUDIT.md` contains **FATAL** or **CRITICAL** issues: fix them before proceeding to Phase 5.
+- If only **MAJOR** or **MINOR** issues remain: proceed -- the improvement loop may address them.
+- If no theorem environments found: skip this phase entirely.
+
+### Phase 4.7: Paper Claim Audit (papers with experiments)
+
+**Skip if no result files exist (e.g., survey/position papers with no experiments).**
+
+Check whether machine-readable result files are present:
+
+```bash
+RAW_RESULT_FILES=$(find results outputs experiments figures -type f \
+  \( -name '*.json' -o -name '*.jsonl' -o -name '*.csv' -o -name '*.tsv' -o -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | head -200)
+```
+
+If `RAW_RESULT_FILES` is non-empty, invoke the paper-claim-audit skill:
+
+```
+/paper-claim-audit "paper/"
+```
+
+**What this does:**
+- A fresh zero-context reviewer compares every number in the paper against raw result files
+- Catches rounding inflation, best-seed cherry-pick, config mismatch, delta errors
+
+**Blocking rule:**
+- If `number_mismatch` count > 0: fix mismatched numbers before proceeding to Phase 5.
+- If only warnings: proceed, but flag for manual verification.
+- If no result files found: skip this phase entirely.
+
 ### Phase 5: Auto Improvement Loop
 
 Invoke `/auto-paper-improvement-loop` to polish the paper:
@@ -194,6 +248,43 @@ Invoke `/auto-paper-improvement-loop` to polish the paper:
 **Output:** Three PDFs for comparison + `PAPER_IMPROVEMENT_LOG.md`.
 
 **Format check** (included in improvement loop Step 8): After final recompilation, auto-detect and fix overfull hboxes (content exceeding margins), verify page count vs venue limit, and ensure compact formatting. Any overfull > 10pt is fixed before generating the final PDF.
+
+### Phase 5.5: Final Paper Claim Audit (MANDATORY)
+
+> **Not a duplicate of Phase 4.7.** Phase 4.7 audits the paper BEFORE the improvement loop. This phase RE-AUDITS AFTER the improvement loop, because the loop may introduce new numeric claims (e.g., synthetic validation results), modify existing numbers (e.g., softening overclaims, rounding adjustments), or alter aggregation methods. Empirically: caught 2 real mismatches in April 2026 NeurIPS submission (width parameter drift and crossing-point tolerance change introduced during Round 2 fixes).
+
+After `/auto-paper-improvement-loop` finishes, **rerun** `/paper-claim-audit` before the final report whenever the paper contains numeric claims and machine-readable raw result files exist. This is a mandatory submission gate.
+
+**Detection script:**
+
+```bash
+# Detect numeric claims in paper source
+NUMERIC_CLAIMS=$(rg -n -e '[0-9]+(\.[0-9]+)?\s*(%|\\%|±|\\pm|x|×)' \
+  -e '(accuracy|BLEU|F1|AUC|mAP|top-1|top-5|error|loss|perplexity|speedup|improvement)' \
+  paper/main.tex paper/sections 2>/dev/null || true)
+
+# Detect raw result files
+RAW_RESULT_FILES=$(find results outputs experiments figures -type f \
+  \( -name '*.json' -o -name '*.jsonl' -o -name '*.csv' -o -name '*.tsv' -o -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | head -200)
+
+if [ -n "$NUMERIC_CLAIMS" ] && [ -n "$RAW_RESULT_FILES" ]; then
+    # Both numeric claims and raw data exist -- audit is mandatory
+    /paper-claim-audit "paper/"
+    # If FAIL: fix mismatched numbers before the final report
+elif [ -n "$NUMERIC_CLAIMS" ]; then
+    # Paper has numeric claims but no raw evidence files found
+    # BLOCK: stop and warn the user before declaring the paper complete
+    echo "WARNING: Paper contains numeric claims but no raw result files were found."
+    echo "Cannot verify claim accuracy. Add result files or remove unsupported claims."
+fi
+```
+
+**Blocking rules:**
+- If both detectors fire and `/paper-claim-audit` returns FAIL: fix mismatched numbers before generating the final report.
+- If numeric claims exist but no raw result files are found: **stop and warn** the user. Do not proceed to the final report until resolved.
+- If no numeric claims exist: skip this phase.
+
+**Empirical motivation:** In our April 2026 NeurIPS submission, the final paper claimed `w in {0,1,2,3}` for the width-tradeoff experiment but the raw JSON had `w in {0,1,2,3,4,5}`. The crossing-point tolerance was claimed as `0.05%` but the actual relative error was `0.0577%`. Both were caught only after manual `paper-claim-audit` invocation in the final round; the improvement loop did not detect them.
 
 ### Phase 6: Final Report
 
@@ -236,6 +327,13 @@ Invoke `/auto-paper-improvement-loop` to polish the paper:
 - [ ] Add any missing manual figures
 - [ ] Submit to [venue] via OpenReview / CMT / HotCRP
 ```
+
+## Output Protocols
+
+> Follow these shared protocols for all output files:
+> - **[Output Versioning Protocol](../shared-references/output-versioning.md)** -- write timestamped file first, then copy to fixed name
+> - **[Output Manifest Protocol](../shared-references/output-manifest.md)** -- log every output to MANIFEST.md
+> - **[Output Language Protocol](../shared-references/output-language.md)** -- note: paper-writing always outputs English LaTeX for venue submission
 
 ## Key Rules
 
