@@ -105,11 +105,12 @@ npm install -g @steipete/oracle
 # 2. 注册到 Claude Code
 claude mcp add oracle -s user -- oracle-mcp
 
-# 3. 重启 Claude Code 会话（使 MCP 生效）
+# 3. 完全重启 Claude Code 会话（不只是 /mcp reconnect）
 
 # 4. 浏览器模式（默认推荐）：
-#    确保 Chrome 浏览器运行中，且已登录 ChatGPT Pro（https://chatgpt.com）
-#    Oracle 会自动使用浏览器会话，无需 API Key
+#    在 Chrome 中登录 ChatGPT Pro（https://chatgpt.com）
+#    保持 Chrome 运行中，Oracle 自动使用浏览器会话
+#    无需 API Key。每次调用约 2-4 分钟（GPT-5.4 Pro 思考时间较长）
 
 # 5.（可选）API 模式（更快，适合多轮循环）：
 #    export OPENAI_API_KEY="your-key"  # 需要有 GPT-5.4 Pro API 权限

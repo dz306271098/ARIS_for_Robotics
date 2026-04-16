@@ -59,16 +59,39 @@ When `— reviewer: oracle-pro` is passed, route the review through Oracle MCP t
 
 ### Channel 4: Oracle Pro — `— reviewer: oracle-pro`
 
+**Browser mode (default):**
 ```
 mcp__oracle__consult:
   prompt: |
     [role + task + output schema]
     Read all listed files directly.
   model: "gpt-5.4-pro"
+  engine: "browser"
   files:
     - /absolute/path/to/file1
     - /absolute/path/to/file2
 ```
+
+**API mode (optional, faster):**
+```
+mcp__oracle__consult:
+  prompt: |
+    [role + task + output schema]
+    Read all listed files directly.
+  model: "gpt-5.4-pro"
+  engine: "api"
+  files:
+    - /absolute/path/to/file1
+    - /absolute/path/to/file2
+```
+
+**Key parameters:**
+- `engine: "browser"` — **default**，通过 Chrome 中的 ChatGPT Pro 自动化调用，无需 API Key
+- `engine: "api"` — 通过 OpenAI API 调用，需要 `OPENAI_API_KEY`
+- `files` — 项目文件路径列表，Oracle 会将其内容附加到 prompt 中
+- `browserModelLabel` — （可选）强制指定 ChatGPT UI 中的模型标签（如 "GPT-5.4 Pro"）
+- `browserAttachments: "always"` — （可选）通过 ChatGPT 文件上传功能传递文件（适合 PDF/图片）
+- `slug` — （可选）会话标识，用于后续 `mcp__oracle__sessions` 查看历史
 
 **Two modes (default: Browser mode):**
 
@@ -82,6 +105,13 @@ mcp__oracle__consult:
 - For multi-round loops (e.g., `/auto-review-loop` with `— reviewer: oracle-pro`), consider API mode for faster iteration
 - **NOT installed = ZERO impact.** Graceful fallback to `codex exec` with warning.
 
+**查看历史会话：**
+```
+mcp__oracle__sessions:
+  hours: 24
+  limit: 10
+```
+
 ### Oracle Setup
 
 ```bash
@@ -91,15 +121,17 @@ npm install -g @steipete/oracle
 # 2. Add Oracle MCP to Claude Code
 claude mcp add oracle -s user -- oracle-mcp
 
-# 3. Restart Claude Code session to load the new MCP server
+# 3. Restart Claude Code session (full restart, not just /mcp reconnect)
 
 # Browser mode (default, recommended):
-# Log in to ChatGPT Pro in Chrome — Oracle will use the browser session automatically.
-# No API key needed. Chrome must be running with ChatGPT logged in.
-
-# API mode (optional, faster):
-# export OPENAI_API_KEY="your-key"  # Must have GPT-5.4 Pro API access
+# - Log in to ChatGPT Pro in Chrome (https://chatgpt.com)
+# - Keep Chrome running with ChatGPT logged in
+# - No API key needed
 ```
+
+**Linux 注意事项：** 在 Linux 上，Chrome 运行时 cookie DB 会被锁定，导致 Oracle 无法自动读取 cookie。使用 Oracle CLI 时需要添加 `--browser-manual-login` 参数。MCP 调用格式不受影响（Oracle MCP 内部会自动处理）。
+
+**典型耗时：** Browser mode 下每次调用约 2-4 分钟（GPT-5.4 Pro 思考时间较长）。确保调用超时设置足够长（建议 >= 10 分钟）。
 
 ### When to Use Oracle Pro
 
