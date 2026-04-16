@@ -53,32 +53,64 @@ Code-focused adversarial review via the `/codex:adversarial-review` skill. Used 
 - Best for: post-fix validation, pre-deployment audit, code quality gates
 - Every code change triggers this automatically (see `codex-context-integrity.md`, Mandatory Code Review Rule)
 
-## Optional: GPT-5.4 Pro via Oracle
+## GPT-5.4 Pro via Oracle
 
-When the user explicitly passes `— reviewer: oracle-pro`, route the review through Oracle MCP for the strongest available reviewer. This is **OPTIONAL** — if Oracle MCP is not installed, falls back to `codex exec` with a warning.
+When `— reviewer: oracle-pro` is passed, route the review through Oracle MCP to use GPT-5.4 Pro — the strongest available reviewer. If Oracle MCP is not installed, falls back to `codex exec` with a warning.
 
 ### Channel 4: Oracle Pro — `— reviewer: oracle-pro`
 
 ```
 mcp__oracle__consult:
-  prompt: [role + task + output schema]
+  prompt: |
+    [role + task + output schema]
+    Read all listed files directly.
   model: "gpt-5.4-pro"
-  files: [absolute file paths for reviewer to read directly]
+  files:
+    - /absolute/path/to/file1
+    - /absolute/path/to/file2
 ```
 
-- GPT-5.4 Pro via API mode (fast, needs `OPENAI_API_KEY`) or browser mode (slow, needs Chrome + ChatGPT login)
-- Best for: final stress test, deep mathematical reasoning, complex theory papers
-- Browser mode: acceptable for one-shot reviews; NOT recommended in multi-round loops (too slow)
+**Two modes (default: Browser mode):**
+
+| Mode | Speed | Requirements | When to use |
+|------|-------|-------------|-------------|
+| **Browser mode (default)** | ~1-2 min/call | Chrome + ChatGPT Pro login | Default for all reviews. Free, no API key needed. |
+| **API mode** | ~20-30s/call | `OPENAI_API_KEY` with GPT-5.4 Pro access | When speed matters (multi-round loops, batch reviews) |
+
+- Best for: final stress test, deep mathematical reasoning, complex theory papers, strongest possible critique
+- Browser mode is the **recommended default** — GPT-5.4 Pro through ChatGPT provides the deepest reasoning
+- For multi-round loops (e.g., `/auto-review-loop` with `— reviewer: oracle-pro`), consider API mode for faster iteration
 - **NOT installed = ZERO impact.** Graceful fallback to `codex exec` with warning.
 
-### Oracle Setup (Optional)
+### Oracle Setup
 
 ```bash
+# 1. Install Oracle CLI + MCP
 npm install -g @steipete/oracle
+
+# 2. Add Oracle MCP to Claude Code
 claude mcp add oracle -s user -- oracle-mcp
-# API mode (fast): export OPENAI_API_KEY="your-key"
-# Browser mode (free): log in to ChatGPT in Chrome
+
+# 3. Restart Claude Code session to load the new MCP server
+
+# Browser mode (default, recommended):
+# Log in to ChatGPT Pro in Chrome — Oracle will use the browser session automatically.
+# No API key needed. Chrome must be running with ChatGPT logged in.
+
+# API mode (optional, faster):
+# export OPENAI_API_KEY="your-key"  # Must have GPT-5.4 Pro API access
 ```
+
+### When to Use Oracle Pro
+
+| Scenario | Recommendation |
+|----------|---------------|
+| Final stress test before submission | `— reviewer: oracle-pro` (browser mode) |
+| Deep mathematical proof verification | `— reviewer: oracle-pro` (browser mode) |
+| Theory-heavy paper review | `— reviewer: oracle-pro` (browser mode) |
+| Multi-round auto-review with max quality | `— reviewer: oracle-pro` + API mode |
+| Quick iterative fixes | Standard `codex exec` (faster) |
+| Code review | `/codex:adversarial-review` (specialized for code) |
 
 ## Routing Logic (add to any reviewer-invoking skill)
 

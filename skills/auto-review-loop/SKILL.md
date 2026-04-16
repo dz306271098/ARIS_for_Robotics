@@ -1,6 +1,6 @@
 ---
 name: auto-review-loop
-description: Autonomous multi-round research review loop. Repeatedly reviews via Codex MCP, implements fixes, and re-reviews until positive assessment or max rounds reached. Use when user says "auto review loop", "review until it passes", or wants autonomous iterative improvement.
+description: Autonomous multi-round research review loop. Repeatedly reviews via Codex CLI, implements fixes, and re-reviews until positive assessment or max rounds reached. Use when user says "auto review loop", "review until it passes", or wants autonomous iterative improvement.
 argument-hint: [topic-or-scope]
 allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, Skill, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
@@ -22,7 +22,7 @@ Autonomously iterate: review → implement fixes → re-review, until the extern
   - Default: overall >= 7/10 AND no BLOCKING weaknesses
   Or verdict contains "accept" or "ready for submission"
 - REVIEW_DOC: `AUTO_REVIEW.md` in project root (cumulative log)
-- REVIEWER_MODEL = `gpt-5.4` — Model used via Codex MCP. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`)
+- REVIEWER_MODEL = `gpt-5.4` — Model used via Codex CLI. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`)
 - **HUMAN_CHECKPOINT = false** — When `true`, pause after each round's review (Phase B) and present the score + weaknesses to the user. Wait for user input before proceeding to Phase C. The user can: approve the suggested fixes, provide custom modification instructions, skip specific fixes, or stop the loop early. When `false` (default), the loop runs fully autonomously.
 - **COMPACT = false** — When `true`, (1) read `EXPERIMENT_LOG.md` and `findings.md` instead of parsing full logs on session recovery, (2) append key findings to `findings.md` after each round.
 - **RESEARCH_DRIVEN_FIX = true** — When `true`, add a Phase B.5 between review parsing and fix implementation: for each critical weakness, classify as symptom vs root cause, search literature, extract distilled principles (see `../shared-references/principle-extraction.md`), and propose 2-3 fix strategies grounded in those principles (not transplanted methods). Select the most promising strategy based on integration elegance, expected improvement, and implementation cost. When `false`, implement the reviewer's suggested minimal fixes directly.
@@ -85,7 +85,7 @@ Append the adversarial-review findings to the review context below. Claude CANNO
 
 See `../shared-references/codex-context-integrity.md` for channel selection and evidence rules.
 
-**Step A.1: Multi-turn Review** (MCP dialogue — multi-round scoring)
+**Step A.1: Multi-turn Review** (Codex CLI — multi-round scoring)
 
 Use `codex exec` with structured output schema — GPT-5.4 reads project files directly AND returns auto-parseable JSON:
 

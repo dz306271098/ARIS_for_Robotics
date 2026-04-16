@@ -50,7 +50,7 @@ This is NOT a review-fix loop. This is a **research program** that discovers, sy
 | `LIT_SEARCH_COOLDOWN` | 3 | Min rounds between literature searches on same topic |
 | `MAX_ACTIVE_VARIANTS` | 3 | Max variants proposed per round |
 | `FUSION_INTERVAL` | 5 | Every N rounds, run a special "fusion optimization" round |
-| `REVIEWER_MODEL` | gpt-5.4 | External reviewer model via Codex MCP |
+| `REVIEWER_MODEL` | gpt-5.4 | External reviewer model via Codex CLI |
 | `HUMAN_CHECKPOINT` | false | When true, pause after each round's diagnosis for user input |
 | `COMPACT` | false | When true, use compact logs for session recovery |
 | `VENUE` | RAL | Target venue (IEEE Robotics and Automation Letters) |
@@ -189,7 +189,7 @@ If `patience_counter >= 3` (no improvement for 3+ rounds), the current diagnosis
 
 Append rescue findings to the collaborative context below.
 
-**Step 1: Collaborative reanalysis** (MCP dialogue — multi-turn, with rescue findings as input):
+**Step 1: Collaborative reanalysis** (Codex CLI dialogue — multi-turn, with rescue findings as input):
 ```
 /codex:rescue --effort xhigh "
 [COLLABORATIVE MODE — Joint Root-Cause Reanalysis]
@@ -619,7 +619,7 @@ Variant: [name and description]
 ```
 
 - If issues found: apply **Review Feedback Verification Protocol** — evaluate each finding, dispute incorrect ones via `/codex:rescue`. Confirmed CRITICAL issues must be fixed and re-reviewed (max 2 rounds). After fixes pass or 2 rounds exhausted, proceed to Step 2.
-- If Codex MCP unavailable: skip review, proceed with self-review only
+- If Codex CLI unavailable: skip review, proceed with self-review only
 
 **Step 2: Sanity check**
 - Run a quick sanity test (smallest dataset / fewest epochs) to verify no crashes
@@ -678,7 +678,7 @@ Save to `innovation-logs/round-NN/results.md`.
 
 1. **Analyze current loss**: What loss function is being used? What are its known limitations for this problem type?
 
-2. **Generate 2-3 loss variants** via Codex MCP:
+2. **Generate 2-3 loss variants** via Codex CLI:
    - **Variant L1**: Current loss + regularization term (e.g., L2 on key parameters, spectral normalization, consistency regularization, smoothness penalty)
    - **Variant L2**: Alternative loss family (e.g., Huber loss vs MSE for robustness to outliers, focal loss vs CE for class imbalance, contrastive auxiliary loss for representation quality)
    - **Variant L3**: Principled modification inspired by `TECHNIQUE_LIBRARY.md` distilled principles (e.g., if principle says "exploit known conservation laws" → add physics-informed loss term)

@@ -646,6 +646,9 @@ GPT-5.4 打分 → 修复 → 再审，循环直到通过。
 | `RESEARCH_DRIVEN_FIX` | `true` | 文献驱动修复 |
 | `effort` | `balanced` | 工作强度 |
 | `compact` | `false` | 精简日志 |
+| `reviewer` | `codex` | 评审后端：`codex`（默认 GPT-5.4）/ `oracle-pro`（GPT-5.4 Pro，需安装 Oracle MCP）/ `rescue`（深度诊断）/ `adversarial`（代码审查） |
+
+> **GPT-5.4 Pro：** 添加 `— reviewer: oracle-pro` 使用 GPT-5.4 Pro 做评审（默认浏览器模式，需 Chrome 登录 ChatGPT Pro）。适合最终压力测试、深度数学推理、复杂理论论文评审。详见 `shared-references/reviewer-routing.md`。
 
 **Venue 阈值：**
 
@@ -717,7 +720,7 @@ GPT-5.4 打分 → 修复 → 再审，循环直到通过。
 
 ### `/auto-review-loop-llm` — 任意 LLM 评审
 
-使用任意 OpenAI 兼容 API 做评审（替代 Codex MCP）。
+使用任意 OpenAI 兼容 API 做评审（替代默认的 Codex CLI）。
 
 ```bash
 /auto-review-loop-llm "topic" — model: deepseek-v3

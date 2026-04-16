@@ -1,17 +1,17 @@
 ---
 name: research-review
-description: Get a deep critical review of research from GPT via Codex MCP. Use when user says "review my research", "help me review", "get external review", or wants critical feedback on research ideas, papers, or experimental results.
+description: Get a deep critical review of research from GPT via Codex CLI. Use when user says "review my research", "help me review", "get external review", or wants critical feedback on research ideas, papers, or experimental results.
 argument-hint: [topic-or-scope]
 allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
-# Research Review via Codex MCP (xhigh reasoning)
+# Research Review via Codex CLI (xhigh reasoning)
 
 Get a multi-round critical review of research work from an external LLM with maximum reasoning depth.
 
 ## Constants
 
-- REVIEWER_MODEL = `gpt-5.4` — Model used via Codex MCP. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`)
+- REVIEWER_MODEL = `gpt-5.4` — Model used via Codex CLI. Must be an OpenAI model (e.g., `gpt-5.4`, `o3`, `gpt-4o`)
 
 ## Context: $ARGUMENTS
 
@@ -71,7 +71,7 @@ Before Claude compiles the agreement checkpoint, let GPT-5.4 form its own indepe
 /codex:rescue --effort xhigh "Read all project files: NARRATIVE_REPORT.md (or paper draft), experiment results, source code, EXPERIMENT_PLAN.md, and any review documents. Provide an independent critical review WITHOUT relying on any prior review dialogue. Score on 5 dimensions (Novelty, Technical Soundness, Experimental Rigor, Clarity, Significance). List specific weaknesses with file paths and evidence."
 ```
 
-Append rescue findings to the agreement checkpoint below. This ensures the checkpoint reflects ground truth, not just the MCP dialogue narrative.
+Append rescue findings to the agreement checkpoint below. This ensures the checkpoint reflects ground truth, not just the prior dialogue narrative.
 
 **Agreement Checkpoint** (after round 3): Pause and explicitly list:
 - What both Claude and GPT-5.4 **agree** on (settled claims, validated evidence)

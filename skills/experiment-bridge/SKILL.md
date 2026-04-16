@@ -134,9 +134,9 @@ See `../shared-references/codex-context-integrity.md` for channel selection rule
 /codex:adversarial-review --scope working-tree --focus "Review experiment implementation for: baseline fairness (same tuning budget, training schedule, data splits across all methods), statistical rigor (>= 3 seeds, mean +/- std, significance tests), correct ground truth usage (NOT another model's output), data leakage between train/test, fair hyperparameter tuning"
 ```
 
-If adversarial-review returns `needs-attention` with CRITICAL findings: fix them before proceeding. Append ALL findings to the MCP review context below.
+If adversarial-review returns `needs-attention` with CRITICAL findings: fix them before proceeding. Append ALL findings to the design review context below.
 
-**Step 2.5b: Design Review** (MCP dialogue — for methodology discussion):
+**Step 2.5b: Design Review** (Codex CLI dialogue — for methodology discussion):
 
 Send the experiment **design AND code** to GPT-5.4 xhigh for review:
 
@@ -192,7 +192,7 @@ Verify the implementation matches the plan by reading BOTH.
 **On review results:**
 - **No CRITICAL issues** → proceed to Phase 3
 - **CRITICAL issues found** → fix them, then re-submit for review (max 2 rounds)
-- **Codex MCP unavailable** → skip silently, proceed to Phase 3 (graceful degradation)
+- **Codex CLI unavailable** → skip silently, proceed to Phase 3 (graceful degradation)
 
 ### Phase 3: Sanity Check (if SANITY_FIRST = true)
 

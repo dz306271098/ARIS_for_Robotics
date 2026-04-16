@@ -52,7 +52,9 @@ cp -r Auto-claude-code-research-in-sleep/skills/* ~/.claude/skills/
 
 > Skills 安装到 `~/.claude/skills/` 后对所有 Claude Code 项目全局生效。如果只想在特定项目中使用，可以复制到项目的 `.claude/skills/` 目录。
 
-### 第二步：配置 Codex CLI（评审通道）
+### 第二步：安装 Codex CLI + Plugin（评审通道）
+
+ARIS 通过 Codex CLI 调用 GPT-5.4 做评审，通过 Codex Plugin 提供代码审查和深度诊断能力。**不需要** Codex MCP Server。
 
 ```bash
 # 安装 Codex CLI
@@ -60,9 +62,6 @@ npm install -g @openai/codex
 
 # 交互式配置（选择模型时选 gpt-5.4）
 codex setup
-
-# 将 Codex 注册为 Claude Code 的 MCP 服务器
-claude mcp add codex -s user -- codex mcp-server
 ```
 
 **验证配置文件** `~/.codex/config.toml`：
@@ -71,7 +70,12 @@ claude mcp add codex -s user -- codex mcp-server
 model = "gpt-5.4"    # 推荐。其他可选：gpt-5.3-codex, o3
 ```
 
-> 这个文件决定了 Codex MCP 使用的模型，而非 skill 文件中的设置。
+> 这个文件决定了 `codex exec` 使用的模型。
+
+**ARIS 使用的三个工具（均不依赖 MCP）：**
+- `codex exec` — Bash 命令，直接调用 GPT-5.4 做结构化评审
+- `/codex:adversarial-review` — Codex Plugin 提供的代码审查 Skill
+- `/codex:rescue` — Codex Plugin 提供的深度诊断 Skill
 
 ### 第三步：安装 Python 依赖（可选）
 
@@ -90,18 +94,36 @@ export EXA_API_KEY="your-exa-key"
 export SEMANTIC_SCHOLAR_API_KEY="your-ss-key"
 ```
 
-### 第四步：配置 Oracle MCP（可选，更强评审）
+### 第四步：配置 Oracle MCP（GPT-5.4 Pro 评审）
 
-如果需要 GPT-5.4 Pro 作为更强的评审后端：
+Oracle MCP 让 ARIS 调用 **GPT-5.4 Pro**——目前最强的评审模型。默认使用**浏览器模式**（通过 Chrome 中登录的 ChatGPT Pro 会话调用，无需 API Key）。
 
 ```bash
+# 1. 安装 Oracle CLI + MCP
 npm install -g @steipete/oracle
+
+# 2. 注册到 Claude Code
 claude mcp add oracle -s user -- oracle-mcp
-# API 模式（快速）: export OPENAI_API_KEY="your-key"
-# 浏览器模式（免费）: 在 Chrome 中登录 ChatGPT
+
+# 3. 重启 Claude Code 会话（使 MCP 生效）
+
+# 4. 浏览器模式（默认推荐）：
+#    确保 Chrome 浏览器运行中，且已登录 ChatGPT Pro（https://chatgpt.com）
+#    Oracle 会自动使用浏览器会话，无需 API Key
+
+# 5.（可选）API 模式（更快，适合多轮循环）：
+#    export OPENAI_API_KEY="your-key"  # 需要有 GPT-5.4 Pro API 权限
 ```
 
-安装后用 `— reviewer: oracle-pro` 在任何评审类 skill 中启用。未安装不影响任何功能。
+**使用方式：** 在任何评审类 skill 后添加 `— reviewer: oracle-pro`：
+```bash
+/auto-review-loop "topic" — reviewer: oracle-pro          # 用 GPT-5.4 Pro 做评审
+/proof-checker "paper/" — reviewer: oracle-pro             # 深度数学证明验证
+/research-review "my approach" — reviewer: oracle-pro      # 最强批判性评审
+/rebuttal "paper/ + reviews" — reviewer: oracle-pro        # 提交前压力测试
+```
+
+未安装 Oracle 时 `— reviewer: oracle-pro` 会静默回退到标准 `codex exec`，不影响任何功能。
 
 ### 第五步：配置 GPU 服务器（可选）
 
@@ -135,14 +157,14 @@ claude
 > /research-lit "transformer attention mechanisms"
 ```
 
-如果能返回文献搜索结果，说明安装成功。如果提示 Codex MCP 不可用，检查第二步的配置。
+如果能返回文献搜索结果，说明安装成功。如果 `codex exec` 报错，检查第二步的 Codex CLI 配置。
 
 ### 常见问题
 
 | 问题 | 解决方案 |
 |------|---------|
 | `codex: command not found` | `npm install -g @openai/codex` |
-| Codex MCP 连接失败 | 运行 `claude mcp add codex -s user -- codex mcp-server` |
+| `codex exec` 报错 | 确认 `npm install -g @openai/codex` 已安装，`codex setup` 已配置，`~/.codex/config.toml` 中 model = "gpt-5.4" |
 | 文献搜索超时 | 检查网络连接；API 工具和 WebSearch 会并行运行，一个超时不影响另一个 |
 | GPU 实验部署失败 | 确认 `CLAUDE.md` 中的 SSH 配置正确，`ssh your-server` 能免密登录 |
 | LaTeX 编译失败 | 安装 `texlive-full`：`apt install texlive-full latexmk` |
