@@ -72,6 +72,16 @@ Generate publication-quality illustrations using a **multi-stage workflow** with
 - **TARGET_SCORE = 9** — Minimum acceptable score (1-10) — RAISED FOR QUALITY
 - **OUTPUT_DIR = `figures/ai_generated/`** — Output directory
 - **API_KEY_ENV = `GEMINI_API_KEY`** — Environment variable
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of unattended-safe illustration policy.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before rendering, on retries, and on blockers.
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- retry the illustration backend first before blocking
+- keep drafting work moving when possible, but record `blocking_reason=missing_illustration_backend` if a required figure still cannot be produced or found
+- update `AUTONOMY_STATE.json` before each iteration, on backend failures, and on final artifact success
 
 ## CVPR/ICLR/NeurIPS Top-Tier Conference Style Guide
 

@@ -15,6 +15,8 @@ Get a multi-round external review with maximum rigor, but keep the executor loca
 
 - **REVIEWER_MODEL = `claude-review`** — Claude reviewer invoked through the local `claude-review` MCP bridge. Set `CLAUDE_REVIEW_MODEL` if you need a specific Claude model override.
 - **MAX_REVIEW_ROUNDS = 5** — After that, force an agreement checkpoint instead of open-ended discussion
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of reviewer fallback policy in unattended-safe mode.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor for review progress, provisional fallback, and replay requirements.
 
 ## Context: $ARGUMENTS
 
@@ -28,6 +30,14 @@ Get a multi-round external review with maximum rigor, but keep the executor loca
   ```
 - This gives Codex access to `mcp__claude-review__review_start`, `mcp__claude-review__review_reply_start`, and `mcp__claude-review__review_status`.
 
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- retry the external reviewer path first according to `max_reviewer_runtime_retries`
+- if `review_fallback_mode: retry_then_local_critic`, a local critical pass may keep execution moving but must set `review_mode=local_fallback` and `review_replay_required=true`
+- do not clear a review-dependent blocker or mark the stage completed until the external review thread has been replayed successfully
 
 ## Workflow
 

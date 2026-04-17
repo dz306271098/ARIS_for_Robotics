@@ -28,6 +28,8 @@ Each phase builds on the previous one's output. The final deliverable is a polis
 - **REVIEWER_MODEL = `gpt-5.4`** — Model used via a secondary Codex agent for plan review, figure review, writing review, and improvement loop.
 - **AUTO_PROCEED = true** — Auto-continue between phases. Set `false` to pause and wait for user approval after each phase.
 - **HUMAN_CHECKPOINT = false** — When `true`, the improvement loop (Phase 5) pauses after each round's review to let you see the score and provide custom modification instructions. When `false` (default), the loop runs fully autonomously. Passed through to `/auto-paper-improvement-loop`.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Project-level unattended-safe policy, including `paper_illustration: auto`.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before each phase transition and final completion/block.
 
 > Override inline: `/paper-writing "NARRATIVE_REPORT.md" — venue: NeurIPS, human checkpoint: true`
 > IEEE example: `/paper-writing "NARRATIVE_REPORT.md" — venue: IEEE_JOURNAL`
@@ -39,14 +41,25 @@ This pipeline accepts one of:
 1. **`NARRATIVE_REPORT.md`** (best) — structured research narrative with claims, experiments, results, figures
 2. **Research direction + experiment results** — the skill will help draft the narrative first
 3. **Existing `PAPER_PLAN.md`** — skip Phase 1, start from Phase 2
+4. **`CLAIMS_FROM_RESULTS.md`** — preferred claim-freeze artifact when the narrative needs to be refreshed before planning
 
 The more detailed the input (especially figure descriptions and quantitative results), the better the output.
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- treat `paper_illustration: auto` as the default policy for architecture / pipeline figures
+- update `AUTONOMY_STATE.json` before every phase transition and on any hard blocker
+- if a required illustration has no existing artifact and no usable automatic backend, stop with `blocking_reason=missing_illustration_backend` instead of pretending the paper is complete
+- if any section/outline/polish review used provisional local fallback, keep `review_replay_required=true` until the external reviewer replay succeeds
+- keep `AUTO_PROCEED=true` and `HUMAN_CHECKPOINT=false` unless a hard safety boundary forces a stop
 
 ## Pipeline
 
 ### Phase 1: Paper Plan
 
-Invoke `/paper-plan` to create the structural outline:
+Invoke `/paper-plan` to create the structural outline. If `NARRATIVE_REPORT.md` is missing but `CLAIMS_FROM_RESULTS.md` exists, first synthesize a narrative handoff from the approved claim scope, evidence package, and known limitations, then continue:
 
 ```
 /paper-plan "$ARGUMENTS"
@@ -68,7 +81,7 @@ Invoke `/paper-plan` to create the structural outline:
 📐 Paper plan complete:
 - Title: [proposed title]
 - Sections: [N] ([list])
-- Figures: [N] auto-generated + [M] manual
+- Figures: [N] auto-generated + [M] external-artifact / illustration-dependent
 - Target: [VENUE], [PAGE_LIMIT] pages
 
 Shall I proceed with figure generation?
@@ -94,9 +107,9 @@ Invoke `/paper-figure` to generate data-driven plots and tables:
 
 **Output:** `figures/` directory with PDFs, generation scripts, and LaTeX snippets.
 
-#### Phase 2b: AI Illustration Generation (when `illustration: true`)
+#### Phase 2b: AI Illustration Generation (when `illustration: true` or `paper_illustration: auto`)
 
-**Skip this step entirely if `illustration` is not set or is `false`.**
+**Skip this step entirely only if the paper plan contains no architecture / pipeline / conceptual figures that need illustration.** In unattended-safe mode, `CODEX.md -> ## Autonomy Profile -> paper_illustration: auto` should be treated as the default.
 
 If the paper plan includes architecture diagrams, pipeline figures, or method illustrations, invoke `/paper-illustration`:
 
@@ -109,18 +122,18 @@ If the paper plan includes architecture diagrams, pipeline figures, or method il
 - Output: `figures/ai_generated/*.png` — publication-quality method diagrams
 - Requires `GEMINI_API_KEY` environment variable
 
-> **Without `illustration: true`:** Architecture diagrams must still be created manually (draw.io, Figma, TikZ) and placed in `figures/` before proceeding — same as before.
+> **Without a usable illustration backend:** if the needed figure already exists in `figures/`, preserve it and continue. In unattended-safe mode, otherwise stop with `blocking_reason=missing_illustration_backend`. Interactive mode may still fall back to manual drawing.
 
-**Checkpoint:** List generated vs manual figures.
+**Checkpoint:** List generated vs external-artifact-dependent figures.
 
 ```
 📊 Figures complete:
 - Data plots (auto): [list]
 - AI illustrations (auto): [list, if illustration: true]
-- Manual (need your input): [list]
+- External artifacts (must already exist or block unattended mode): [list]
 - LaTeX snippets: figures/latex_includes.tex
 
-[If manual figures needed]: Please add them to figures/ before I proceed.
+[If external artifacts are missing in unattended mode]: Stop and record `blocking_reason=missing_illustration_backend` or the missing asset path before proceeding.
 [If all auto]: Shall I proceed with LaTeX writing?
 ```
 
@@ -224,7 +237,7 @@ Invoke `/auto-paper-improvement-loop` to polish the paper:
 | Phase | Status | Output |
 |-------|--------|--------|
 | 1. Paper Plan | ✅ | PAPER_PLAN.md |
-| 2. Figures | ✅ | figures/ ([N] auto + [M] manual) |
+| 2. Figures | ✅ | figures/ ([N] auto + [M] external-artifact / illustration-dependent) |
 | 3. LaTeX Writing | ✅ | paper/sections/*.tex ([N] sections, [M] citations) |
 | 4. Compilation | ✅ | paper/main.pdf ([X] pages) |
 | 5. Improvement | ✅ | [score0]/10 → [score2]/10 |
@@ -248,7 +261,7 @@ Invoke `/auto-paper-improvement-loop` to polish the paper:
 
 ## Next Steps
 - [ ] Visual inspection of PDF
-- [ ] Add any missing manual figures
+- [ ] Resolve any remaining external-artifact or illustration backend blockers
 - [ ] Submit to [venue] via OpenReview / CMT / HotCRP
 ```
 

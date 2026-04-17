@@ -109,6 +109,20 @@ Present results in a comparison table:
 - Flag unexpected results (negative delta, NaN, divergence)
 - Suggest next steps based on findings
 
+### Step 5.5: Machine-Readable Summary for Unattended Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`, also save a machine-readable summary to `monitoring/last_monitor_summary.json` with:
+
+- `status`: running / blocked / completed
+- `experiments`: tracked experiment names
+- `running`: still-running sessions
+- `completed`: finished experiments
+- `anomalies`: divergence / NaN / dead session / missing files
+- `recommended_action`: continue / retry / block
+- `updated_at`
+
+Update `AUTONOMY_STATE.json` if the summary reveals a blocker.
+
 ### Step 6: Feishu Notification (if configured)
 
 After results are collected, check `~/.codex/feishu.json`:

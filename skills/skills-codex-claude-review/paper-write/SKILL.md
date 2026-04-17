@@ -18,6 +18,8 @@ Draft a LaTeX paper based on: **$ARGUMENTS**
 - **ANONYMOUS = true** — If true, use anonymous author block. Set `false` for camera-ready. Note: most IEEE venues do NOT use anonymous submission — set `false` for IEEE.
 - **MAX_PAGES = 9** — Main body page limit. For ML conferences: counts from first page to end of Conclusion section, references and appendix NOT counted. **For IEEE venues: references ARE counted toward the page limit.** Typical limits: IEEE journal = no strict limit (but 12-14 pages typical for Transactions, 4-5 for Letters), IEEE conference = 5-8 pages including references.
 - **DBLP_BIBTEX = true** — Fetch real BibTeX from DBLP/CrossRef instead of LLM-generated entries. Eliminates hallucinated citations. Zero install required. Set `false` to use legacy behavior (LLM search + `[VERIFY]` markers).
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of unattended-safe reviewer and illustration fallback policy.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before drafting, section review, and blockers.
 
 ## Inputs
 
@@ -28,6 +30,14 @@ Draft a LaTeX paper based on: **$ARGUMENTS**
 5. **Bibliography** — existing `.bib` file, or will create one
 
 If no PAPER_PLAN.md exists, ask the user to run `/paper-plan` first or provide a brief outline.
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- draft from `PAPER_PLAN.md` plus `CLAIMS_FROM_RESULTS.md` when present
+- update `AUTONOMY_STATE.json` before writing, after section-review passes, and on blockers
+- if section review temporarily falls back to a local critic, keep `review_replay_required=true` until the external reviewer replay is complete
 
 ## Orchestra-Guided Writing Overlay
 

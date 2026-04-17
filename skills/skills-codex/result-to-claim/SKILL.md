@@ -15,12 +15,24 @@ Experiments produce numbers; this gate decides what those numbers actually justi
 
 - **REVIEWER_MODEL = `gpt-5.4`** — Used via a secondary Codex reviewer agent.
 - **REPEAT_PARTIAL_THRESHOLD = 2** — After two `partial` verdicts on the same claim, escalate to a deeper failure analysis instead of drifting forever.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of reviewer fallback policy in unattended-safe mode.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor for claim-freeze progress, provisional reviewer fallback, and replay requirements.
 
 ## When to Use
 
 - After a main experiment block completes
 - Before you lock claims into a paper, review response, or summary memo
 - When the result is positive but the scope of that positivity is unclear
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- update `AUTONOMY_STATE.json` before evidence collection, after the verdict, and on any blocker
+- retry reviewer runtime first according to `max_reviewer_runtime_retries`
+- if `review_fallback_mode: retry_then_local_critic`, a provisional local-critic pass is allowed only to keep the workflow moving; set `review_mode=local_fallback`, `review_replay_required=true`, and a concise `recovery_step`
+- never treat a provisional local-critic verdict as the final paper-ready claim freeze; replay the external reviewer before final completion
+
 
 ## Workflow
 
@@ -101,7 +113,7 @@ spawn_agent:
     Be strict. A positive result on one setting does not justify a general claim.
 ```
 
-If delegation is unavailable, run the same rubric locally and mark the result `[pending external review]` instead of blocking.
+If delegation is unavailable, run the same rubric locally and mark the result `[pending external review]` instead of blocking. In unattended-safe mode, this local rubric is only a provisional fallback and must set `review_replay_required=true` until the external reviewer is replayed successfully.
 
 ### Step 3: Normalize the Verdict
 
@@ -167,7 +179,8 @@ Do not round this up to `yes`.
 1. Replace the working claim with the `approved_claim`
 2. Record the unsupported parts and missing evidence in `findings.md`
 3. Build the **minimum** supplementary experiment package, not a sprawling wishlist
-4. Re-run `/result-to-claim` after the supplementary evidence lands
+4. Record the failure principle, wrong assumption, and revive condition so later ideation and planning can reuse the lesson
+5. Re-run `/result-to-claim` after the supplementary evidence lands
 
 If the same claim reaches `partial` more than `REPEAT_PARTIAL_THRESHOLD` times, escalate with a deeper reviewer follow-up instead of looping blindly:
 
@@ -197,6 +210,7 @@ spawn_agent:
 #### `yes` — claim supported
 
 1. Record the exact approved claim and its boundaries in `CLAIMS_FROM_RESULTS.md`
+2. If the verdict came from a provisional local fallback, keep the claim marked provisional and replay the external reviewer before paper writing finalization
 2. If ablations or robustness checks are missing, trigger `/ablation-planner`
 3. If confidence is only `medium`, treat the claim as provisionally supported and close the biggest gap before paper writing
 4. If confidence is `high` and evidence is complete, move to paper planning
@@ -212,11 +226,12 @@ python3 tools/research_wiki.py rebuild_query_pack research-wiki/
 python3 tools/research_wiki.py log research-wiki/ "result-to-claim: exp:<id> verdict=<verdict>"
 ```
 
-Also update the relevant `exp:` and `claim:` pages:
+Also update the relevant `exp:` and `claim:` pages. If the verdict exposed a reusable lesson, write or update a `principle:` page and rebuild all packs so the failure becomes reusable knowledge:
 
 - `yes` → add `supports`
 - `partial` → add `supports` with `partial` evidence and record the narrowed scope
 - `no` → add `invalidates` and link the failure notes
+- if the verdict reveals a reusable principle or revive condition, add `tests_principle` / `revives` edges and rebuild packs with `python3 tools/research_wiki.py rebuild_packs research-wiki/`
 
 If multiple ideas have recently failed or stalled at `partial`, explicitly recommend re-ideation or a `deep-innovation-loop` pivot.
 

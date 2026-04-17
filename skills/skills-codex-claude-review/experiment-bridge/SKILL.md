@@ -34,6 +34,8 @@ refine-logs/FINAL_PROPOSAL.md
 - **ITERATIVE_VARIANTS = false** — When `true`, support testing multiple method variants within the same bridge session. Useful for rapid variant comparison during deep innovation loops.
 - **MANDATORY_TEST_GATE = true** — Every implementation round must pass the shared execution test gate before sanity runs or deployment. See `../shared-references/execution-test-gate.md`.
 - **REVIEWER_RESOLUTION_PROTOCOL = true** — Disputed reviewer findings must be pushed back through the same dialogue until they are accepted, narrowed, rebutted, or resolved via a minimum action. See `../shared-references/reviewer-resolution-protocol.md`.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Enables unattended-safe execution rules for deployment, retries, watchdog, and cloud boundaries.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before implementation, test-gate, sanity, deploy, and result collection.
 
 > Override: `/experiment-bridge "EXPERIMENT_PLAN.md" — compact: true, base repo: https://github.com/org/project`
 
@@ -48,6 +50,15 @@ This skill expects one or more of:
 5. **`IDEA_REPORT.md`** — full brainstorm output (fallback)
 
 If none exist, autonomously infer experiments from available context: read `IDEA_REPORT.md`, `RESEARCH_BRIEF.md`, `CODEX.md`, and any existing code to design a minimal experiment plan. Document the auto-generated plan before proceeding. Only ask the user if there is truly no project context to work from.
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`, follow `../shared-references/unattended-runtime-protocol.md` in addition to the normal bridge flow:
+
+- keep `AUTO_DEPLOY=true` unless a hard safety boundary blocks deployment
+- require `wandb: true` + `wandb_project` for long unattended training; without them, stop after sanity-only validation and record the blocker
+- rely on `/run-experiment` to register watchdog coverage for long-running jobs
+- update `AUTONOMY_STATE.json` before implementation, before the Mandatory Test Gate, before sanity runs, and before handing off to `/auto-review-loop`
 
 ## Workflow
 

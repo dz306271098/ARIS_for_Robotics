@@ -1,0 +1,32 @@
+[
+  {
+    "id": "generic_ml_scaling",
+    "category": "generic_ml",
+    "prompt": "Find a research direction in generic ML where scaling assumptions may be wrong.",
+    "required_artifacts": ["IDEA_PORTFOLIO.md", "literature-logs/PRINCIPLE_BANK.md", "refine-logs/ROUTE_PORTFOLIO.md"]
+  },
+  {
+    "id": "robotics_failure_recovery",
+    "category": "robotics",
+    "prompt": "Propose a robotics idea grounded in simulation-first failure analysis.",
+    "required_artifacts": ["IDEA_REPORT.md", "research-wiki/failure_pack.md", "refine-logs/PLAN_DECISIONS.md"]
+  },
+  {
+    "id": "comms_cross_domain",
+    "category": "communications",
+    "prompt": "Find a communications research route that benefits from a non-obvious adjacent-field principle.",
+    "required_artifacts": ["literature-logs/ANALOGY_CANDIDATES.md", "research-wiki/principle_pack.md"]
+  },
+  {
+    "id": "contrarian_route",
+    "category": "cross_domain_transfer",
+    "prompt": "Generate a contrarian route that challenges a dominant assumption in the field.",
+    "required_artifacts": ["IDEA_PORTFOLIO.md", "refine-logs/ROUTE_PORTFOLIO.md"]
+  },
+  {
+    "id": "negative_result_salvage",
+    "category": "failure_salvage",
+    "prompt": "Turn a negative experimental result into a reusable principle and a revive condition.",
+    "required_artifacts": ["CLAIMS_FROM_RESULTS.md", "research-wiki/failure_pack.md"]
+  }
+]

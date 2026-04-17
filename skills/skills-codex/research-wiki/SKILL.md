@@ -17,7 +17,7 @@ Inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6
 
 ## Core Concepts
 
-### Four Entity Types
+### Five Entity Types
 
 | Entity | Directory | Node ID format | What it represents |
 |--------|-----------|---------------|--------------------|
@@ -25,6 +25,7 @@ Inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6
 | **Idea** | `ideas/` | `idea:<id>` | A research idea (proposed, tested, or failed) |
 | **Experiment** | `experiments/` | `exp:<id>` | A concrete experiment run with results |
 | **Claim** | `claims/` | `claim:<id>` | A testable scientific claim with evidence status |
+| **Principle** | `principles/` | `principle:<id>` | A distilled transferable mechanism abstracted from one or more papers or failures |
 
 ### Typed Relationships (`graph/edges.jsonl`)
 
@@ -38,6 +39,10 @@ Inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6
 | `supports` | exp → claim\|idea | Experiment confirms claim |
 | `invalidates` | exp → claim\|idea | Experiment disproves claim |
 | `supersedes` | paper → paper | Newer work replaces older |
+| `distills` | paper → principle | Paper yields this distilled principle |
+| `applies_principle` | idea → principle | Idea instantiates this principle |
+| `tests_principle` | exp → principle | Experiment tests this principle directly |
+| `revives` | idea\|claim → idea\|principle | Failed branch becomes useful again under narrower conditions |
 
 Edges are stored in `graph/edges.jsonl` only. The `## Connections` section on each page is **auto-generated** from the graph — never hand-edit it.
 
@@ -49,6 +54,9 @@ research-wiki/
   log.md                 # append-only timeline
   gap_map.md             # field gaps with stable IDs (G1, G2, ...)
   query_pack.md          # compressed summary for /idea-creator (auto-generated, max 8000 chars)
+  principle_pack.md      # top transferable principles + adaptations
+  analogy_pack.md        # cross-domain analogy candidates
+  failure_pack.md        # negative results, invalidated claims, revive conditions
   papers/
     <slug>.md            # one page per paper
   ideas/
@@ -57,6 +65,8 @@ research-wiki/
     <exp_id>.md          # one page per experiment
   claims/
     <claim_id>.md        # one page per testable claim
+  principles/
+    <principle_id>.md    # one page per distilled transferable principle
   graph/
     edges.jsonl          # materialized current relationship graph
 ```
@@ -143,7 +153,7 @@ updated_at: 2026-04-07T10:12:00Z
 
 ### `/research-wiki query "<topic>"`
 
-Generate `query_pack.md` — a compressed, context-window-friendly summary:
+Generate `query_pack.md` plus the deeper `principle_pack.md`, `analogy_pack.md`, and `failure_pack.md`. `query_pack.md` stays compressed for fast ideation; the other packs hold deeper reusable intelligence for innovation and planning:
 
 **Fixed budget (max 8000 chars / ~2000 tokens):**
 
@@ -300,8 +310,9 @@ The system suggests but does not auto-trigger. User decides.
 
 - **One source of truth for relationships**: `graph/edges.jsonl`. Page `Connections` sections are auto-generated views.
 - **Canonical node IDs everywhere**: `paper:<slug>`, `idea:<id>`, `exp:<id>`, `claim:<id>`, `gap:<id>`. Never use raw titles or inconsistent shorthands.
-- **Failed ideas are the most valuable memory.** Never prune them from query_pack.
+- **Failed ideas are the most valuable memory.** Never prune them from the memory layer first.
 - **query_pack.md is hard-budgeted** at 8000 chars. Deterministic generation, not open-ended summarization.
+- **Principles are first-class entities.** If the system learns a reusable mechanism from a paper or a failure, write a `principle:` page instead of burying it in prose.
 - **Append to log.md for every mutation.** The log is the audit trail.
 - **Reviewer independence applies.** When the wiki is read by cross-model review skills, pass file paths only — do not summarize wiki content for the reviewer.
 

@@ -41,6 +41,7 @@
 
 - `Mandatory Test Gate`：写完代码后必须先过模块测试和 workflow smoke test
 - `Reviewer Resolution Protocol`：reviewer 反馈有争议时必须回 thread 讨论到收敛
+- `Unattended Runtime Protocol`：`CODEX.md -> ## Autonomy Profile`、`AUTONOMY_STATE.json`、watchdog 和 W&B 共同约束无人值守长跑
 
 ## 主线嵌入方式
 
@@ -49,9 +50,9 @@
 ```text
 /idea-discovery
 -> /research-refine-pipeline
--> implement
--> /run-experiment
--> innovation gate
+-> /experiment-bridge
+-> /monitor-experiment + /training-check
+-> /result-to-claim
 -> /deep-innovation-loop?
 -> /auto-review-loop
 -> /result-to-claim

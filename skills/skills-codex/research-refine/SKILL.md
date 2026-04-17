@@ -43,6 +43,7 @@ User input (PROBLEM + vague APPROACH)
 - **MAX_CORE_EXPERIMENTS = 3** — Default cap for core validation blocks inside this skill.
 - **MAX_PRIMARY_CLAIMS = 2** — Soft cap for paper-level claims. Prefer one dominant claim plus one supporting claim.
 - **MAX_NEW_TRAINABLE_COMPONENTS = 2** — Soft cap for genuinely new trainable pieces. Exceed only if the paper breaks otherwise.
+- **RESEARCH_INTELLIGENCE_PROFILE = `CODEX.md -> ## Research Intelligence Profile`** — Controls innovation intensity, route portfolio size, and whether an analogical/contrarian route must be preserved.
 
 > Override via argument if needed, e.g. `/research-refine "problem | approach" -- max rounds: 3, threshold: 9`.
 
@@ -76,6 +77,7 @@ refine-logs/
 ├── round-2-refinement.md
 ├── ...
 ├── REVIEW_SUMMARY.md
+├── ROUTE_PORTFOLIO.md
 ├── FINAL_PROPOSAL.md
 ├── REFINEMENT_REPORT.md
 └── score-history.md
@@ -120,7 +122,7 @@ If later reviewer feedback would change the problem being solved, mark that as *
 
 #### Step 1.1: Scan Grounding Material
 
-Check `papers/` and `literature/` first. Read only the relevant parts needed to answer:
+Check `papers/` and `literature/` first. If `research-wiki/principle_pack.md`, `research-wiki/analogy_pack.md`, or `research-wiki/failure_pack.md` exist, read them before scanning raw papers. Read only the relevant parts needed to answer:
 
 - What mechanism do current methods use?
 - Where exactly do they fail for this problem?
@@ -141,12 +143,22 @@ Do not stop at generic research questions. Make the gap operational:
 5. **Core technical claim**: what exact mechanism claim could survive top-venue scrutiny?
 6. **Required evidence**: what minimum proof is needed to defend that claim?
 
-#### Step 1.3: Choose the Sharpest Route
+#### Step 1.3: Build and Rank a Route Portfolio
 
-Before locking the method, compare two candidate routes if both are plausible:
+Before locking the method, compare up to three candidate routes:
 
 - **Route A: Elegant minimal route** — the smallest mechanism that directly targets the bottleneck.
 - **Route B: Frontier-native route** — a more modern route that uses LLM / VLM / Diffusion / RL / distillation / inference-time scaling *only if* it gives a cleaner or stronger story.
+- **Route C: Analogical / contrarian route** — a route justified by cross-domain principle transfer, contradiction resolution, or an anti-assumption thesis.
+
+For each route, record:
+- source principles and source lane
+- closest prior work and novelty risk
+- main kill criterion
+- first decisive experiment
+- whether it should stay as `mainline` or `shadow route`
+
+Write these to `refine-logs/ROUTE_PORTFOLIO.md` before picking the recommended mainline route.
 
 Then decide:
 
@@ -154,7 +166,7 @@ Then decide:
 - Which route has the cleaner novelty story relative to the closest work?
 - Which route avoids contribution sprawl?
 
-If both routes are weak, rethink the framing instead of combining them into a larger system by default.
+If all routes are weak, rethink the framing instead of combining them into a larger system by default. Do not collapse to one route before the portfolio is documented.
 
 #### Step 1.4: Concretize the Method First
 
@@ -516,6 +528,9 @@ Then return to Phase 3 until:
 - or **MAX_ROUNDS reached**
 
 ### Phase 5: Final Report and Logs
+
+The final proposal should identify one recommended mainline route, but the route portfolio must preserve at least one surviving shadow route when the evidence is not decisive enough to kill it.
+
 
 #### Step 5.1: Write `refine-logs/REVIEW_SUMMARY.md`
 

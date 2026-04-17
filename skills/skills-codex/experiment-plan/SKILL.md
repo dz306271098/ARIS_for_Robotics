@@ -28,10 +28,23 @@ The goal is not to generate a giant benchmark wishlist. The goal is to turn a pr
 - **MAX_CORE_BLOCKS = 5** — Keep the must-run experimental story compact.
 - **MAX_BASELINE_FAMILIES = 3** — Prefer a few strong baselines over many weak ones.
 - **DEFAULT_SEEDS = 3** — Use 3 seeds when stochastic variance matters and budget allows.
+- **RESEARCH_INTELLIGENCE_PROFILE = `CODEX.md -> ## Research Intelligence Profile`** — Controls route portfolio retention, innovation intensity, and disconfirming-experiment defaults.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of unattended-safe planning boundaries and reviewer fallback policy.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before each planning phase and on blockers.
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- keep the plan compact and execution-ordered so the next step can be `/experiment-bridge` without manual decomposition
+- update `AUTONOMY_STATE.json` before claim freezing, milestone ordering, and final output
+- if reviewer input is temporarily local-fallback only, mark the plan provisional and keep `review_replay_required=true`
 
 ## Workflow
 
 ### Phase 0: Load the Proposal Context
+
+Also read `refine-logs/ROUTE_PORTFOLIO.md` if it exists. The experiment plan must know which route is the recommended mainline and which routes are still alive as shadow branches.
 
 Read the most relevant existing files first if they exist:
 
@@ -65,6 +78,13 @@ Do not exceed `MAX_PRIMARY_CLAIMS` unless the paper truly has multiple inseparab
 
 ### Phase 2: Build the Experimental Storyline
 
+The storyline must separate four classes of experiments:
+
+1. **Mainline experiments** — support the recommended claim path
+2. **Branch-kill experiments** — cheaply eliminate surviving shadow routes
+3. **Disconfirming experiments** — test whether the core thesis is wrong or only conditionally true
+4. **Analogy-upside experiments** — test the benefit of a cross-domain principle when one is central
+
 Design the paper around a compact set of experiment blocks. Default to the following blocks and delete any that are not needed:
 
 1. **Main anchor result** — does the method solve the actual bottleneck?
@@ -85,6 +105,7 @@ Prefer one strong baseline family over many weak baselines. If a stronger modern
 
 For every kept block, fully specify:
 
+- **Block class**: mainline / branch-kill / disconfirming / analogy-upside
 - **Claim tested**
 - **Why this block exists**
 - **Dataset / split / task**
@@ -185,7 +206,15 @@ Use this structure:
 - [ ] Nice-to-have runs are separated from must-run runs
 ```
 
-#### Step 5.2: Write `refine-logs/EXPERIMENT_TRACKER.md`
+#### Step 5.2: Write `refine-logs/PLAN_DECISIONS.md`
+
+This file should state:
+- which route is the recommended mainline
+- which shadow routes remain alive
+- which experiment kills or validates each route
+- which disconfirming experiments are mandatory before claim freeze
+
+#### Step 5.3: Write `refine-logs/EXPERIMENT_TRACKER.md`
 
 Use this structure:
 
@@ -199,7 +228,7 @@ Use this structure:
 
 Keep the tracker compact and execution-oriented.
 
-#### Step 5.3: Present a Brief Summary to the User
+#### Step 5.4: Present a Brief Summary to the User
 
 ```
 Experiment plan ready.

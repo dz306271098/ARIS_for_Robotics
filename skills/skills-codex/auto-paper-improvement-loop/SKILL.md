@@ -22,6 +22,8 @@ Unlike `/auto-review-loop` (which iterates on **research** — running experimen
 - **REVIEWER_MODEL = `gpt-5.4`** — Model used via a secondary Codex agent for paper review.
 - **REVIEW_LOG = `PAPER_IMPROVEMENT_LOG.md`** — Cumulative log of all rounds, stored in paper directory.
 - **HUMAN_CHECKPOINT = false** — When `true`, pause after each round's review and present score + weaknesses to the user. The user can approve fixes, provide custom modification instructions, skip specific fixes, or stop early. When `false` (default), runs fully autonomously.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of unattended-safe reviewer fallback policy.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor for paper-polish progress, provisional reviewer fallback, and replay requirements.
 
 > 💡 Override: `/auto-paper-improvement-loop "paper/" — human checkpoint: true`
 
@@ -29,6 +31,15 @@ Unlike `/auto-review-loop` (which iterates on **research** — running experimen
 
 1. **Compiled paper** — `paper/main.pdf` + LaTeX source files
 2. **All section `.tex` files** — concatenated for review prompt
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- keep `HUMAN_CHECKPOINT=false` unless a hard safety boundary forces a stop
+- update `AUTONOMY_STATE.json` before each review round, after each recompile, and on blockers
+- if the reviewer path temporarily falls back to a local critic, set `review_mode=local_fallback` and `review_replay_required=true`
+- do not let the parent workflow mark paper polish complete until the external reviewer replay clears the provisional state
 
 ## State Persistence (Compact Recovery)
 

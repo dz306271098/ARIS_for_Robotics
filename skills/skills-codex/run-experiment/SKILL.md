@@ -9,6 +9,15 @@ allowed-tools: Bash(*), Read, Grep, Glob, Edit, Write, Agent
 
 Deploy and run ML experiment: $ARGUMENTS
 
+## Unattended Safe Mode
+
+If `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- `allow_auto_cloud: false` means do **not** auto-provision a new vast.ai instance; use an already-running instance or block with an explicit reason in `AUTONOMY_STATE.json`
+- `require_watchdog: true` means long-running remote or background jobs must be registered with `tools/watchdog.py` before this skill exits
+- `require_wandb_for_unattended_training: true` means long unattended training needs `wandb: true` and `wandb_project`; otherwise stop after the smallest credible sanity run
+- update `AUTONOMY_STATE.json` before launch, after watchdog registration, and when deployment is blocked or complete
+
 ## Workflow
 
 ### Step 1: Detect Environment
@@ -22,7 +31,8 @@ Read the project's `CODEX.md` to determine the experiment environment:
 **Vast.ai detection priority:**
 1. If `CODEX.md` has `gpu: vast` or a `## Vast.ai` section:
    - If `vast-instances.json` exists and has a running instance → use that instance
-   - If no running instance → call `/vast-gpu provision` which analyzes the task, presents cost-optimized GPU options, and rents the user's choice
+   - If no running instance and `CODEX.md -> ## Autonomy Profile` has `allow_auto_cloud: false` → stop and record a blocker in `AUTONOMY_STATE.json`
+   - Otherwise → call `/vast-gpu provision` which analyzes the task, presents cost-optimized GPU options, and rents the user's choice
 2. If no server info is found in `CODEX.md`, default to `gpu: local` and attempt to use locally available GPUs (via `nvidia-smi`). If no local GPU detected, log a warning and attempt CPU execution for small-scale experiments.
 
 ### Step 2: Pre-flight Check
@@ -130,7 +140,7 @@ Before deploying, ensure the experiment scripts have W&B logging:
    ssh <server> "wandb login <WANDB_API_KEY>"
    ```
 
-> The W&B project name and API key come from `CODEX.md` (see example below). The experiment name is auto-generated from the script name + timestamp.
+> The W&B project name and API key come from `CODEX.md` (see example below). The experiment name is auto-generated from the script name + timestamp. In unattended-safe mode with `require_wandb_for_unattended_training: true`, this step is a hard prerequisite for any long-running training job.
 
 ### Step 4: Deploy
 
@@ -154,6 +164,12 @@ ssh -p <PORT> root@<HOST> "screen -dmS <exp_name> bash -c '\
 ```
 
 After launching, update the `experiment` field in `vast-instances.json` for this instance.
+
+If unattended-safe mode requires watchdog coverage, register the new session immediately after launch:
+
+```bash
+python3 tools/watchdog.py --register '{"name":"<exp_name>","type":"training","session":"<exp_name>","session_type":"screen","gpus":[<gpu_id>]}'
+```
 
 #### Local
 

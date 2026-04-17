@@ -23,6 +23,7 @@ Research topic: $ARGUMENTS
 - **ARXIV_DOWNLOAD = false** — When `true`, download top 3-5 most relevant arXiv PDFs to PAPER_LIBRARY after search. When `false` (default), only fetch metadata (title, abstract, authors) via arXiv API — no files are downloaded.
 - **ARXIV_MAX_DOWNLOAD = 500** — Maximum number of PDFs to download when `ARXIV_DOWNLOAD = true`. Downloads all relevant papers found, up to this cap.
 - **SNOWBALL = true** — When `true`, perform citation graph traversal (forward + backward) on top 3-5 most relevant papers found. Catches papers using different terminology but in the same citation lineage. Set `false` to skip for faster search.
+- **LITERATURE_OUTPUT_DIR = `literature-logs/`** — Default destination for structured synthesis artifacts: landscape, principles, analogy candidates, and novelty surface.
 
 > 💡 Overrides:
 > - `/research-lit "topic" — paper library: ~/my_papers/` — custom local PDF path
@@ -70,6 +71,8 @@ Examples:
 > **Graceful degradation**: If no MCP servers are configured, the skill works exactly as before (local PDFs + web search). Zotero and Obsidian are pure additions.
 
 ## Workflow
+
+Apply `../shared-references/literature-synthesis-protocol.md` throughout this workflow. The deliverable is not just a survey; it is a structured set of research assets that downstream ideation and planning can reuse directly.
 
 ### Step 0a: Search Zotero Library (if available)
 
@@ -253,6 +256,8 @@ Batch 3-5 WebSearch queries at a time. If any hangs > 60 seconds, abandon and co
 
 ### Step 1.1: Cross-Domain Deep Search (when `CROSS_DOMAIN = true`)
 
+For the papers that survive this stage, extract principles using `../shared-references/principle-extraction.md`. Only keep cross-domain hits whose principle survives abstraction and adaptation.
+
 **Skip if `CROSS_DOMAIN = false`.**
 
 After the main domain search, run dedicated searches in foundational fields. The goal is to find theories, methods, and mathematical frameworks from OTHER disciplines that address the same fundamental problem structure.
@@ -372,6 +377,17 @@ For paper IDs, use `ARXIV:XXXX.XXXXX` format if arXiv ID is available, otherwise
 python3 "$S2_SCRIPT" author-papers "Author Name" --max 20
 ```
 This catches papers where the title uses novel terminology that no keyword query would find.
+
+### Step 1.2: Synthesize Into Research Assets
+
+Before finalizing the literature output, write these files to `literature-logs/`:
+
+- `LITERATURE_MAP.md` — clustered landscape and bottlenecks
+- `PRINCIPLE_BANK.md` — distilled principles, preconditions, and adaptations
+- `ANALOGY_CANDIDATES.md` — cross-domain or adjacent-field transfers worth testing
+- `NOVELTY_SURFACE.md` — likely overlap and reviewer-citation risk
+
+If `research-wiki/` exists, sync the top principles and failure/saturation signals into `research-wiki/principles/` and rebuild all packs with `python3 tools/research_wiki.py rebuild_packs research-wiki/`.
 
 ### Step 2: Analyze Each Paper
 For each relevant paper (from all sources), extract:

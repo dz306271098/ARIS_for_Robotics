@@ -105,7 +105,7 @@ Optional reviewer model override:
 ```bash
 codex mcp remove claude-review
 codex mcp add claude-review \
-  --env CLAUDE_REVIEW_MODEL='claude-opus-4-6[1m]' \
+  --env CLAUDE_REVIEW_MODEL='claude-opus-4-7[1m]' \
   --env CLAUDE_REVIEW_FALLBACK_MODEL='claude-opus-4-6' \
   -- python3 ~/.codex/mcp-servers/claude-review/server.py
 ```
@@ -113,7 +113,7 @@ codex mcp add claude-review \
 ## Notes
 
 - Prefer the async `review_start` / `review_reply_start` + `review_status` flow for long prompts.
-- The default reviewer chain is `claude-opus-4-6[1m]` first, then `claude-opus-4-6`.
+- The default reviewer chain is `claude-opus-4-7[1m]` first, then `claude-opus-4-6`.
 - The fallback model is used only when the MCP call does not pass an explicit `model`.
 - `CODEX.md` is the recommended project config name for this path.
 - `CODEX.md` is the only mainline project config name for this path.

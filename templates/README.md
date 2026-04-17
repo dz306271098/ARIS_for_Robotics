@@ -6,6 +6,7 @@ Ready-to-use templates for each ARIS workflow. Copy, fill in your content, and r
 
 | Template | For Workflow | What to do |
 |----------|-------------|------------|
+| [CODEX_TEMPLATE.md](CODEX_TEMPLATE.md) | Project setup | Main project config including unattended-safe defaults |
 | [RESEARCH_BRIEF_TEMPLATE.md](RESEARCH_BRIEF_TEMPLATE.md) | Workflow 1 | Detailed research direction as document input |
 | [RESEARCH_CONTRACT_TEMPLATE.md](RESEARCH_CONTRACT_TEMPLATE.md) | Workflow 1 | Define problem boundaries, non-goals, timeline before starting |
 | [EXPERIMENT_PLAN_TEMPLATE.md](EXPERIMENT_PLAN_TEMPLATE.md) | Workflow 1.5 | Claim-driven experiment roadmap with run order and budgets |

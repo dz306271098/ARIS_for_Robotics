@@ -29,6 +29,7 @@ All code-writing execution workflows now share two hard protocols:
 
 - `Mandatory Test Gate` — after code changes, pass module tests plus a workflow smoke test before deploy or re-review
 - `Reviewer Resolution Protocol` — disputed reviewer findings must go back through the same review thread until they converge
+- `Unattended Runtime Protocol` — `CODEX.md -> ## Autonomy Profile`, `AUTONOMY_STATE.json`, watchdog, and W&B govern long-running unattended-safe execution
 
 ## Mainline workflow embedding
 
@@ -36,7 +37,7 @@ These newer support skills are not sidecars anymore. In the current mainline the
 
 - `research-wiki` is the long-horizon memory layer. Initialize it once after `CODEX.md` and `RESEARCH_BRIEF.md` are stable, then let `/research-lit`, `/idea-creator`, and `/result-to-claim` keep it fresh.
 - `deep-innovation-loop` is now part of the default `/research-pipeline` method-evolution path. The practical chain is:
-  `/idea-discovery -> implement -> /run-experiment -> innovation gate -> /deep-innovation-loop? -> /auto-review-loop`
+  `/idea-discovery -> /experiment-bridge -> /result-to-claim -> /deep-innovation-loop? -> /auto-review-loop -> /result-to-claim -> /paper-writing`
 - `meta-optimize` is not part of fragile experiment execution. Use it after milestones to improve the harness based on artifacts such as `AUTO_REVIEW.md`, `innovation-logs/`, `refine-logs/`, `paper/`, `rebuttal/`, and `CODEX.md`.
 
 In other words:

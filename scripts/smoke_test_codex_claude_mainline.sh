@@ -36,6 +36,54 @@ bash "$INSTALL_SCRIPT" --review-model smoke-model --review-fallback-model smoke-
 [[ -f "$HOME/.codex/mcp-servers/claude-review/server.py" ]]
 [[ -f "$HOME/.codex/.aris/codex-claude-mainline/current-manifest.json" ]]
 [[ -x "$HOME/.codex/.aris/codex-claude-mainline/uninstall_codex_claude_mainline.sh" ]]
+[[ -f "$SCRIPT_DIR/../templates/CODEX_TEMPLATE.md" ]]
+[[ -f "$SCRIPT_DIR/../tools/autonomy_supervisor.py" ]]
+[[ -f "$SCRIPT_DIR/../skills/skills-codex/shared-references/unattended-runtime-protocol.md" ]]
+
+SMOKE_PROJECT="$HOME/unattended-project"
+mkdir -p "$SMOKE_PROJECT"
+cp "$SCRIPT_DIR/../templates/CODEX_TEMPLATE.md" "$SMOKE_PROJECT/CODEX.md"
+
+bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$SMOKE_PROJECT"
+python3 "$SCRIPT_DIR/../tools/update_autonomy_state.py" \
+  --project-root "$SMOKE_PROJECT" \
+  --workflow research-pipeline \
+  --phase init \
+  --status in_progress \
+  --next-skill research-pipeline \
+  --next-args "smoke topic" \
+  --blocking-reason "" \
+  --retry-count 0 \
+  --review-mode external \
+  --review-replay-required false \
+  --recovery-step init \
+  --touch-heartbeat >/dev/null
+python3 "$SCRIPT_DIR/../tools/autonomy_supervisor.py" \
+  --project-root "$SMOKE_PROJECT" \
+  --workflow research-pipeline \
+  --topic "smoke topic" \
+  --skip-health-check \
+  --dry-run > "$HOME/autonomy-supervisor.json"
+python3 - "$HOME/autonomy-supervisor.json" "$SMOKE_PROJECT/AUTONOMY_STATE.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+state = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+if payload.get("workflow") != "research-pipeline":
+    raise RuntimeError(payload)
+if "Autonomy Profile" not in payload.get("prompt", ""):
+    raise RuntimeError(payload)
+if "review_replay_required=true" not in payload.get("prompt", ""):
+    raise RuntimeError(payload)
+required = {"workflow", "phase", "status", "next_skill", "next_args", "blocking_reason", "retry_count", "last_heartbeat", "started_at", "updated_at", "review_mode", "review_replay_required", "recovery_step"}
+missing = sorted(required - set(state))
+if missing:
+    raise RuntimeError(f"missing state keys: {missing}")
+if state["review_replay_required"] is not False:
+    raise RuntimeError(state)
+PY
 
 codex mcp get claude-review --json > "$HOME/claude-review-first.json"
 

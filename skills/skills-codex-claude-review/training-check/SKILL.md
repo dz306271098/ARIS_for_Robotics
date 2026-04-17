@@ -18,6 +18,7 @@ Periodically read WandB metrics during training to catch problems early. Do not 
 - **WANDB_RUN** - Read from project notes or pass as `entity/project/run_id`.
 - **CHECK_INTERVAL** - Starts at 10 minutes, then gradually increases if consistently healthy: 10 min -> 20 min -> 30 min -> 60 min (cap).
 - **REVIEWER_MODEL = `claude-review`** — Claude reviewer invoked through the local `claude-review` MCP bridge. Set `CLAUDE_REVIEW_MODEL` if you need a specific Claude model override.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** - Host-level state anchor updated when unattended-safe monitoring decides continue / wait / stop.
 
 ## When to Use
 
@@ -111,6 +112,18 @@ Use both together:
 
 - Watchdog catches crashes and idle GPUs immediately
 - `training-check` catches subtle quality issues (loss plateau, metric degradation)
+
+## Machine-Readable Output for Unattended Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`, also write `monitoring/last_training_check.json` with:
+
+- `decision`: stop / continue / wait
+- `wandb_run`: current run id or URL
+- `signals`: loss trend, eval trend, NaN flag, LR status
+- `reason`: concise explanation
+- `updated_at`
+
+If the decision is `stop` or `wait`, update `AUTONOMY_STATE.json` so the host supervisor can see the blocker or reduced-confidence state.
 
 ## Rules
 

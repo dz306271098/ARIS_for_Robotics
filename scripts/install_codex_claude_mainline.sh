@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 UNINSTALL_SCRIPT="$SCRIPT_DIR/uninstall_codex_claude_mainline.sh"
 
 MCP_NAME="claude-review"
-REVIEW_MODEL="claude-opus-4-6[1m]"
+REVIEW_MODEL="claude-opus-4-7[1m]"
 REVIEW_FALLBACK_MODEL="claude-opus-4-6"
 USE_AWS_WRAPPER=0
 REINSTALL=0
@@ -19,7 +19,7 @@ Usage: install_codex_claude_mainline.sh [options]
 
 Options:
   --mcp-name NAME       MCP server name to register (default: claude-review)
-  --review-model MODEL  Set primary CLAUDE_REVIEW_MODEL (default: claude-opus-4-6[1m])
+  --review-model MODEL  Set primary CLAUDE_REVIEW_MODEL (default: claude-opus-4-7[1m])
   --review-fallback-model MODEL
                         Set CLAUDE_REVIEW_FALLBACK_MODEL (default: claude-opus-4-6)
   --no-inherit-proxy-env

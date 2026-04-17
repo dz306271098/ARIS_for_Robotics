@@ -17,6 +17,15 @@ Compile the LaTeX paper and fix any issues: **$ARGUMENTS**
 - **MAX_COMPILE_ATTEMPTS = 3** — Maximum attempts to fix errors and recompile.
 - **PAPER_DIR = `paper/`** — Directory containing LaTeX source files.
 - **MAX_PAGES** — Page limit. ML conferences: main body to Conclusion end (excluding references & appendix). ICLR=9, NeurIPS=9, ICML=8. **IEEE venues: references ARE included in page count.** IEEE journal ≈ 12-14 pages, IEEE conference ≈ 5-8 pages (all inclusive).
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before compile attempts, on toolchain blockers, and on final success.
+
+## Unattended Safe Mode
+
+When the project runs in unattended-safe mode:
+
+- write `AUTONOMY_STATE.json` before each compile/fix cycle and on any hard blocker
+- treat missing toolchain or unrecoverable compile failure as explicit blockers, not soft warnings
+- leave the last successful PDF and `compile.log` in place so the host can resume from the exact failure state
 
 ## Workflow
 

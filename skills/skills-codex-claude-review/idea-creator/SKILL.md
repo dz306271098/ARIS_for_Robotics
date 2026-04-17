@@ -21,6 +21,9 @@ Given a broad research direction from the user, systematically generate, validat
 - **PILOT_TIMEOUT_HOURS = 3** — Hard timeout: kill pilots exceeding 3 hours. Collect partial results if available.
 - **MAX_PILOT_IDEAS = 3** — Pilot at most 3 ideas in parallel. Additional ideas are validated on paper only.
 - **MAX_TOTAL_GPU_HOURS = 8** — Total GPU budget for all pilots combined.
+- **IDEATION_LANES = gap-closing, cross-domain analogy, contradiction-resolution, anti-assumption, failure-reframing** — Default divergent ideation lanes.
+- **PORTFOLIO_SIZE = 3** — Keep at least `safe`, `bold`, and `contrarian` routes until novelty/review/cheap pilots narrow them.
+- **SHADOW_ROUTE_COUNT = 1** — Preserve one non-mainline route after ranking when the evidence is still ambiguous.
 - **REVIEWER_MODEL = `claude-review`** — Claude reviewer invoked through the local `claude-review` MCP bridge. Set `CLAUDE_REVIEW_MODEL` if you need a specific Claude model override.
 
 > 💡 Override via argument, e.g., `/idea-creator "topic" — pilot budget: 4h per idea, 20h total`.
@@ -34,9 +37,12 @@ Given a broad research direction from the user, systematically generate, validat
 If the wiki exists, load it BEFORE landscape survey to avoid repeating known work:
 
 1. Read `research-wiki/query_pack.md` — compressed context (gaps, failed ideas, top papers)
-2. Treat listed gaps as priority search seeds for Phase 1
-3. Treat failed ideas as a banlist — do NOT regenerate the same dead ends
-4. Treat top papers as already-known prior work and focus the new search on what is missing
+2. Read `research-wiki/principle_pack.md` — transferable principles and adaptation hints
+3. Read `research-wiki/analogy_pack.md` — cross-domain opportunities
+4. Read `research-wiki/failure_pack.md` — anti-repetition memory and revive conditions
+5. Treat listed gaps as priority search seeds for Phase 1
+6. Treat failed ideas as a banlist unless a revive condition is explicitly satisfied
+7. Treat top principles and analogy candidates as ideation fuel, not as copy targets
 
 If `query_pack.md` is missing or obviously stale:
 
@@ -69,45 +75,36 @@ Map the research area to understand what exists and where the gaps are.
    - Scaling regimes that haven't been explored
    - Diagnostic questions that nobody has asked
 
-### Phase 2: Idea Generation (brainstorm with external LLM)
+### Phase 2: Multi-Lane Idea Generation
 
-Use a Claude reviewer via `claude-review` MCP for divergent thinking:
+Use a Claude reviewer via `claude-review` MCP for deliberate divergent thinking. Do NOT ask for one pooled brainstorm first. Generate ideas lane by lane using `../shared-references/innovation-lanes.md`:
 
-```
-mcp__claude-review__review_start:
-  prompt: |
-    You are a senior ML researcher brainstorming research ideas.
+- gap-closing
+- cross-domain analogy
+- contradiction-resolution
+- anti-assumption
+- failure-reframing
 
-    Research direction: [user's direction]
+For each lane, ask for 3-5 ideas with:
+- one-sentence summary
+- source lane
+- core hypothesis
+- principle(s) used from `principle_pack.md` or newly synthesized from the literature
+- minimum viable experiment
+- closest prior work
+- main kill criterion
+- expected contribution type
+- risk level
+- estimated effort
 
-    Here is the current landscape:
-    [paste landscape map from Phase 1]
+Then merge the lanes, de-duplicate idea families, and preserve a portfolio split:
+- `safe` — best evidence-backed route
+- `bold` — highest-upside route with a credible mechanism
+- `contrarian` — route that attacks a dominant assumption or prevailing framing
 
-    Key gaps identified:
-    [paste gaps from Phase 1]
+Save the raw divergent pool before filtering so later loops can revisit killed branches intelligently.
 
-    Generate 8-12 concrete research ideas. For each idea:
-    1. One-sentence summary
-    2. Core hypothesis (what you expect to find and why)
-    3. Minimum viable experiment (what's the cheapest way to test this?)
-    4. Expected contribution type: empirical finding / new method / theoretical result / diagnostic
-    5. Risk level: LOW (likely works) / MEDIUM (50-50) / HIGH (speculative)
-    6. Estimated effort: days / weeks / months
-
-    Prioritize ideas that are:
-    - Testable with moderate compute (8x RTX 3090 or less)
-    - Likely to produce a clear positive OR negative result (both are publishable)
-    - Not "apply X to Y" unless the application reveals genuinely surprising insights
-    - Differentiated from the 10-15 papers above
-
-    Be creative but grounded. A great idea is one where the answer matters regardless of which way it goes.
-```
-
-After this start call, immediately save the returned `jobId` and poll `mcp__claude-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
-
-Save the agent id for follow-up.
-
-### Phase 3: First-Pass Filtering
+### Phase 3: First-Pass Filtering and Portfolio Merge
 
 For each generated idea, quickly evaluate:
 
@@ -123,7 +120,7 @@ For each generated idea, quickly evaluate:
    - "So what?" test: if the experiment succeeds, does it change how people think?
    - Is the finding actionable or just interesting?
 
-Eliminate ideas that fail any of these. Typically 8-12 ideas reduce to 4-6.
+Eliminate ideas that fail any of these. Typically the raw multi-lane pool reduces to 4-6 serious candidates. Preserve the best surviving `safe`, `bold`, and `contrarian` routes in `IDEA_PORTFOLIO.md` even if one route already leads the ranking.
 
 ### Phase 4: Deep Validation (for top ideas)
 
@@ -173,16 +170,16 @@ Before committing to a full research effort, run cheap pilot experiments to get 
 
 Note: Skip this phase if the ideas are purely theoretical or if no GPU is available. Flag skipped ideas as "needs pilot validation" in the report.
 
-### Phase 6: Output — Ranked Idea Report
+### Phase 6: Output — Ranked Idea Report and Portfolio
 
-Write a structured report to `IDEA_REPORT.md` in the project root:
+Write a structured report to `IDEA_REPORT.md` in the project root and a branch-aware `IDEA_PORTFOLIO.md` alongside it:
 
 ```markdown
 # Research Idea Report
 
 **Direction**: [user's research direction]
 **Generated**: [date]
-**Ideas evaluated**: X generated → Y survived filtering → Z piloted → W recommended
+**Ideas evaluated**: X generated across lanes → Y survived filtering → Z piloted → W retained in portfolio
 
 ## Landscape Summary
 [3-5 paragraphs on the current state of the field]
@@ -219,9 +216,9 @@ Write a structured report to `IDEA_REPORT.md` in the project root:
 | Idea 3 | GPU 2 | 1.5 hr | +0.8% CE | WEAK POSITIVE |
 
 ## Suggested Execution Order
-1. Start with Idea 1 (positive pilot signal, lowest risk)
-2. Idea 3 as backup (weak signal, may need larger scale to confirm)
-3. Idea 2 eliminated by pilot — negative result documented
+1. Mainline route: [best evidence-backed route]
+2. Shadow route: [bold or contrarian route that still survives]
+3. Eliminated routes: [documented with kill reasons]
 
 ## Next Steps
 - [ ] Scale up Idea 1 to full experiment (multi-seed, full dataset)
@@ -232,7 +229,7 @@ Write a structured report to `IDEA_REPORT.md` in the project root:
 
 **Skip entirely if `research-wiki/` directory does not exist.**
 
-Write **all** generated ideas back to the wiki, not just the final recommendation:
+Write **all** generated ideas back to the wiki, not just the final recommendation. Also persist the principle lineage so later loops can reuse the idea logic without regenerating it from scratch:
 
 ```bash
 for each idea (recommended AND eliminated):
@@ -248,9 +245,13 @@ for each idea (recommended AND eliminated):
     python3 tools/research_wiki.py add_edge research-wiki/ \
       --from "idea:<id>" --to "gap:<gid>" --type "addresses_gap" \
       --evidence "Idea explicitly targets this gap"
+
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "idea:<id>" --to "principle:<pid>" --type "applies_principle" \
+      --evidence "Idea instantiates this distilled principle"
 done
 
-python3 tools/research_wiki.py rebuild_query_pack research-wiki/
+python3 tools/research_wiki.py rebuild_packs research-wiki/
 python3 tools/research_wiki.py log research-wiki/ \
   "idea-creator wrote N ideas (recommended + eliminated)"
 ```

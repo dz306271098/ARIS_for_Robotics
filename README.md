@@ -200,11 +200,11 @@ codex -C /path/to/your/project
 ```bash
 bash scripts/install_codex_claude_mainline.sh \
   --reinstall \
-  --review-model 'claude-opus-4-6[1m]' \
+  --review-model 'claude-opus-4-7[1m]' \
   --review-fallback-model 'claude-opus-4-6'
 ```
 
-默认情况下，`claude-review` 会优先使用 `claude-opus-4-6[1m]`，失败时回退到 `claude-opus-4-6`。这个回退只对未显式传 `model` 的 reviewer 调用生效。
+默认情况下，`claude-review` 会优先使用 `claude-opus-4-7[1m]`，失败时回退到 `claude-opus-4-6`。这个回退只对未显式传 `model` 的 reviewer 调用生效。
 
 安装器默认也会把当前 shell 中已有的代理变量写入 `claude-review` MCP。如果你明确不希望这样做，可以加：
 
@@ -271,7 +271,11 @@ codex -C .
 
 当前 Codex 主线只认项目根目录的 `CODEX.md`。
 
-一个最小可用模板如下：
+一个可直接复制的模板见：
+
+- [`templates/CODEX_TEMPLATE.md`](templates/CODEX_TEMPLATE.md)
+
+最小建议版本如下：
 
 ```markdown
 # Project Overview
@@ -282,7 +286,34 @@ codex -C .
 - Main baseline: 你的主基线
 
 ## GPU Configuration
-- gpu: local
+- gpu: remote
+- ssh_alias: your-server
+- conda_env: research
+- code_dir: ~/your-project
+- wandb: true
+- wandb_project: your-project
+
+## Research Intelligence Profile
+- innovation_mode: high_innovation
+- topic_router: auto
+- literature_depth: principle_graph
+- idea_portfolio_size: 3
+- shadow_route_count: 1
+
+## Autonomy Profile
+- autonomy_mode: unattended_safe
+- automation_scope: core_mainline
+- priority: quality_stability
+- allow_auto_cloud: false
+- allow_auto_real_robot: false
+- require_watchdog: true
+- require_wandb_for_unattended_training: true
+- paper_illustration: auto
+- notifications: push_only
+- review_fallback_mode: retry_then_local_critic
+- resume_window_hours: 24
+- max_reviewer_runtime_retries: 2
+- max_auto_retries_per_stage: 3
 
 ## Notes
 - Key metrics: 你关心的指标
@@ -296,7 +327,7 @@ current_branch: main
 baseline: ""
 training_status: idle
 active_tasks: []
-next: run /idea-discovery
+next: bash scripts/run_unattended_mainline.sh --workflow research-pipeline --topic "你的研究方向"
 ```
 
 如果你要配置远程 GPU，可以把 GPU 段写得更具体：
@@ -368,14 +399,27 @@ project/
 - **Mandatory Test Gate**：每次写完代码后，先过模块测试和 workflow smoke test，再允许部署、复审或进入下一轮
 - **Reviewer Resolution Protocol**：每条 reviewer 反馈都要分类为 accepted / narrowed / rebutted / unresolved；有争议时必须带证据回同一 reviewer thread 讨论直到收敛
 
+如果你要让核心主线长时间无人值守连续运行，项目级策略统一写在 `CODEX.md -> ## Autonomy Profile`。推荐先做两步：
+
+```bash
+bash scripts/check_unattended_mainline.sh /path/to/project
+cd /path/to/project && bash /path/to/ARIS/scripts/run_unattended_mainline.sh --workflow research-pipeline --topic "你的研究方向"
+```
+
+宿主机控制层会读 `AUTONOMY_STATE.json`、各 workflow 自有 state 文件和 `CODEX.md`，优先保证 reviewer runtime、watchdog、W&B、claim freeze 和恢复链完整，而不是盲目追求吞吐。`review_fallback_mode: retry_then_local_critic` 只允许临时本地批判性审查继续推进，中间产物仍要等外部 reviewer replay 后才能算最终完成。
+
+默认的研究智能层现在独立写在 `CODEX.md -> ## Research Intelligence Profile`：`innovation_mode: high_innovation`、`topic_router: auto`、`literature_depth: principle_graph`、`idea_portfolio_size: 3`、`shadow_route_count: 1`。这层控制的是前半程创新和文献利用，不替代无人值守安全边界。
+
+改造后的 workflow 可以用 `bash scripts/eval_research_workflow.sh /path/to/project` 做结构化验收，也可以用 `python3 tools/research_workflow_eval.py --compare-baseline old.json --compare-candidate new.json` 做 A/B 对比。
+
 ### 5.1 推荐主流程
 
 1. `/idea-discovery`
 2. `/research-refine-pipeline`
 3. `/experiment-bridge`
-4. `/run-experiment`
-5. 创新 gate 决定进入 `/deep-innovation-loop` 或直接 `/auto-review-loop`
-6. `/result-to-claim`
+4. `/monitor-experiment` + `/training-check`
+5. 第一次 `/result-to-claim` 决定补实验、进入 `/deep-innovation-loop`，或直接进入 `/auto-review-loop`
+6. 第二次 `/result-to-claim` 冻结 paper-ready claim scope
 7. `/paper-writing`
 8. `/rebuttal` / `/paper-slides` / `/paper-poster`
 
@@ -386,6 +430,8 @@ project/
 ```text
 /research-pipeline "你的研究方向"
 ```
+
+在当前无人值守主线里，这条入口默认目标是跑到 paper-ready PDF，而不是停在实验或 review 阶段。
 
 当前这条技能的实际主链路是：
 
@@ -465,7 +511,7 @@ project/
    /research-wiki init
    ```
 2. 让 `/research-lit` 把核心论文写进 `research-wiki/papers/`
-3. 让 `/idea-creator` 在 ideation 前读取 `query_pack.md`，在 ideation 后把推荐与淘汰的 idea 回写 wiki
+3. 让 `/idea-creator` 在 ideation 前读取 `query_pack.md`、`principle_pack.md`、`analogy_pack.md`、`failure_pack.md`，在 ideation 后把推荐与淘汰的 idea 以及其 principle lineage 回写 wiki
 4. 让 `/result-to-claim` 在结果判定后把 experiment / claim / failure notes 回写 wiki
 5. 在长会话切换或重新找 idea 前，手动使用：
    ```text
@@ -550,7 +596,7 @@ screen -dmS watchdog python3 tools/watchdog.py
 tmux new-session -d -s watchdog "python3 tools/watchdog.py"
 ```
 
-`watchdog.py` 不是主线安装前提，但它能持续监控 session 存活、GPU 空闲和下载停滞，适合过夜任务。
+`watchdog.py` 不是主线安装前提，但在 `CODEX.md -> ## Autonomy Profile` 里设置 `require_watchdog: true` 时，它就从“建议项”升级为无人值守长跑的硬前提。那种模式下，远程或后台训练必须自动注册到 watchdog。
 
 ---
 
@@ -596,6 +642,7 @@ next: wait for results and run /auto-review-loop
 | 文件或目录 | 作用 |
 |------------|------|
 | `CODEX.md` | 项目主配置与 `Pipeline Status` |
+| `AUTONOMY_STATE.json` | 无人值守主线的跨 workflow 状态锚点 |
 | `RESEARCH_BRIEF.md` | 研究背景、目标、限制、资源 |
 | `docs/research_contract.md` | 当前 idea 的聚焦上下文 |
 | `IDEA_REPORT.md` | 阶段一 idea 总报告 |
@@ -633,6 +680,8 @@ bash ~/.codex/.aris/codex-claude-mainline/uninstall_codex_claude_mainline.sh
 ```text
 /research-pipeline "你的研究方向"
 ```
+
+在当前无人值守主线里，这条入口默认目标是跑到 paper-ready PDF，而不是停在实验或 review 阶段。
 
 按阶段运行：
 
@@ -676,6 +725,7 @@ python3 tools/generate_codex_claude_review_overrides.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
 bash scripts/check_claude_review_runtime.sh
+bash scripts/check_unattended_mainline.sh /path/to/project
 ```
 
 推荐顺序：

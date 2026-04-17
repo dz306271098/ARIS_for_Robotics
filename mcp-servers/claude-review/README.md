@@ -32,7 +32,7 @@ This matters on proxied networks because the installer now copies the current sh
 mkdir -p ~/.codex/mcp-servers/claude-review
 cp mcp-servers/claude-review/server.py ~/.codex/mcp-servers/claude-review/server.py
 codex mcp add claude-review \
-  --env CLAUDE_REVIEW_MODEL='claude-opus-4-6[1m]' \
+  --env CLAUDE_REVIEW_MODEL='claude-opus-4-7[1m]' \
   --env CLAUDE_REVIEW_FALLBACK_MODEL='claude-opus-4-6' \
   -- python3 ~/.codex/mcp-servers/claude-review/server.py
 ```
@@ -47,7 +47,7 @@ cp mcp-servers/claude-review/server.py ~/.codex/mcp-servers/claude-review/server
 cp mcp-servers/claude-review/run_with_claude_aws.sh ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
 chmod +x ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
 codex mcp add claude-review \
-  --env CLAUDE_REVIEW_MODEL='claude-opus-4-6[1m]' \
+  --env CLAUDE_REVIEW_MODEL='claude-opus-4-7[1m]' \
   --env CLAUDE_REVIEW_FALLBACK_MODEL='claude-opus-4-6' \
   -- ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
 ```
@@ -55,7 +55,7 @@ codex mcp add claude-review \
 ## Environment Variables
 
 - `CLAUDE_BIN`: Claude CLI path, defaults to `claude`
-- `CLAUDE_REVIEW_MODEL`: primary reviewer model, defaults to `claude-opus-4-6[1m]`
+- `CLAUDE_REVIEW_MODEL`: primary reviewer model, defaults to `claude-opus-4-7[1m]`
 - `CLAUDE_REVIEW_FALLBACK_MODEL`: fallback reviewer model for default-path calls, defaults to `claude-opus-4-6`
 - `CLAUDE_REVIEW_SYSTEM`: optional default system prompt
 - `CLAUDE_REVIEW_TOOLS`: Claude tools override, defaults to empty string
@@ -65,7 +65,7 @@ codex mcp add claude-review \
 ## Notes
 
 - The bridge runs Claude in non-interactive `-p` mode.
-- The default reviewer chain is `claude-opus-4-6[1m]` first, then `claude-opus-4-6`.
+- The default reviewer chain is `claude-opus-4-7[1m]` first, then `claude-opus-4-6`.
 - The fallback model is used only when the MCP call does not pass an explicit `model`. Explicit `model` values do not auto-retry.
 - By default the reviewer gets **no tools**. This matches the original ARIS pattern where the external reviewer only sees the prompt context prepared by the executor.
 - `threadId` is the native Claude session id and can be passed directly to `review_reply`.

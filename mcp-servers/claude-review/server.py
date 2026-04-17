@@ -26,7 +26,7 @@ sys.stdin = os.fdopen(sys.stdin.fileno(), "rb", buffering=0)
 
 SERVER_NAME = os.environ.get("CLAUDE_REVIEW_SERVER_NAME", "claude-review")
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
-DEFAULT_MODEL = os.environ.get("CLAUDE_REVIEW_MODEL", "claude-opus-4-6[1m]").strip()
+DEFAULT_MODEL = os.environ.get("CLAUDE_REVIEW_MODEL", "claude-opus-4-7[1m]").strip()
 DEFAULT_FALLBACK_MODEL = os.environ.get("CLAUDE_REVIEW_FALLBACK_MODEL", "claude-opus-4-6").strip()
 DEFAULT_SYSTEM = os.environ.get("CLAUDE_REVIEW_SYSTEM", "")
 DEFAULT_TOOLS = os.environ.get("CLAUDE_REVIEW_TOOLS", "")

@@ -71,7 +71,7 @@ cp -a skills/skills-codex-claude-review/* ~/.codex/skills/
 mkdir -p ~/.codex/mcp-servers/claude-review
 cp mcp-servers/claude-review/server.py ~/.codex/mcp-servers/claude-review/server.py
 codex mcp add claude-review \
-  --env CLAUDE_REVIEW_MODEL='claude-opus-4-6[1m]' \
+  --env CLAUDE_REVIEW_MODEL='claude-opus-4-7[1m]' \
   --env CLAUDE_REVIEW_FALLBACK_MODEL='claude-opus-4-6' \
   -- python3 ~/.codex/mcp-servers/claude-review/server.py
 ```
@@ -90,14 +90,14 @@ bash scripts/install_codex_claude_mainline.sh --reinstall
 cp mcp-servers/claude-review/run_with_claude_aws.sh ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
 chmod +x ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
 codex mcp add claude-review \
-  --env CLAUDE_REVIEW_MODEL='claude-opus-4-6[1m]' \
+  --env CLAUDE_REVIEW_MODEL='claude-opus-4-7[1m]' \
   --env CLAUDE_REVIEW_FALLBACK_MODEL='claude-opus-4-6' \
   -- ~/.codex/mcp-servers/claude-review/run_with_claude_aws.sh
 ```
 
 默认 reviewer 模型链是：
 
-- 首选 `claude-opus-4-6[1m]`
+- 首选 `claude-opus-4-7[1m]`
 - 回退 `claude-opus-4-6`
 
 这个回退只在 MCP 调用没有显式传 `model` 时生效。

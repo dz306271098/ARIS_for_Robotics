@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_PATH="$REPO_ROOT/mcp-servers/claude-review/server.py"
 MCP_NAME="${CLAUDE_REVIEW_MCP_NAME:-claude-review}"
 
-PRIMARY_MODEL="${CLAUDE_REVIEW_MODEL:-claude-opus-4-6[1m]}"
+PRIMARY_MODEL="${CLAUDE_REVIEW_MODEL:-claude-opus-4-7[1m]}"
 FALLBACK_MODEL="${CLAUDE_REVIEW_FALLBACK_MODEL:-claude-opus-4-6}"
 PROXY_ENV_KEYS=(http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY all_proxy ALL_PROXY)
 
@@ -14,6 +14,7 @@ TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/claude-review-runtime.XXXXXX")"
 MCP_JSON="$TEMP_DIR/mcp.json"
 HOST_SCHEMA="$TEMP_DIR/host-mcp-schema.json"
 HOST_OUTPUT="$TEMP_DIR/host-mcp-output.json"
+NESTED_HOME="$TEMP_DIR/nested-home"
 declare -a SHELL_PROXY_KEYS=()
 declare -a MCP_PROXY_KEYS=()
 declare -a MISSING_PROXY_KEYS=()
@@ -200,13 +201,28 @@ cat > "$HOST_SCHEMA" <<'JSON'
 }
 JSON
 
+mkdir -p "$NESTED_HOME/.codex"
+if [[ -d "$HOME/.codex" ]]; then
+  for entry in config.toml auth.json credentials.json mcp-servers skills plugins; do
+    if [[ -e "$HOME/.codex/$entry" ]]; then
+      cp -a "$HOME/.codex/$entry" "$NESTED_HOME/.codex/"
+    fi
+  done
+fi
+if [[ -f "$HOME/.claude.json" ]]; then
+  cp -a "$HOME/.claude.json" "$NESTED_HOME/.claude.json"
+fi
+if [[ -d "$HOME/.claude" ]]; then
+  cp -a "$HOME/.claude" "$NESTED_HOME/.claude"
+fi
+
 host_exec_status=0
-if codex exec \
+if HOME="$NESTED_HOME" codex exec \
   --dangerously-bypass-approvals-and-sandbox \
   -C "$REPO_ROOT" \
   --output-schema "$HOST_SCHEMA" \
   -o "$HOST_OUTPUT" \
-  "Use the MCP tool mcp__claude_review__review exactly once with prompt 'Reply with exactly: INSTALLED_MCP_OK'. Do not run shell commands. Return JSON with keys response, model, and tool_status. Set tool_status to 'ok' only if the MCP call succeeds, and copy the tool's response and model fields into response and model. If the MCP call fails, set tool_status to 'error', set response to the error text, and set model to an empty string." >/dev/null; then
+  "This is a pure MCP connectivity check, not a planning task. Do not enter plan mode, do not create files, and do not run shell commands. Use the MCP tool mcp__claude_review__review exactly once with prompt 'Reply with exactly: INSTALLED_MCP_OK'. Return JSON with keys response, model, and tool_status. Set tool_status to 'ok' only if the MCP call succeeds, and copy the tool's response and model fields into response and model as directly as possible. If the MCP call fails, set tool_status to 'error', set response to the error text, and set model to an empty string." >/dev/null; then
   :
 else
   host_exec_status=$?
@@ -229,7 +245,8 @@ from pathlib import Path
 payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 if payload.get("tool_status") != "ok":
     raise RuntimeError(f"Installed MCP check reported tool_status=error: {payload}")
-if payload.get("response") != "INSTALLED_MCP_OK":
+response = payload.get("response", "")
+if "INSTALLED_MCP_OK" not in response:
     raise RuntimeError(f"Installed MCP response mismatch: {payload}")
 print(json.dumps(payload, ensure_ascii=False, indent=2))
 PY

@@ -17,6 +17,10 @@ End-to-end autonomous research workflow for: **$ARGUMENTS**
 - **RESEARCH_WIKI = auto** — `auto`: use `research-wiki/` if it already exists. `true`: initialize it if missing, then keep it in the loop. `false`: ignore wiki integration even if the directory exists.
 - **DEEP_INNOVATION = auto** — `auto`: after initial experiments, run an innovation gate and invoke `/deep-innovation-loop` when structural headroom remains. `true`: always run `/deep-innovation-loop` before final review polish. `false`: skip deep innovation and go directly to `/auto-review-loop`.
 - **META_OPTIMIZE = false** — When `true`, finish with a report-only `/meta-optimize` pass for harness maintenance. Never auto-apply patches.
+- **RESEARCH_INTELLIGENCE_PROFILE = `CODEX.md -> ## Research Intelligence Profile`** — Project-level defaults for topic routing, innovation intensity, literature depth, portfolio size, and shadow-route retention.
+- **IDEA_PORTFOLIO_SIZE = 3** — Preserve at least `safe`, `bold`, and `contrarian` routes until novelty/review/cheap pilot pressure kills them.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Project-level unattended-safe policy. When it sets `autonomy_mode: unattended_safe`, this skill becomes the host-orchestrated core-mainline entrypoint.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated alongside workflow-native recovery files.
 
 > 💡 Override via argument, e.g. `/research-pipeline "topic" — AUTO_PROCEED: false, DEEP_INNOVATION: true, RESEARCH_WIKI: true`.
 
@@ -30,12 +34,23 @@ This pipeline is designed to run with minimal supervision:
 4. **Use durable memory when available** — `CODEX.md`, `research-wiki/`, `refine-logs/`, `AUTO_REVIEW.md`, and `innovation-logs/` are part of the working state, not optional afterthoughts.
 5. **Log autonomous decisions** — write `[AUTO-DECISION]` notes into the relevant artifact whenever the pipeline chooses a path on the user's behalf.
 
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- run `bash scripts/check_unattended_mainline.sh /path/to/project` before dispatching the workflow
+- treat `allow_auto_cloud: false` and `allow_auto_real_robot: false` as hard safety boundaries
+- update `AUTONOMY_STATE.json` at every stage boundary, blocker, and final completion via `python3 tools/update_autonomy_state.py`
+- keep `AUTO_PROCEED=true` and `HUMAN_CHECKPOINT=false` unless the autonomy profile explicitly forces a stop
+- track `portfolio_stage`, `active_route`, and `shadow_routes` whenever the pipeline is still carrying multiple candidate directions
+- prefer resumable continuation from `AUTONOMY_STATE.json` + workflow-native state files over ad-hoc restarts
+
 ## Overview
 
 The mainline path is now:
 
 ```text
-/idea-discovery -> implement -> /run-experiment -> innovation gate -> /deep-innovation-loop? -> /auto-review-loop -> submission-ready
+/idea-discovery -> /experiment-bridge -> /monitor-experiment + /training-check -> /result-to-claim -> /deep-innovation-loop? -> /auto-review-loop -> /result-to-claim -> narrative handoff -> /paper-writing -> paper-ready PDF
 ```
 
 Sidecar systems that should stay attached to this mainline:
@@ -63,6 +78,21 @@ Before launching the main research work, handle durable memory.
 
 Use `CODEX.md` plus `RESEARCH_BRIEF.md` as the authoritative project context. If both exist, treat `CODEX.md` as the project dashboard and `RESEARCH_BRIEF.md` as richer problem context.
 
+### Stage 0.5: Topic Routing and Research Intelligence
+
+Before ideation, read `CODEX.md -> ## Research Intelligence Profile` if it exists. Use it to decide:
+
+- whether the project runs in `high_innovation` or `quality_stability` mode
+- how many routes to preserve before convergence
+- whether to keep a shadow route alive after Gate 1
+- whether the topic should auto-route to a domain-aware literature/idea path
+
+Default topic routing policy:
+
+- robotics / embodied AI / manipulation / navigation / locomotion -> `/idea-discovery-robot`
+- communications / wireless / networking / NTN / MAC/PHY / transport -> `comm-lit-review` for literature grounding, then continue the standard idea pipeline
+- everything else -> standard `/idea-discovery`
+
 ### Stage 1: Idea Discovery (Workflow 1)
 
 If `RESEARCH_BRIEF.md` exists in the project root, load it as detailed context.
@@ -82,8 +112,11 @@ This internally runs:
 **Primary outputs**
 
 - `IDEA_REPORT.md`
+- `IDEA_PORTFOLIO.md`
+- `refine-logs/ROUTE_PORTFOLIO.md`
 - `refine-logs/FINAL_PROPOSAL.md`
 - `refine-logs/EXPERIMENT_PLAN.md`
+- `refine-logs/PLAN_DECISIONS.md`
 - `refine-logs/EXPERIMENT_TRACKER.md`
 
 **Gate 1**
@@ -91,7 +124,8 @@ This internally runs:
 After `IDEA_REPORT.md` is ready:
 
 - If `AUTO_PROCEED = false`, wait for explicit idea selection.
-- If `AUTO_PROCEED = true`, present the ranking, wait briefly for user input, then auto-select the best evidence-backed idea.
+- If `AUTO_PROCEED = true`, auto-select the best evidence-backed **mainline** idea and keep one `shadow route` alive unless the portfolio has already collapsed to one credible route.
+- Record both the active route and the surviving shadow route in `AUTONOMY_STATE.json` while the branch is still alive.
 
 If `research-wiki/` is enabled, Stage 1 should already:
 
@@ -99,33 +133,37 @@ If `research-wiki/` is enabled, Stage 1 should already:
 - read `query_pack.md` before ideation
 - write recommended and killed ideas back into `research-wiki/ideas/`
 
-### Stage 2: Implementation
+### Stage 2: Experiment Bridge
 
-Once the idea is chosen:
-
-1. Read the selected idea and refined proposal from `IDEA_REPORT.md` and `refine-logs/`.
-2. Implement the full experiment:
-   - scale pilot code to full experiments
-   - expose hyperparameters cleanly
-   - add metrics, logs, and result serialization
-   - follow the project codebase conventions
-3. Perform a local code sanity review before deployment.
-
-### Stage 3: Deploy Experiments
-
-Deploy the initial experiment suite:
+Once the idea is chosen, execute the implementation and launch path through:
 
 ```text
-/run-experiment [experiment command]
+/experiment-bridge "$ARGUMENTS — [chosen idea title]"
 ```
 
-Monitor and collect:
+This stage owns:
+- full experiment implementation from `IDEA_REPORT.md` + `refine-logs/`
+- module tests and workflow smoke tests before deployment
+- initial deployment through `/run-experiment`
+- first monitoring loop through `/monitor-experiment` and `/training-check`
+
+In unattended-safe mode, Stage 2 should update `AUTONOMY_STATE.json` before implementation, after the test gate, after launch, and on any deployment blocker.
+
+### Stage 3: First Claim Gate
+
+After the first decisive evidence package lands, run:
 
 ```text
-/monitor-experiment [server]
+/result-to-claim "$ARGUMENTS — [chosen idea title]"
 ```
 
-At the end of Stage 3, you should have enough evidence to decide whether the project needs deep method evolution or only review-driven polish.
+This gate decides whether the current evidence supports:
+- immediate continuation with the approved claim scope
+- supplementary experiments
+- a `deep-innovation-loop` pivot
+- abandonment of the current thesis
+
+Do not enter narrative polishing or paper writing before a `result-to-claim` verdict records the strongest defensible claim scope.
 
 ### Stage 4: Method Evolution Gate
 
@@ -144,6 +182,8 @@ Then run a shorter paper-level polish loop:
 ```text
 /auto-review-loop "$ARGUMENTS — [chosen idea title] — post deep innovation polish"
 ```
+
+After the polish loop, run `/result-to-claim` again to freeze the strongest defensible post-innovation claim set.
 
 #### Case B: `DEEP_INNOVATION = auto` (default)
 
@@ -167,6 +207,8 @@ Then go directly to:
 /auto-review-loop "$ARGUMENTS — [chosen idea title]"
 ```
 
+After the polish loop, run `/result-to-claim` again to freeze the final approved claim boundaries before paper planning.
+
 If the gate decides the method still needs structural evolution, invoke:
 
 ```text
@@ -187,9 +229,27 @@ Skip deep innovation and go directly to:
 /auto-review-loop "$ARGUMENTS — [chosen idea title]"
 ```
 
-### Stage 5: Final Summary
+### Stage 5: Narrative Handoff and Paper Writing
 
-After the method-evolution stage and final review polish, write a final status report:
+Once the final `result-to-claim` gate says the claim set is defensible enough for papering:
+
+1. Refresh or create `NARRATIVE_REPORT.md` from:
+   - `CLAIMS_FROM_RESULTS.md`
+   - `findings.md`
+   - `AUTO_REVIEW.md`
+   - `innovation-logs/` when deep innovation ran
+2. Record any provisional review fallback in `AUTONOMY_STATE.json` via `review_mode`, `review_replay_required`, and `recovery_step`
+3. Invoke:
+
+```text
+/paper-writing "NARRATIVE_REPORT.md"
+```
+
+Do not mark the workflow complete while `review_replay_required = true` for claim freeze or final paper polish.
+
+### Stage 6: Final Summary
+
+After the paper-writing stage, write a final status report:
 
 ```markdown
 # Research Pipeline Report
@@ -197,14 +257,17 @@ After the method-evolution stage and final review polish, write a final status r
 **Direction**: $ARGUMENTS
 **Chosen Idea**: [title]
 **Date**: [start] -> [end]
-**Pipeline**: idea-discovery -> implement -> run-experiment -> deep-innovation? -> auto-review-loop
+**Pipeline**: idea-discovery -> experiment-bridge -> result-to-claim -> deep-innovation? -> auto-review-loop -> result-to-claim -> paper-writing
 
 ## Journey Summary
 - Ideas generated: X -> filtered to Y -> piloted Z -> chose 1
 - Implementation: [what was built]
 - Experiments: [number of runs, total compute time]
+- First claim gate: [yes / partial / no], approved scope: [summary]
 - Deep innovation: [skipped / auto-entered / forced], rounds: [N]
 - Final review rounds: [N], final score: [X/10]
+- Final claim freeze: [yes / partial / no], approved scope: [summary]
+- Paper writing: [completed / blocked], PDF: [path]
 
 ## Durable Memory
 - CODEX.md Pipeline Status updated: [yes/no]

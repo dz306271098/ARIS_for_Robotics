@@ -37,6 +37,7 @@
 
 - **Mandatory Test Gate**：每次写完代码后，先过模块测试和 workflow smoke test，再允许部署或进入下一轮 review
 - **Reviewer Resolution Protocol**：每条 reviewer 反馈都必须分类并在有争议时回到同一 thread 讨论，直到收敛到 fix / analysis / experiment / claim change
+- **Unattended Runtime Protocol**：`CODEX.md -> ## Autonomy Profile`、`AUTONOMY_STATE.json`、watchdog、W&B 和宿主机 health check 组成无人值守主线控制层；`review_fallback_mode: retry_then_local_critic` 只允许临时本地批判性审查，最终 claim freeze / paper polish 仍要 replay 外部 reviewer
 
 ---
 
@@ -65,7 +66,7 @@ bash scripts/install_codex_claude_mainline.sh --reinstall --use-aws-wrapper
 ```bash
 bash scripts/install_codex_claude_mainline.sh \
   --reinstall \
-  --review-model 'claude-opus-4-6[1m]' \
+  --review-model 'claude-opus-4-7[1m]' \
   --review-fallback-model 'claude-opus-4-6'
 ```
 
@@ -89,6 +90,7 @@ claude -p "Reply with exactly READY" --output-format json --tools ""
 
 ```bash
 bash scripts/check_claude_review_runtime.sh
+bash scripts/check_unattended_mainline.sh /path/to/project
 ```
 
 这个脚本现在会同时检查：
@@ -226,7 +228,7 @@ bridge 还支持可选的 `jsonSchema` / `json_schema`，并透传给 Claude CLI
 
 默认 reviewer 模型链是：
 
-- 首选 `claude-opus-4-6[1m]`
+- 首选 `claude-opus-4-7[1m]`
 - 回退 `claude-opus-4-6`
 
 这个回退只在 MCP 调用**没有显式传 `model`**时生效；如果某个 skill 或手工调用显式传了 `model`，bridge 会按该值直连，不自动回退。

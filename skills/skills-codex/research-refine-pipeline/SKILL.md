@@ -38,9 +38,21 @@ Do not plan a large experiment suite on top of an unstable method. First stabili
 - `refine-logs/FINAL_PROPOSAL.md`
 - `refine-logs/REVIEW_SUMMARY.md`
 - `refine-logs/REFINEMENT_REPORT.md`
+- `refine-logs/ROUTE_PORTFOLIO.md`
 - `refine-logs/EXPERIMENT_PLAN.md`
+- `refine-logs/PLAN_DECISIONS.md`
 - `refine-logs/EXPERIMENT_TRACKER.md`
 - `refine-logs/PIPELINE_SUMMARY.md`
+- `AUTONOMY_STATE.json` — optional cross-workflow state anchor when the project runs in unattended-safe mode
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- update `AUTONOMY_STATE.json` before refinement, before experiment planning, and on any blocker
+- prefer reuse of existing `refine-logs/` artifacts over restarts
+- treat provisional local review fallback as intermediate only; keep `review_replay_required=true` until the external reviewer thread is replayed
+- exit with a pipeline summary that the host can route directly into `experiment-bridge` without additional manual triage
 
 ## Workflow
 
@@ -73,6 +85,8 @@ If the verdict is still `REVISE`, continue into experiment planning only if the 
 
 ### Phase 2: Planning Gate
 
+Before the experiment stage, verify that `refine-logs/ROUTE_PORTFOLIO.md` exists and captures the recommended mainline route, any surviving shadow route, its source principles, novelty risk, kill criterion, and first decisive experiment.
+
 Before the experiment stage, write a short gate check:
 
 - What is the final method thesis?
@@ -97,6 +111,9 @@ Ensure the experiment plan covers:
 - novelty isolation
 - a simplicity or deletion check
 - a frontier necessity check if applicable
+- branch-kill experiments for surviving shadow routes
+- disconfirming experiments that can falsify the working thesis
+- analogy-upside experiments when a cross-domain principle is central
 - run order, budget, and decision gates
 
 ### Phase 4: Integration Summary

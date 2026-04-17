@@ -16,6 +16,8 @@ Generate a structured, section-by-section paper outline from: **$ARGUMENTS**
 - **REVIEWER_MODEL = `claude-review`** — Claude reviewer invoked through the local `claude-review` MCP bridge. Set `CLAUDE_REVIEW_MODEL` if you need a specific Claude model override.
 - **TARGET_VENUE = `ICLR`** — Override as needed
 - **MAX_PAGES** — Venue-specific hard budget; for IEEE-style venues, references count too
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of unattended-safe figure/reviewer fallback policy.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before planning, review, and blockers.
 
 ## Inputs
 
@@ -28,6 +30,14 @@ Use whatever exists in the project:
 5. `IDEA_REPORT.md`, `FINAL_METHOD.md`, `CODEX.md`, `RESEARCH_BRIEF.md`
 
 If no narrative file exists, infer the contribution from the available project artifacts and write that inference down before planning the paper.
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- treat `CLAIMS_FROM_RESULTS.md` as the preferred claim-freeze input
+- update `AUTONOMY_STATE.json` before outline extraction, reviewer pass, and blockers
+- if outline review falls back locally, keep the outline provisional and require external reviewer replay before final paper completion
 
 ## Workflow
 

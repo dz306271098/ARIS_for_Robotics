@@ -28,6 +28,8 @@ Autonomously iterate: review -> implement fixes -> validate -> re-review, until 
 - **MANDATORY_TEST_GATE = true** — Any round that changes code must pass the shared execution test gate before experiments or re-review. See `../shared-references/execution-test-gate.md`.
 - **CONVERGENCE_MEMO_ROUND = 3** — After 3 dispute turns on the same reviewer issue, force a convergence memo.
 - **MAX_REVIEW_DISPUTE_ROUNDS = 5** — After 5 dispute turns, stop debating and request a resolution-only action plan. See `../shared-references/reviewer-resolution-protocol.md`.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — In unattended-safe mode, reviewer runtime and recovery requirements become hard gates.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before review, implementation, waiting, and completion/block.
 
 > Override example: `/auto-review-loop "robot manipulation" — max rounds: 6, compact: true, human checkpoint: true`
 
@@ -48,6 +50,15 @@ Persist `REVIEW_STATE.json` after every round:
 ```
 
 On completion, set `"status": "completed"` so future invocations start fresh.
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- keep `HUMAN_CHECKPOINT=false` and do not stop for optional approvals
+- treat unavailable reviewer runtime as a blocking condition, not a silent downgrade
+- update `AUTONOMY_STATE.json` before review dispatch, before fix implementation, while waiting on experiments, and when the loop reaches `READY` / `ALMOST` / `blocked`
+- recover from `REVIEW_STATE.json` first, then use `AUTONOMY_STATE.json` to restore the host-level workflow position
 
 ## Workflow
 

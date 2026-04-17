@@ -8,6 +8,7 @@ Checks:
 4. Mainline skills do not keep legacy /codex:* review commands or stale codex-specific tool declarations.
 5. Claude-review overlay skill descriptions round-trip cleanly from the Codex source descriptions.
 6. Reviewer-aware skills that use spawn_agent/send_input are covered by the Claude overlay generator.
+7. Core unattended-runtime artifacts and protocol markers are present.
 """
 
 from __future__ import annotations
@@ -35,9 +36,16 @@ CHECK_PATHS = [
     ROOT / "scripts" / "install_codex_claude_mainline.sh",
     ROOT / "scripts" / "uninstall_codex_claude_mainline.sh",
     ROOT / "scripts" / "smoke_test_codex_claude_mainline.sh",
+    ROOT / "scripts" / "check_unattended_mainline.sh",
+    ROOT / "scripts" / "run_unattended_mainline.sh",
     ROOT / "mcp-servers" / "gemini-review",
     ROOT / "mcp-servers" / "minimax-chat",
     ROOT / "tools" / "research_wiki.py",
+    ROOT / "tools" / "autonomy_supervisor.py",
+    ROOT / "tools" / "update_autonomy_state.py",
+    ROOT / "templates" / "CODEX_TEMPLATE.md",
+    ROOT / "tools" / "research_workflow_eval.py",
+    ROOT / "scripts" / "eval_research_workflow.sh",
 ]
 REQUIRED_FRONTMATTER_FIELDS = ("name", "description", "argument-hint", "allowed-tools")
 ALLOWED_TOP_LEVEL_SKILL_DIRS = {
@@ -51,10 +59,22 @@ REQUIRED_PRESENT_PATHS = [
     ROOT / "skills" / "skills-codex-gemini-review",
     ROOT / "skills" / "skills-codex" / "shared-references" / "execution-test-gate.md",
     ROOT / "skills" / "skills-codex" / "shared-references" / "reviewer-resolution-protocol.md",
+    ROOT / "skills" / "skills-codex" / "shared-references" / "unattended-runtime-protocol.md",
+    ROOT / "skills" / "skills-codex" / "shared-references" / "collaborative-protocol.md",
+    ROOT / "skills" / "skills-codex" / "shared-references" / "principle-extraction.md",
+    ROOT / "skills" / "skills-codex" / "shared-references" / "innovation-lanes.md",
+    ROOT / "skills" / "skills-codex" / "shared-references" / "literature-synthesis-protocol.md",
     ROOT / "skills" / "skills-codex" / "auto-review-loop-minimax",
     ROOT / "mcp-servers" / "claude-review",
     ROOT / "mcp-servers" / "gemini-review",
     ROOT / "mcp-servers" / "minimax-chat",
+    ROOT / "scripts" / "check_unattended_mainline.sh",
+    ROOT / "scripts" / "run_unattended_mainline.sh",
+    ROOT / "tools" / "autonomy_supervisor.py",
+    ROOT / "tools" / "update_autonomy_state.py",
+    ROOT / "templates" / "CODEX_TEMPLATE.md",
+    ROOT / "tools" / "research_workflow_eval.py",
+    ROOT / "scripts" / "eval_research_workflow.sh",
 ]
 FORBIDDEN_PRESENT_PATHS = [
     ROOT / "skills" / "shared-references",
@@ -106,6 +126,122 @@ PROTOCOL_SKILL_MARKERS = {
     ),
 }
 
+AUTONOMY_SKILL_MARKERS = {
+    ROOT / "skills" / "skills-codex" / "research-pipeline" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "AUTONOMY_STATE.json",
+        "Autonomy Profile",
+        "/result-to-claim",
+        "/paper-writing",
+    ),
+    ROOT / "skills" / "skills-codex" / "idea-discovery" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "AUTONOMY_STATE.json",
+        "review_replay_required",
+    ),
+    ROOT / "skills" / "skills-codex" / "research-refine-pipeline" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "AUTONOMY_STATE.json",
+        "review_replay_required",
+    ),
+    ROOT / "skills" / "skills-codex" / "experiment-plan" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "AUTONOMY_STATE.json",
+        "review_replay_required",
+    ),
+    ROOT / "skills" / "skills-codex" / "research-review" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "review_mode=local_fallback",
+        "review_replay_required=true",
+    ),
+    ROOT / "skills" / "skills-codex" / "result-to-claim" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "AUTONOMY_STATE.json",
+        "review_replay_required=true",
+    ),
+    ROOT / "skills" / "skills-codex" / "run-experiment" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "allow_auto_cloud",
+        "require_watchdog",
+        "AUTONOMY_STATE.json",
+    ),
+    ROOT / "skills" / "skills-codex" / "paper-plan" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "CLAIMS_FROM_RESULTS.md",
+        "AUTONOMY_STATE.json",
+    ),
+    ROOT / "skills" / "skills-codex" / "paper-write" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "CLAIMS_FROM_RESULTS.md",
+        "AUTONOMY_STATE.json",
+    ),
+    ROOT / "skills" / "skills-codex" / "paper-compile" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "AUTONOMY_STATE.json",
+        "compile.log",
+    ),
+    ROOT / "skills" / "skills-codex" / "auto-paper-improvement-loop" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "review_mode=local_fallback",
+        "review_replay_required=true",
+    ),
+    ROOT / "skills" / "skills-codex" / "paper-illustration" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "missing_illustration_backend",
+        "AUTONOMY_STATE.json",
+    ),
+    ROOT / "skills" / "skills-codex" / "paper-writing" / "SKILL.md": (
+        "## Unattended Safe Mode",
+        "paper_illustration: auto",
+        "AUTONOMY_STATE.json",
+        "missing_illustration_backend",
+    ),
+}
+
+RESEARCH_INTELLIGENCE_MARKERS = {
+    ROOT / "skills" / "skills-codex" / "idea-creator" / "SKILL.md": (
+        "IDEATION_LANES",
+        "IDEA_PORTFOLIO.md",
+        "safe`, `bold`, and `contrarian`",
+    ),
+    ROOT / "skills" / "skills-codex" / "research-refine" / "SKILL.md": (
+        "ROUTE_PORTFOLIO.md",
+        "Analogical / contrarian route",
+        "shadow route",
+    ),
+    ROOT / "skills" / "skills-codex" / "experiment-plan" / "SKILL.md": (
+        "branch-kill",
+        "disconfirming",
+        "PLAN_DECISIONS.md",
+    ),
+    ROOT / "skills" / "skills-codex" / "research-lit" / "SKILL.md": (
+        "PRINCIPLE_BANK.md",
+        "ANALOGY_CANDIDATES.md",
+        "LITERATURE_OUTPUT_DIR",
+    ),
+    ROOT / "skills" / "skills-codex" / "research-wiki" / "SKILL.md": (
+        "principle_pack.md",
+        "analogy_pack.md",
+        "failure_pack.md",
+    ),
+}
+
+AUTONOMY_TEMPLATE_MARKERS = {
+    ROOT / "templates" / "CODEX_TEMPLATE.md": (
+        "review_fallback_mode: retry_then_local_critic",
+        "max_reviewer_runtime_retries: 2",
+        "run_unattended_mainline.sh",
+        "innovation_mode: high_innovation",
+        "topic_router: auto",
+    ),
+    ROOT / "README.md": (
+        "review_fallback_mode: retry_then_local_critic",
+        "max_reviewer_runtime_retries: 2",
+        "paper-ready",
+        "Research Intelligence Profile",
+        "innovation_mode: high_innovation",
+    ),
+}
 
 def parse_frontmatter(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8")
@@ -244,6 +380,30 @@ def main() -> int:
         if missing_markers:
             problems.append(
                 f"{skill_path.relative_to(ROOT)} missing protocol markers: {', '.join(missing_markers)}"
+            )
+
+    for skill_path, markers in AUTONOMY_SKILL_MARKERS.items():
+        text = skill_path.read_text(encoding="utf-8")
+        missing_markers = [marker for marker in markers if marker not in text]
+        if missing_markers:
+            problems.append(
+                f"{skill_path.relative_to(ROOT)} missing unattended markers: {', '.join(missing_markers)}"
+            )
+
+    for artifact_path, markers in AUTONOMY_TEMPLATE_MARKERS.items():
+        text = artifact_path.read_text(encoding="utf-8")
+        missing_markers = [marker for marker in markers if marker not in text]
+        if missing_markers:
+            problems.append(
+                f"{artifact_path.relative_to(ROOT)} missing unattended markers: {', '.join(missing_markers)}"
+            )
+
+    for artifact_path, markers in RESEARCH_INTELLIGENCE_MARKERS.items():
+        text = artifact_path.read_text(encoding="utf-8")
+        missing_markers = [marker for marker in markers if marker not in text]
+        if missing_markers:
+            problems.append(
+                f"{artifact_path.relative_to(ROOT)} missing research-intelligence markers: {', '.join(missing_markers)}"
             )
 
     if problems:

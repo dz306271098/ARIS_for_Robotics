@@ -135,6 +135,17 @@ Claude reviewer overlay 的维护基线是：
 
 如果这些协议从主线 skill 中消失，也属于回退。
 
+### 1.9 无人值守运行协议
+
+当前公开主线还新增了一层固定约束：
+
+- `CODEX.md -> ## Autonomy Profile` 是唯一项目级无人值守策略入口，并且要保留 `review_fallback_mode` 与 `max_reviewer_runtime_retries`
+- `AUTONOMY_STATE.json` 是跨 workflow 的状态锚点，并允许记录 `review_mode` / `review_replay_required` / `recovery_step`
+- `scripts/check_unattended_mainline.sh` 是宿主机级 health check
+- `scripts/run_unattended_mainline.sh` + `tools/autonomy_supervisor.py` 是核心主线的无人值守入口
+
+如果这些入口、状态文件或协议标记从主线文档/skill/脚本中消失，也属于回退。
+
 ---
 
 ## 2. 自动化守门
@@ -149,6 +160,7 @@ python3 tools/generate_codex_claude_review_overrides.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
 bash scripts/check_claude_review_runtime.sh
+bash scripts/check_unattended_mainline.sh /path/to/project
 ```
 
 ### 2.2 这些命令分别守什么
@@ -167,7 +179,8 @@ bash scripts/check_claude_review_runtime.sh
 - `scripts/smoke_test_codex_claude_mainline.sh`
   - 验证安装、重装、卸载和回滚链路
 - `scripts/check_claude_review_runtime.sh`
-  - 验证 direct CLI、direct bridge、installed MCP、宿主机 `Codex -> mcp__claude_review__review` 都正常
+- `scripts/check_unattended_mainline.sh`
+  - 验证无人值守 profile、reviewer fallback 策略、W&B / watchdog / illustration prerequisites 与宿主机 `Codex -> mcp__claude_review__review` 健康度
 
 ### 2.3 推荐的审查顺序
 

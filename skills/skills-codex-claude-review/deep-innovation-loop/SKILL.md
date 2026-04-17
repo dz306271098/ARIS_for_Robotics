@@ -61,6 +61,8 @@ This is NOT a review-fix loop. This is a **research program** that discovers, sy
 | `MANDATORY_TEST_GATE` | true | Every implementation round must pass the shared execution test gate before deployment or review handoff |
 | `CONVERGENCE_MEMO_ROUND` | 3 | After 3 dispute turns on one reviewer issue, write a convergence memo |
 | `MAX_REVIEW_DISPUTE_ROUNDS` | 5 | After 5 dispute turns, stop debating and request a resolution-only action plan |
+| `AUTONOMY_PROFILE` | `CODEX.md -> ## Autonomy Profile` | Unattended-safe host policy for retries, watchdog, W&B, and cloud boundaries |
+| `AUTONOMY_STATE` | `AUTONOMY_STATE.json` | Cross-workflow state anchor kept in sync with `INNOVATION_STATE.json` |
 
 Override inline: `/deep-innovation-loop "improve robot manipulation" — baseline: DAgger, venue: CoRL, domain: manipulation, max rounds: 40, human checkpoint: true`
 
@@ -137,6 +139,15 @@ Write `INNOVATION_STATE.json` after each Phase E:
   - Check if pending experiments completed
   - Resume from next round (round = saved round + 1)
 
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`, also follow `../shared-references/unattended-runtime-protocol.md`:
+
+- keep `HUMAN_CHECKPOINT=false` unless a hard safety boundary blocks the current round
+- update `AUTONOMY_STATE.json` before diagnosis, before implementation/eval, during wait states, and when the loop terminates or blocks
+- do not auto-provision new cloud GPUs when `allow_auto_cloud: false`
+- treat missing reviewer runtime or required W&B coverage as blockers instead of soft warnings
+
 ## Execution Rule
 
 Follow the phases in order. Do **not** stop unless a stopping condition is met. Work AUTONOMOUSLY — do not ask user for permission at each round unless `HUMAN_CHECKPOINT=true`.
@@ -145,7 +156,7 @@ Follow the phases in order. Do **not** stop unless a stopping condition is met. 
 
 1. **Check for recovery**: Read `innovation-logs/INNOVATION_STATE.json`. Apply recovery logic above.
 
-2. **Read project context**: Load `RESEARCH_BRIEF.md` or `CODEX.md` for problem context. If `research-wiki/query_pack.md` exists, read it before freezing the research anchor and treat failed ideas as a banlist plus open gaps as literature seeds. Read existing codebase to understand current method implementation.
+2. **Read project context**: Load `RESEARCH_BRIEF.md` or `CODEX.md` for problem context. If `research-wiki/query_pack.md` exists, read it before freezing the research anchor and treat failed ideas as a banlist plus open gaps as literature seeds. Also read `research-wiki/principle_pack.md`, `analogy_pack.md`, and `failure_pack.md` when present so the loop starts from accumulated transferable knowledge instead of only raw history. Read existing codebase to understand current method implementation.
 
 3. **Freeze the Research Anchor** (immutable throughout the loop):
 
@@ -381,6 +392,7 @@ Save to `innovation-logs/round-NN/diagnosis.md`.
    ```
 
 4. **Add to `TECHNIQUE_LIBRARY.md`**. De-duplicate: if a technique is already in the library, update its entry with new information.
+5. **Write back distilled principles**: if `research-wiki/` exists, write or update the corresponding `principle:` page and rebuild packs with `python3 tools/research_wiki.py rebuild_packs research-wiki/`.
 
 Save search results to `innovation-logs/round-NN/research.md`.
 
@@ -1068,6 +1080,8 @@ When the loop ends (by any stopping condition):
 ---
 
 ## Key Rules
+
+- **Deep innovation must feed the shared memory layer.** New successful principles, anti-patterns, and revive conditions are not local-only logs; write them back to `research-wiki/` when it exists.
 
 ### Execution
 - Large file handling: If Write fails due to size, retry with Bash (`cat << 'EOF' > file`) silently — do not ask user for permission
