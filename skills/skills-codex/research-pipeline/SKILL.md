@@ -19,6 +19,7 @@ End-to-end autonomous research workflow for: **$ARGUMENTS**
 - **META_OPTIMIZE = false** — When `true`, finish with a report-only `/meta-optimize` pass for harness maintenance. Never auto-apply patches.
 - **RESEARCH_INTELLIGENCE_PROFILE = `CODEX.md -> ## Research Intelligence Profile`** — Project-level defaults for topic routing, innovation intensity, literature depth, portfolio size, and shadow-route retention.
 - **IDEA_PORTFOLIO_SIZE = 3** — Preserve at least `safe`, `bold`, and `contrarian` routes until novelty/review/cheap pilot pressure kills them.
+- **EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`** — Project-level execution route selector. Defaults to `python_ml`; `cpp_algorithm` now covers both `cpu_benchmark` and `cpu_cuda_mixed`, while `robotics_slam` switches the mainline to an offline robotics / SLAM path without creating a second workflow tree.
 - **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Project-level unattended-safe policy. When it sets `autonomy_mode: unattended_safe`, this skill becomes the host-orchestrated core-mainline entrypoint.
 - **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated alongside workflow-native recovery files.
 
@@ -80,18 +81,26 @@ Use `CODEX.md` plus `RESEARCH_BRIEF.md` as the authoritative project context. If
 
 ### Stage 0.5: Topic Routing and Research Intelligence
 
-Before ideation, read `CODEX.md -> ## Research Intelligence Profile` if it exists. Use it to decide:
+Before ideation, read both `CODEX.md -> ## Research Intelligence Profile` and `CODEX.md -> ## Execution Profile` if they exist. Use them to decide:
 
 - whether the project runs in `high_innovation` or `quality_stability` mode
 - how many routes to preserve before convergence
 - whether to keep a shadow route alive after Gate 1
 - whether the topic should auto-route to a domain-aware literature/idea path
+- whether downstream execution should be treated as `python_ml`, `cpp_algorithm`, `robotics_slam`, or a hybrid path
 
 Default topic routing policy:
 
-- robotics / embodied AI / manipulation / navigation / locomotion -> `/idea-discovery-robot`
+- robotics / embodied AI / manipulation / navigation / locomotion / VO / VIO / LiDAR SLAM / 3D perception -> `/idea-discovery-robot`
 - communications / wireless / networking / NTN / MAC/PHY / transport -> `comm-lit-review` for literature grounding, then continue the standard idea pipeline
 - everything else -> standard `/idea-discovery`
+
+Execution-route defaults after ideation:
+
+- `project_stack: python_ml` -> keep the existing training / W&B-friendly execution semantics
+- `project_stack: cpp_algorithm` / `runtime_profile: cpu_benchmark` -> carry benchmark suite, toolchain, correctness-oracle, and scaling constraints forward into `/experiment-bridge`, `/run-experiment`, `/monitor-experiment`, and `/result-to-claim`
+- `project_stack: cpp_algorithm` / `runtime_profile: cpu_cuda_mixed` -> also carry CUDA toolkit, `nvcc`, profiler backend, kernel/transfer metrics, and CPU-GPU overlap constraints forward into `/experiment-bridge`, `/run-experiment`, `/monitor-experiment`, and `/result-to-claim`
+- `project_stack: robotics_slam` / `runtime_profile: slam_offline` -> carry dataset / rosbag / simulator constraints, trajectory/perception metrics, ground-truth assumptions, and optional ROS2 adapter requirements forward into `/experiment-bridge`, `/run-experiment`, `/monitor-experiment`, and `/result-to-claim`
 
 ### Stage 1: Idea Discovery (Workflow 1)
 
@@ -145,7 +154,10 @@ This stage owns:
 - full experiment implementation from `IDEA_REPORT.md` + `refine-logs/`
 - module tests and workflow smoke tests before deployment
 - initial deployment through `/run-experiment`
-- first monitoring loop through `/monitor-experiment` and `/training-check`
+- first monitoring loop through `/monitor-experiment` and `/training-check` when the execution profile is training-oriented
+- compiled-project setup when `project_stack: cpp_algorithm`: CMake targets, CTest, benchmark binaries, parsers, reproducibility commands, and when needed CUDA toolchain / profiling hooks
+- robotics/SLAM setup when `project_stack: robotics_slam`: offline replay / evaluation commands, trajectory and perception summaries, dataset-or-rosbag matrices, and optional `cmake_ros2` adapter steps
+- sidecar escalation to `/dse-loop` or `/system-profile` when the benchmark plan calls for sweeps or hotspot diagnosis
 
 In unattended-safe mode, Stage 2 should update `AUTONOMY_STATE.json` before implementation, after the test gate, after launch, and on any deployment blocker.
 

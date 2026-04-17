@@ -33,11 +33,12 @@
 - `Claude Code`：承担 reviewer-aware 技能中的外部审稿角色
 - `claude-review`：只做 reviewer transport，不做主线编排
 
-所有会改代码的执行型 workflow 现在还共享两条硬协议：
+所有会改代码的执行型 workflow 现在还共享四层硬合同：
 
 - **Mandatory Test Gate**：每次写完代码后，先过模块测试和 workflow smoke test，再允许部署或进入下一轮 review
 - **Reviewer Resolution Protocol**：每条 reviewer 反馈都必须分类并在有争议时回到同一 thread 讨论，直到收敛到 fix / analysis / experiment / claim change
 - **Unattended Runtime Protocol**：`CODEX.md -> ## Autonomy Profile`、`AUTONOMY_STATE.json`、watchdog、W&B 和宿主机 health check 组成无人值守主线控制层；`review_fallback_mode: retry_then_local_critic` 只允许临时本地批判性审查，最终 claim freeze / paper polish 仍要 replay 外部 reviewer
+- **Execution Profile**：`CODEX.md -> ## Execution Profile` 现在也是主线合同的一部分。默认仍是 `python_ml`，但已经支持把同一条主线切换到 `cpp_algorithm + cmake + cpu_benchmark`、`cpp_algorithm + cmake + cpu_cuda_mixed`、以及 `robotics_slam + (cmake | cmake_ros2) + slam_offline`，而不是再维护平行 workflow
 
 ---
 
@@ -99,6 +100,8 @@ bash scripts/check_unattended_mainline.sh /path/to/project
 - 直接启动 `server.py`
 - 已安装的 `claude-review` MCP
 - 宿主机 `Codex -> mcp__claude_review__review`
+
+`check_unattended_mainline.sh` 还会继续读取 `## Execution Profile`、`## CUDA Profile` 和 `## Robotics Profile`。如果项目是 `cpp_algorithm`，它会额外检查 `cmake`、编译器、`ctest`、`ninja/make`，并在 `cpu_cuda_mixed` 下继续检查 `nvcc`、`nvidia-smi`、`nsys/ncu/perf`；如果项目是 `robotics_slam`，它还会检查 `cmake`/`cmake_ros2`、`colcon`/`ros2`（如需要）、trajectory/rosbag backend 配置，以及 `results/trajectory_summary.json`、`results/perception_summary.json`、`monitoring/last_robotics_summary.json` 这类 artifact 合同。
 
 如果当前 shell 有代理变量，但已安装的 MCP 配置里缺少这些变量，脚本会明确提示重新执行：
 

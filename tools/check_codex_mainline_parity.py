@@ -226,8 +226,65 @@ RESEARCH_INTELLIGENCE_MARKERS = {
     ),
 }
 
+EXECUTION_PROFILE_MARKERS = {
+    ROOT / "skills" / "skills-codex" / "research-pipeline" / "SKILL.md": (
+        "EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`",
+        "project_stack: cpp_algorithm",
+        "project_stack: robotics_slam",
+        "/dse-loop",
+        "/system-profile",
+    ),
+    ROOT / "skills" / "skills-codex" / "experiment-plan" / "SKILL.md": (
+        "EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`",
+        "Compiled Project Block",
+        "Robotics / SLAM Block",
+        "benchmark matrix",
+    ),
+    ROOT / "skills" / "skills-codex" / "experiment-bridge" / "SKILL.md": (
+        "EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`",
+        "build/build_report.json",
+        "results/benchmark_summary.json",
+        "results/trajectory_summary.json",
+        "profiles/nsys_summary.json",
+    ),
+    ROOT / "skills" / "skills-codex" / "run-experiment" / "SKILL.md": (
+        "## Execution Profile Routing",
+        "runtime_profile: cpu_cuda_mixed",
+        "runtime_profile: slam_offline",
+        "cmake configure -> build -> ctest -> benchmark",
+    ),
+    ROOT / "skills" / "skills-codex" / "monitor-experiment" / "SKILL.md": (
+        "## Execution Profile Routing",
+        "last_benchmark_summary.json",
+        "last_robotics_summary.json",
+        "profiles/nsys_summary.json",
+    ),
+    ROOT / "skills" / "skills-codex" / "result-to-claim" / "SKILL.md": (
+        "EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`",
+        "build/build_report.json",
+        "trajectory_summary.json",
+        "Correctness is a hard gate",
+    ),
+    ROOT / "scripts" / "check_unattended_mainline.sh": (
+        "execution_profile",
+        "cpp_algorithm",
+        "robotics_slam",
+        "nvcc",
+    ),
+    ROOT / "tools" / "autonomy_supervisor.py": (
+        "## Execution Profile",
+        "compiled execution path",
+        "runtime_profile: cpu_cuda_mixed",
+        "runtime_profile: slam_offline",
+    ),
+}
+
 AUTONOMY_TEMPLATE_MARKERS = {
     ROOT / "templates" / "CODEX_TEMPLATE.md": (
+        "## Execution Profile",
+        "## CUDA Profile",
+        "## Robotics Profile",
+        "project_stack: python_ml",
         "review_fallback_mode: retry_then_local_critic",
         "max_reviewer_runtime_retries: 2",
         "run_unattended_mainline.sh",
@@ -235,6 +292,14 @@ AUTONOMY_TEMPLATE_MARKERS = {
         "topic_router: auto",
     ),
     ROOT / "README.md": (
+        "## Execution Profile",
+        "## CUDA Profile",
+        "## Robotics Profile",
+        "project_stack: cpp_algorithm",
+        "project_stack: robotics_slam",
+        "runtime_profile: cpu_benchmark",
+        "runtime_profile: cpu_cuda_mixed",
+        "runtime_profile: slam_offline",
         "review_fallback_mode: retry_then_local_critic",
         "max_reviewer_runtime_retries: 2",
         "paper-ready",
@@ -404,6 +469,14 @@ def main() -> int:
         if missing_markers:
             problems.append(
                 f"{artifact_path.relative_to(ROOT)} missing research-intelligence markers: {', '.join(missing_markers)}"
+            )
+
+    for artifact_path, markers in EXECUTION_PROFILE_MARKERS.items():
+        text = artifact_path.read_text(encoding="utf-8")
+        missing_markers = [marker for marker in markers if marker not in text]
+        if missing_markers:
+            problems.append(
+                f"{artifact_path.relative_to(ROOT)} missing execution-profile markers: {', '.join(missing_markers)}"
             )
 
     if problems:

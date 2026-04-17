@@ -61,6 +61,8 @@ This overlay does not replace the whole workflow. It only swaps the reviewer sid
 
 That separation is intentional: Claude is the reviewer, not the workflow orchestrator.
 
+The mainline this overlay attaches to is now profile-routed through `CODEX.md -> ## Execution Profile`, so the same reviewer path can stay attached to the existing `python_ml` workflow plus the newer `cpp_algorithm` (`cpu_benchmark` / `cpu_cuda_mixed`) and `robotics_slam` (`slam_offline`) workflows.
+
 ## Install
 
 1. Install the base Codex pack first:

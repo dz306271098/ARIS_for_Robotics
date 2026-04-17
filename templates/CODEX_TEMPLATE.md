@@ -13,6 +13,31 @@
 - wandb: true
 - wandb_project: your-project
 
+## Execution Profile
+- project_stack: python_ml
+- build_system: python
+- runtime_profile: training
+- build_dir: build
+- build_type:
+- cmake_preset:
+- test_backend: pytest
+- benchmark_backend: none
+- artifact_roots: build,results,wandb,monitoring,profiles
+
+## CUDA Profile
+- cuda_enabled: false
+- cuda_architectures:
+- cuda_toolkit_root:
+- profiling_backend: none
+
+## Robotics Profile
+- robotics_domain: slam_perception
+- data_backend: dataset
+- benchmark_suite:
+- sensor_stack:
+- ground_truth_type:
+- ros_distro: none
+
 ## Research Intelligence Profile
 - innovation_mode: high_innovation
 - topic_router: auto
@@ -38,6 +63,9 @@
 ## Notes
 - Key metrics: 你关心的指标
 - Constraints: 计算预算、数据限制、上线约束
+- C++ benchmark projects: `project_stack: cpp_algorithm` + `build_system: cmake` + `runtime_profile: cpu_benchmark` + `test_backend: ctest`
+- CPU+CUDA projects: `project_stack: cpp_algorithm` + `runtime_profile: cpu_cuda_mixed` + `cuda_enabled: true`，并补齐 `profiling_backend`
+- Robotics / SLAM projects: `project_stack: robotics_slam` + `runtime_profile: slam_offline`；plain CMake 优先，ROS2 时再改 `build_system: cmake_ros2`
 
 ## Pipeline Status
 stage: init

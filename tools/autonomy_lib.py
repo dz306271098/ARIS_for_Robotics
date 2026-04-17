@@ -26,12 +26,41 @@ DEFAULT_AUTONOMY_PROFILE = {
     "max_auto_retries_per_stage": 3,
 }
 
+DEFAULT_EXECUTION_PROFILE = {
+    "project_stack": "python_ml",
+    "build_system": "python",
+    "runtime_profile": "training",
+    "build_dir": "build",
+    "build_type": "",
+    "cmake_preset": "",
+    "test_backend": "pytest",
+    "benchmark_backend": "none",
+    "artifact_roots": "build,results,wandb,monitoring,profiles",
+}
+
+DEFAULT_CUDA_PROFILE = {
+    "cuda_enabled": False,
+    "cuda_architectures": "",
+    "cuda_toolkit_root": "",
+    "profiling_backend": "none",
+}
+
+DEFAULT_ROBOTICS_PROFILE = {
+    "robotics_domain": "slam_perception",
+    "data_backend": "dataset",
+    "benchmark_suite": "",
+    "sensor_stack": "",
+    "ground_truth_type": "",
+    "ros_distro": "none",
+}
+
 BOOL_KEYS = {
     "allow_auto_cloud",
     "allow_auto_real_robot",
     "require_watchdog",
     "require_wandb_for_unattended_training",
 }
+CUDA_BOOL_KEYS = {"cuda_enabled"}
 INT_KEYS = {"resume_window_hours", "max_reviewer_runtime_retries", "max_auto_retries_per_stage"}
 RUNNING_INSTANCE_STATUSES = {"running", "active", "ready"}
 
@@ -104,6 +133,89 @@ def load_autonomy_profile(project_root: Path) -> dict[str, object]:
             profile[key] = DEFAULT_AUTONOMY_PROFILE[key]
 
     return profile
+
+
+def load_execution_profile(project_root: Path) -> dict[str, str]:
+    codex_path = project_root / "CODEX.md"
+    profile = dict(DEFAULT_EXECUTION_PROFILE)
+    profile.update(load_markdown_section_map(codex_path, "Execution Profile"))
+
+    normalized: dict[str, str] = {}
+    for key, default in DEFAULT_EXECUTION_PROFILE.items():
+        value = str(profile.get(key, default)).strip()
+        if key in {
+            "project_stack",
+            "build_system",
+            "runtime_profile",
+            "test_backend",
+            "benchmark_backend",
+        }:
+            value = value.lower()
+        normalized[key] = value
+    return normalized
+
+
+def is_cpp_algorithm_profile(profile: dict[str, object]) -> bool:
+    return str(profile.get("project_stack", "")).strip().lower() == "cpp_algorithm"
+
+
+def is_robotics_slam_profile(profile: dict[str, object]) -> bool:
+    return str(profile.get("project_stack", "")).strip().lower() == "robotics_slam"
+
+
+def is_cpu_benchmark_profile(profile: dict[str, object]) -> bool:
+    return str(profile.get("runtime_profile", "")).strip().lower() == "cpu_benchmark"
+
+
+def is_cpu_cuda_mixed_profile(profile: dict[str, object]) -> bool:
+    return str(profile.get("runtime_profile", "")).strip().lower() == "cpu_cuda_mixed"
+
+
+def is_slam_offline_profile(profile: dict[str, object]) -> bool:
+    return str(profile.get("runtime_profile", "")).strip().lower() == "slam_offline"
+
+
+def is_compiled_execution_profile(profile: dict[str, object]) -> bool:
+    project_stack = str(profile.get("project_stack", "")).strip().lower()
+    build_system = str(profile.get("build_system", "")).strip().lower()
+    runtime_profile = str(profile.get("runtime_profile", "")).strip().lower()
+    return (
+        project_stack in {"cpp_algorithm", "robotics_slam", "hybrid_cpp_python"}
+        or build_system in {"cmake", "cmake_ros2"}
+        or runtime_profile in {"cpu_benchmark", "cpu_cuda_mixed", "slam_offline"}
+    )
+
+
+def load_cuda_profile(project_root: Path) -> dict[str, object]:
+    codex_path = project_root / "CODEX.md"
+    profile = dict(DEFAULT_CUDA_PROFILE)
+    profile.update(load_markdown_section_map(codex_path, "CUDA Profile"))
+
+    normalized: dict[str, object] = {}
+    for key, default in DEFAULT_CUDA_PROFILE.items():
+        value: object = profile.get(key, default)
+        if key in CUDA_BOOL_KEYS:
+            normalized[key] = normalize_bool(value)
+            continue
+        text = str(value or "").strip()
+        if key == "profiling_backend":
+            text = text.lower()
+        normalized[key] = text
+    return normalized
+
+
+def load_robotics_profile(project_root: Path) -> dict[str, str]:
+    codex_path = project_root / "CODEX.md"
+    profile = dict(DEFAULT_ROBOTICS_PROFILE)
+    profile.update(load_markdown_section_map(codex_path, "Robotics Profile"))
+
+    normalized: dict[str, str] = {}
+    for key, default in DEFAULT_ROBOTICS_PROFILE.items():
+        value = str(profile.get(key, default)).strip()
+        if key in {"robotics_domain", "data_backend", "ros_distro"}:
+            value = value.lower()
+        normalized[key] = value
+    return normalized
 
 
 def load_gpu_profile(project_root: Path) -> dict[str, str]:

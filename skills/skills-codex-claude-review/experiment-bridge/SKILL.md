@@ -13,7 +13,7 @@ Implement and deploy experiments from plan: **$ARGUMENTS**
 
 ## Overview
 
-This skill bridges Workflow 1 (idea discovery + method refinement) and Workflow 2 (auto review loop). It takes the experiment plan and turns it into running experiments with initial results.
+This skill bridges Workflow 1 (idea discovery + method refinement) and Workflow 2 (auto review loop). It takes the experiment plan and turns it into running experiments with initial results. The execution branch now comes from `CODEX.md -> ## Execution Profile`, so the same bridge can launch training jobs, compiled C++ / CUDA benchmark runs, or offline robotics / SLAM evaluations.
 
 ```
 Workflow 1 output:                    This skill:                                    Workflow 2 input:
@@ -34,6 +34,7 @@ refine-logs/FINAL_PROPOSAL.md
 - **ITERATIVE_VARIANTS = false** — When `true`, support testing multiple method variants within the same bridge session. Useful for rapid variant comparison during deep innovation loops.
 - **MANDATORY_TEST_GATE = true** — Every implementation round must pass the shared execution test gate before sanity runs or deployment. See `../shared-references/execution-test-gate.md`.
 - **REVIEWER_RESOLUTION_PROTOCOL = true** — Disputed reviewer findings must be pushed back through the same dialogue until they are accepted, narrowed, rebutted, or resolved via a minimum action. See `../shared-references/reviewer-resolution-protocol.md`.
+- **EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`** — Declares whether implementation lands as a training pipeline, a compiled benchmark/CUDA pipeline, or an offline robotics / SLAM pipeline. `cpp_algorithm` means CMake/CTest/benchmark or CUDA-profile targets are first-class outputs of this bridge; `robotics_slam` means offline replay / evaluation targets are first-class outputs.
 - **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Enables unattended-safe execution rules for deployment, retries, watchdog, and cloud boundaries.
 - **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before implementation, test-gate, sanity, deploy, and result collection.
 
@@ -56,7 +57,7 @@ If none exist, autonomously infer experiments from available context: read `IDEA
 When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`, follow `../shared-references/unattended-runtime-protocol.md` in addition to the normal bridge flow:
 
 - keep `AUTO_DEPLOY=true` unless a hard safety boundary blocks deployment
-- require `wandb: true` + `wandb_project` for long unattended training; without them, stop after sanity-only validation and record the blocker
+- require `wandb: true` + `wandb_project` only for long unattended training profiles; if `runtime_profile: cpu_benchmark`, `cpu_cuda_mixed`, or `slam_offline`, treat W&B as optional and require passing tests plus parseable benchmark / robotics outputs instead
 - rely on `/run-experiment` to register watchdog coverage for long-running jobs
 - update `AUTONOMY_STATE.json` before implementation, before the Mandatory Test Gate, before sanity runs, and before handing off to `/auto-review-loop`
 
@@ -74,7 +75,10 @@ Read `EXPERIMENT_PLAN.md` and extract:
    - Setup details (backbone, hyperparameters, seeds)
    - Success criterion
    - Priority (MUST-RUN vs NICE-TO-HAVE)
-3. **Compute budget** — total estimated GPU-hours
+   - if `project_stack: cpp_algorithm`, also extract build targets, test targets, benchmark matrix, parser type, repeat policy, and profiling trigger points
+   - if `runtime_profile: cpu_cuda_mixed`, also extract CUDA toolkit assumptions, profiler backend, kernel / transfer metrics, and any GPU-specific failure buckets
+   - if `project_stack: robotics_slam`, also extract offline replay commands, dataset / rosbag / simulator matrix, trajectory/perception metrics, failure buckets, and realtime constraints
+3. **Compute budget** — total estimated compute-hours
 4. **Method details** from `FINAL_PROPOSAL.md` — what exactly to implement
 
 Present a brief summary:
@@ -84,7 +88,7 @@ Present a brief summary:
 - Milestones: [N] (sanity → baseline → main → ablation)
 - Must-run experiments: [N]
 - Nice-to-have: [N]
-- Estimated GPU-hours: [X]
+- Estimated compute-hours: [X]
 
 Proceeding to implementation.
 ```
@@ -110,6 +114,11 @@ For each milestone (in order), write the experiment scripts:
    - Fixed random seeds for reproducibility
    - Results saved to JSON/CSV for later analysis
    - Proper logging (wandb if configured in CODEX.md)
+   - if `project_stack: cpp_algorithm`, CMake targets, test binaries, benchmark executables, result parsers, and reproducibility commands (`configure -> build -> ctest -> benchmark`)
+   - if `runtime_profile: cpu_cuda_mixed`, extend the same contract with `nvcc` / CMake CUDA configuration, profile collection, and `profiles/nsys_summary.json` or equivalent profiler summaries
+   - if `project_stack: robotics_slam`, offline replay / evaluation binaries, trajectory or perception parsers, optional `cmake_ros2` / `colcon build` adapter steps, and reproducibility commands (`configure/build -> ctest -> offline replay/eval`)
+   - for compiled mode, standardize `build/build_report.json`, `results/benchmark_manifest.json`, and `results/benchmark_summary.json` so downstream monitoring/claim gates do not need to scrape ad-hoc stdout
+   - for robotics mode, standardize `results/trajectory_summary.json`, `results/perception_summary.json`, and `monitoring/last_robotics_summary.json` so downstream monitoring/claim gates can reason about offline evidence directly
 
 3. **Follow the plan's run order** — implement sanity-stage experiments first, then baselines, then main method, then ablations.
 
@@ -118,6 +127,8 @@ For each milestone (in order), write the experiment scripts:
    - Is the random seed fixed and controllable?
    - Are results saved in a parseable format (JSON/CSV)?
    - Does the code match FINAL_PROPOSAL.md's method description?
+   - If `project_stack: cpp_algorithm`, does the current working tree support `cmake configure -> build -> ctest` before any benchmark sweep, CUDA run, or profile collection starts?
+   - If `project_stack: robotics_slam`, does the current working tree support `cmake` or `cmake_ros2` build + `ctest` before any offline replay / evaluation starts?
 
 ### Phase 2.3: Mandatory Code Review (every implementation round)
 
@@ -215,6 +226,8 @@ Use this fixed record block:
 - expected:
 - actual:
 - status:
+- compiled mode note: for `cpp_algorithm`, this smoke test should be the smallest viable `configure -> build -> ctest -> benchmark/profile` path, not a fake dry run
+- robotics mode note: for `robotics_slam`, this smoke test should be the smallest viable `configure/build -> ctest -> offline replay/eval` path on dataset / simulator / rosbag inputs, not a fake dry run
 
 ### Decision
 - gate status:
@@ -372,7 +385,7 @@ Append each completed experiment to `EXPERIMENT_LOG.md`:
 - **Config**: [key hyperparameters]
 - **Result**: [primary metric = X.XX]
 - **Verdict**: [positive / negative / inconclusive]
-- **Reproduce**: `python train.py --config configs/run_id.yaml --seed 42`
+- **Reproduce**: `python train.py --config configs/run_id.yaml --seed 42` or `cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure && ./build/bin/<benchmark>`
 ```
 
 This structured log survives session recovery — downstream skills read it instead of parsing screen output.

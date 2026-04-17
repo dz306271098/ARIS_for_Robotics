@@ -37,11 +37,12 @@
 
 其中 `shared-references/` 是支持目录，不算可直接调用的 skill。
 
-所有会改代码的执行型 workflow 还共享两条硬协议：
+所有会改代码的执行型 workflow 还共享四层硬合同：
 
 - `Mandatory Test Gate`：写完代码后必须先过模块测试和 workflow smoke test
 - `Reviewer Resolution Protocol`：reviewer 反馈有争议时必须回 thread 讨论到收敛
 - `Unattended Runtime Protocol`：`CODEX.md -> ## Autonomy Profile`、`AUTONOMY_STATE.json`、watchdog 和 W&B 共同约束无人值守长跑
+- `Execution Profile`：`CODEX.md -> ## Execution Profile` 决定主线走 `python_ml`、`cpp_algorithm`、还是 `robotics_slam` 路径；C++ / CUDA / robotics 项目都不再需要单独维护平行 workflow
 
 ## 主线嵌入方式
 
@@ -83,6 +84,13 @@ cp -a skills/skills-codex-claude-review/* ~/.codex/skills/
 当前主线路径下，项目级配置和状态文件统一使用：
 
 - `CODEX.md`
+
+其中 `CODEX.md -> ## Execution Profile` 是执行路径的路由锚点：
+
+- `python_ml`：保持当前训练 / W&B / GPU 友好主线
+- `cpp_algorithm`：切到 `cmake -> ctest -> benchmark/profile -> claim` 的 compiled-project 主线，覆盖 `cpu_benchmark` 与 `cpu_cuda_mixed`
+- `robotics_slam`：切到 `cmake | cmake_ros2 -> ctest -> offline replay/eval -> trajectory/perception claim` 的 robotics 主线
+- `hybrid_cpp_python`：作为混合项目保留接口，默认仍沿用统一主线语义
 
 本包内主线 skill、工具和说明都围绕 `CODEX.md` 设计，不再以其他项目级配置文件名作为公开入口。
 

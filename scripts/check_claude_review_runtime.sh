@@ -108,6 +108,39 @@ echo "== Claude auth status =="
 claude auth status --json
 
 echo
+echo "== Local Claude OAuth token =="
+python3 - <<'PY'
+import json
+import time
+from pathlib import Path
+
+path = Path.home() / ".claude" / ".credentials.json"
+if not path.exists():
+    print("No ~/.claude/.credentials.json found.")
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception as exc:  # pragma: no cover - diagnostic path
+    print(f"Failed to parse {path}: {exc}")
+    raise SystemExit(0)
+
+oauth = payload.get("claudeAiOauth") or {}
+expires_at = oauth.get("expiresAt")
+if not expires_at:
+    print("No expiresAt field found in ~/.claude/.credentials.json.")
+    raise SystemExit(0)
+
+delta_seconds = int(expires_at / 1000 - time.time())
+status = "expired" if delta_seconds <= 0 else "valid"
+print(f"Local Claude.ai OAuth access token status: {status}")
+print(f"expiresAt: {expires_at}")
+print(f"expires_in_seconds: {delta_seconds}")
+if delta_seconds <= 0:
+    print("Local Claude.ai OAuth access token is expired. Re-run `claude auth login --claudeai` in the host environment.")
+PY
+
+echo
 echo "== Direct primary model =="
 claude -p "Reply with exactly: DIRECT_PRIMARY_OK" \
   --output-format json \

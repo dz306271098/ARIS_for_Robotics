@@ -44,6 +44,7 @@ User input (PROBLEM + vague APPROACH)
 - **MAX_PRIMARY_CLAIMS = 2** — Soft cap for paper-level claims. Prefer one dominant claim plus one supporting claim.
 - **MAX_NEW_TRAINABLE_COMPONENTS = 2** — Soft cap for genuinely new trainable pieces. Exceed only if the paper breaks otherwise.
 - **RESEARCH_INTELLIGENCE_PROFILE = `CODEX.md -> ## Research Intelligence Profile`** — Controls innovation intensity, route portfolio size, and whether an analogical/contrarian route must be preserved.
+- **EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`** — Declares whether the refined route must eventually land as a training pipeline, a compiled benchmark/CUDA pipeline, or an offline robotics / SLAM pipeline. Do not refine a method that the chosen execution profile cannot honestly run.
 
 > Override via argument if needed, e.g. `/research-refine "problem | approach" -- max rounds: 3, threshold: 9`.
 
@@ -113,6 +114,9 @@ Write:
 - **Non-goals**: What is explicitly *not* the goal of this project?
 - **Constraints**: Compute, data, time, tooling, venue, deployment limits.
 - **Success condition**: What evidence would make the user say "yes, this method addresses the actual problem"?
+- **Execution-form constraints**: if `project_stack: cpp_algorithm`, include benchmark family, correctness oracle, toolchain/compiler constraints, and which runtime/memory/scaling metrics matter to the eventual paper
+- **Execution-form constraints**: if `runtime_profile: cpu_cuda_mixed`, also include CUDA toolkit / `nvcc` assumptions, profiler backend, kernel-time / transfer / overlap metrics, and the fairness rules for GPU comparisons
+- **Execution-form constraints**: if `project_stack: robotics_slam`, include dataset / rosbag / simulator choice, ground-truth provenance, sensor-stack assumptions, ROS2 adapter needs, and which ATE/RPE/latency/FPS/perception metrics matter to the eventual paper
 
 If later reviewer feedback would change the problem being solved, mark that as **drift** and push back or adapt carefully.
 
@@ -204,6 +208,9 @@ Additional rules:
 - Ensure one experiment block directly supports the **Problem Anchor**.
 - If complexity risk exists, include one **simplification or deletion check**.
 - If a frontier primitive is central, include one **necessity check** showing why that choice matters.
+- If `project_stack: cpp_algorithm`, ensure the minimal validation package includes correctness tests plus at least one decisive runtime/memory/scaling benchmark instead of assuming a training curve.
+- If `runtime_profile: cpu_cuda_mixed`, ensure the minimal validation package also includes at least one decisive CUDA-side measurement: kernel time, copy time, throughput, occupancy, or CPU-GPU overlap.
+- If `project_stack: robotics_slam`, ensure the minimal validation package includes correctness tests plus one decisive offline replay / evaluation package covering trajectory or perception quality, failure buckets, and realtime behavior.
 - Default to **1-3 core experiment blocks** and leave the full execution roadmap to `/experiment-plan`.
 
 #### Step 1.6: Write the Initial Proposal

@@ -117,6 +117,8 @@ codex mcp add claude-review \
 - 基础包表达“这里需要外部 reviewer”
 - overlay 决定 reviewer 通过 Claude bridge 落地
 
+现在这条主线还会通过 `CODEX.md -> ## Execution Profile` 自动路由执行路径，所以同一个 reviewer overlay 会同时覆盖原来的 `python_ml` 项目，以及新的 `cpp_algorithm`（`cpu_benchmark` / `cpu_cuda_mixed`）和 `robotics_slam`（`slam_offline`）项目。
+
 ## 维护方式
 
 不要把这个目录长期当作手工分叉来源。

@@ -85,6 +85,443 @@ if state["review_replay_required"] is not False:
     raise RuntimeError(state)
 PY
 
+python3 - "$SMOKE_PROJECT/AUTONOMY_STATE.json" <<'PY'
+import json
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+path = Path(sys.argv[1])
+state = json.loads(path.read_text(encoding="utf-8"))
+now = datetime.now(timezone.utc)
+state.update(
+    {
+        "status": "in_progress",
+        "next_skill": "auto-review-loop",
+        "next_args": "resume topic",
+        "phase": "resume_candidate",
+        "review_mode": "local_fallback",
+        "review_replay_required": True,
+        "recovery_step": "waiting_for_reviewer_replay",
+        "updated_at": now.isoformat().replace("+00:00", "Z"),
+        "last_heartbeat": now.isoformat().replace("+00:00", "Z"),
+    }
+)
+path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+python3 "$SCRIPT_DIR/../tools/autonomy_supervisor.py" \
+  --project-root "$SMOKE_PROJECT" \
+  --workflow research-pipeline \
+  --topic "fresh topic" \
+  --resume \
+  --skip-health-check \
+  --dry-run > "$HOME/autonomy-supervisor-resume.json"
+python3 - "$HOME/autonomy-supervisor-resume.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if payload.get("workflow") != "auto-review-loop":
+    raise RuntimeError(payload)
+if payload.get("workflow_args") != "resume topic":
+    raise RuntimeError(payload)
+PY
+
+python3 - "$SMOKE_PROJECT/AUTONOMY_STATE.json" <<'PY'
+import json
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+path = Path(sys.argv[1])
+state = json.loads(path.read_text(encoding="utf-8"))
+stale = datetime.now(timezone.utc) - timedelta(hours=30)
+state.update(
+    {
+        "updated_at": stale.isoformat().replace("+00:00", "Z"),
+        "last_heartbeat": stale.isoformat().replace("+00:00", "Z"),
+    }
+)
+path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+python3 "$SCRIPT_DIR/../tools/autonomy_supervisor.py" \
+  --project-root "$SMOKE_PROJECT" \
+  --workflow research-pipeline \
+  --topic "fresh topic" \
+  --resume \
+  --skip-health-check \
+  --dry-run > "$HOME/autonomy-supervisor-stale.json"
+python3 - "$HOME/autonomy-supervisor-stale.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if payload.get("workflow") != "research-pipeline":
+    raise RuntimeError(payload)
+if payload.get("workflow_args") != "fresh topic":
+    raise RuntimeError(payload)
+PY
+
+EVAL_EMPTY="$HOME/eval-empty-project"
+mkdir -p "$EVAL_EMPTY"
+bash "$SCRIPT_DIR/eval_research_workflow.sh" "$EVAL_EMPTY" > "$HOME/eval-empty.json"
+python3 - "$HOME/eval-empty.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if not any(task["missing_artifacts"] for task in payload.get("tasks", [])):
+    raise RuntimeError(payload)
+PY
+
+EVAL_FULL="$HOME/eval-full-project"
+mkdir -p "$EVAL_FULL"
+python3 - "$EVAL_FULL" <<'PY'
+import sys
+from pathlib import Path
+
+project = Path(sys.argv[1])
+artifacts = {
+    "IDEA_PORTFOLIO.md": "# Novelty\nsafe bold contrarian novelty\n",
+    "IDEA_REPORT.md": "# Idea Report\ncross-domain analog\n",
+    "CLAIMS_FROM_RESULTS.md": "# Claims\nfailure principle revive wrong assumption\n",
+    "literature-logs/PRINCIPLE_BANK.md": "# Distilled principle\npreconditions\n",
+    "literature-logs/ANALOGY_CANDIDATES.md": "# Analog candidates\ncross-domain analog\n",
+    "refine-logs/ROUTE_PORTFOLIO.md": "# Routes\nbranch-kill\n",
+    "refine-logs/PLAN_DECISIONS.md": "# Plan decisions\ndisconfirming\n",
+    "research-wiki/failure_pack.md": "# Failure pack\nfailure principle revive wrong assumption\n",
+    "research-wiki/principle_pack.md": "# Principle pack\nclosest prior novelty\n",
+    "LITERATURE_MAP.md": "# Literature map\n",
+    "NOVELTY_SURFACE.md": "# Novelty surface\nclosest prior novelty\n",
+}
+for relative_path, contents in artifacts.items():
+    target = project / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(contents, encoding="utf-8")
+PY
+bash "$SCRIPT_DIR/eval_research_workflow.sh" "$EVAL_FULL" > "$HOME/eval-full.json"
+python3 - "$HOME/eval-full.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if not all(task["passed_artifacts"] for task in payload.get("tasks", [])):
+    raise RuntimeError(payload)
+if payload["dimensions"]["literature_coverage"]["score"] < 3:
+    raise RuntimeError(payload)
+PY
+
+CPP_PROJECT="$HOME/cpp-algorithm-project"
+mkdir -p "$CPP_PROJECT"
+cp -a "$SCRIPT_DIR/../fixtures/cpp_algorithm_project/." "$CPP_PROJECT/"
+
+bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$CPP_PROJECT"
+cmake -S "$CPP_PROJECT" -B "$CPP_PROJECT/build" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$CPP_PROJECT/build" -- -j2
+(cd "$CPP_PROJECT/build" && ctest --output-on-failure)
+mkdir -p "$CPP_PROJECT/results" "$CPP_PROJECT/monitoring"
+"$CPP_PROJECT/build/bin/vector_stats_benchmark" --output "$CPP_PROJECT/results/vector_stats_raw.json"
+
+python3 - "$CPP_PROJECT" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+project = Path(sys.argv[1])
+build_dir = project / "build"
+results_dir = project / "results"
+monitoring_dir = project / "monitoring"
+raw = json.loads((results_dir / "vector_stats_raw.json").read_text(encoding="utf-8"))
+if raw.get("benchmark") != "vector_stats_benchmark":
+    raise RuntimeError(raw)
+if len(raw.get("cases", [])) != 3:
+    raise RuntimeError(raw)
+for case in raw["cases"]:
+    if case["mean_ns"] <= 0 or case["items_per_second"] <= 0:
+        raise RuntimeError(case)
+
+build_report = {
+    "configure_status": "configured",
+    "build_status": "built",
+    "test_status": "passed",
+    "build_dir": str(build_dir),
+}
+(build_dir / "build_report.json").write_text(json.dumps(build_report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+manifest = {
+    "project_stack": "cpp_algorithm",
+    "build_system": "cmake",
+    "runtime_profile": "cpu_benchmark",
+    "benchmarks": [
+        {
+            "target": "vector_stats_benchmark",
+            "binary": str(build_dir / "bin" / "vector_stats_benchmark"),
+            "timeout_seconds": 60,
+            "repeat_count": raw["repeat"],
+            "parser_type": "custom_json",
+            "baseline_comparator": "vector_sum baseline",
+        }
+    ],
+}
+(results_dir / "benchmark_manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+summary = {
+    "status": "completed",
+    "benchmark_targets": ["vector_stats_benchmark"],
+    "primary_metrics": {
+        case["name"]: {
+            "mean_ns": case["mean_ns"],
+            "items_per_second": case["items_per_second"],
+            "memory_bytes": case["memory_bytes"],
+        }
+        for case in raw["cases"]
+    },
+    "anomalies": [],
+    "recommended_action": "continue",
+}
+(results_dir / "benchmark_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+last_benchmark_summary = {
+    "status": "completed",
+    "build_status": "built",
+    "test_status": "passed",
+    "benchmark_targets": ["vector_stats_benchmark"],
+    "primary_metrics": summary["primary_metrics"],
+    "baseline_deltas": {},
+    "anomalies": [],
+    "recommended_action": "continue",
+    "updated_at": "2026-04-17T00:00:00Z",
+}
+(monitoring_dir / "last_benchmark_summary.json").write_text(
+    json.dumps(last_benchmark_summary, indent=2, ensure_ascii=False) + "\n",
+    encoding="utf-8",
+)
+PY
+
+ROBOTICS_PROJECT="$HOME/robotics-slam-project"
+mkdir -p "$ROBOTICS_PROJECT"
+cp -a "$SCRIPT_DIR/../fixtures/robotics_slam_project/." "$ROBOTICS_PROJECT/"
+
+bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$ROBOTICS_PROJECT"
+cmake -S "$ROBOTICS_PROJECT" -B "$ROBOTICS_PROJECT/build" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$ROBOTICS_PROJECT/build" -- -j2
+(cd "$ROBOTICS_PROJECT/build" && ctest --output-on-failure)
+mkdir -p "$ROBOTICS_PROJECT/results" "$ROBOTICS_PROJECT/monitoring" "$ROBOTICS_PROJECT/profiles"
+"$ROBOTICS_PROJECT/build/bin/slam_offline_eval" \
+  --trajectory-output "$ROBOTICS_PROJECT/results/trajectory_summary.json" \
+  --perception-output "$ROBOTICS_PROJECT/results/perception_summary.json"
+
+python3 - "$ROBOTICS_PROJECT" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+project = Path(sys.argv[1])
+trajectory = json.loads((project / "results" / "trajectory_summary.json").read_text(encoding="utf-8"))
+perception = json.loads((project / "results" / "perception_summary.json").read_text(encoding="utf-8"))
+if trajectory.get("status") != "completed" or trajectory.get("ate", 0) <= 0 or trajectory.get("fps", 0) <= 0:
+    raise RuntimeError(trajectory)
+if perception.get("status") != "completed" or perception.get("map", 0) <= 0 or perception.get("fps", 0) <= 0:
+    raise RuntimeError(perception)
+summary = {
+    "status": "completed",
+    "build_status": "built",
+    "test_status": "passed",
+    "trajectory_metrics": {
+        "ate": trajectory["ate"],
+        "rpe": trajectory["rpe"],
+        "tracking_rate": trajectory["tracking_rate"],
+        "fps": trajectory["fps"],
+        "latency_ms": trajectory["latency_ms"],
+    },
+    "perception_metrics": {
+        "map": perception["map"],
+        "precision": perception["precision"],
+        "recall": perception["recall"],
+        "fps": perception["fps"],
+        "latency_ms": perception["latency_ms"],
+    },
+    "failure_buckets": {
+        "tracking_loss": trajectory["failure_buckets"]["tracking_loss"],
+        "missed_objects": perception["failure_buckets"]["missed_objects"],
+    },
+    "recommended_action": "continue",
+    "updated_at": "2026-04-17T00:00:00Z",
+}
+(project / "monitoring" / "last_robotics_summary.json").write_text(
+    json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+    encoding="utf-8",
+)
+PY
+
+ROS2_PROJECT="$HOME/robotics-slam-ros2-project"
+mkdir -p "$ROS2_PROJECT"
+cp -a "$SCRIPT_DIR/../fixtures/robotics_slam_ros2_project/." "$ROS2_PROJECT/"
+
+bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$ROS2_PROJECT"
+bash -lc 'source /opt/ros/humble/setup.bash && colcon build --base-paths "'"$ROS2_PROJECT"'/src" --packages-select slam_ros2_fixture --build-base "'"$ROS2_PROJECT"'/build" --install-base "'"$ROS2_PROJECT"'/install" --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=Release'
+bash -lc 'source /opt/ros/humble/setup.bash && colcon test --packages-select slam_ros2_fixture --build-base "'"$ROS2_PROJECT"'/build" --install-base "'"$ROS2_PROJECT"'/install" --event-handlers console_direct+ --return-code-on-test-failure'
+bash -lc 'source /opt/ros/humble/setup.bash && colcon test-result --test-result-base "'"$ROS2_PROJECT"'/build" --verbose'
+mkdir -p "$ROS2_PROJECT/results" "$ROS2_PROJECT/monitoring" "$ROS2_PROJECT/profiles"
+bash -lc 'source /opt/ros/humble/setup.bash && source "'"$ROS2_PROJECT"'/install/setup.bash" && ros2 run slam_ros2_fixture slam_ros2_offline_eval --trajectory-output "'"$ROS2_PROJECT"'/results/trajectory_summary.json" --perception-output "'"$ROS2_PROJECT"'/results/perception_summary.json"'
+
+python3 - "$ROS2_PROJECT" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+project = Path(sys.argv[1])
+trajectory = json.loads((project / "results" / "trajectory_summary.json").read_text(encoding="utf-8"))
+perception = json.loads((project / "results" / "perception_summary.json").read_text(encoding="utf-8"))
+if trajectory.get("status") != "completed" or trajectory.get("ate", 0) <= 0 or trajectory.get("fps", 0) <= 0:
+    raise RuntimeError(trajectory)
+if perception.get("status") != "completed" or perception.get("map", 0) <= 0 or perception.get("fps", 0) <= 0:
+    raise RuntimeError(perception)
+(project / "build" / "build_report.json").write_text(
+    json.dumps({"configure_status": "configured", "build_status": "built", "test_status": "passed"}, indent=2, ensure_ascii=False) + "\n",
+    encoding="utf-8",
+)
+(project / "monitoring" / "last_robotics_summary.json").write_text(
+    json.dumps(
+        {
+            "status": "completed",
+            "build_status": "built",
+            "test_status": "passed",
+            "trajectory_metrics": {
+                "ate": trajectory["ate"],
+                "rpe": trajectory["rpe"],
+                "tracking_rate": trajectory["tracking_rate"],
+                "fps": trajectory["fps"],
+                "latency_ms": trajectory["latency_ms"],
+            },
+            "perception_metrics": {
+                "map": perception["map"],
+                "precision": perception["precision"],
+                "recall": perception["recall"],
+                "fps": perception["fps"],
+                "latency_ms": perception["latency_ms"],
+            },
+            "failure_buckets": {
+                "tracking_loss": trajectory["failure_buckets"]["tracking_loss"],
+                "missed_objects": perception["failure_buckets"]["missed_objects"],
+            },
+            "recommended_action": "continue",
+            "updated_at": "2026-04-17T00:00:00Z",
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n",
+    encoding="utf-8",
+)
+PY
+
+CUDA_PROJECT="$HOME/cuda-mixed-project"
+mkdir -p "$CUDA_PROJECT"
+cp -a "$SCRIPT_DIR/../fixtures/cuda_mixed_project/." "$CUDA_PROJECT/"
+
+if command -v nvcc >/dev/null 2>&1 && command -v nvidia-smi >/dev/null 2>&1 && command -v nsys >/dev/null 2>&1; then
+  bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$CUDA_PROJECT"
+  cmake -S "$CUDA_PROJECT" -B "$CUDA_PROJECT/build" -DCMAKE_BUILD_TYPE=Release
+  cmake --build "$CUDA_PROJECT/build" -- -j2
+  (cd "$CUDA_PROJECT/build" && ctest --output-on-failure)
+  mkdir -p "$CUDA_PROJECT/results" "$CUDA_PROJECT/monitoring" "$CUDA_PROJECT/profiles"
+  "$CUDA_PROJECT/build/bin/cuda_mixed_benchmark" --output "$CUDA_PROJECT/results/cuda_mixed_raw.json"
+
+  python3 - "$CUDA_PROJECT" <<'PY'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+project = Path(sys.argv[1])
+raw = json.loads((project / "results" / "cuda_mixed_raw.json").read_text(encoding="utf-8"))
+case = raw["cases"][0]
+if raw.get("benchmark") != "cuda_mixed_benchmark" or case["kernel_ms"] <= 0 or case["throughput_gbps"] <= 0:
+    raise RuntimeError(raw)
+manifest = {
+    "project_stack": "cpp_algorithm",
+    "runtime_profile": "cpu_cuda_mixed",
+    "benchmarks": [
+        {
+            "target": "cuda_mixed_benchmark",
+            "binary": str(project / "build" / "bin" / "cuda_mixed_benchmark"),
+            "timeout_seconds": 60,
+            "repeat_count": raw["repeat"],
+            "parser_type": "custom_json",
+            "baseline_comparator": "cpu vector add baseline",
+        }
+    ],
+}
+(project / "results" / "benchmark_manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+summary = {
+    "status": "completed",
+    "benchmark_targets": ["cuda_mixed_benchmark"],
+    "primary_metrics": {
+        "kernel_ms": case["kernel_ms"],
+        "h2d_ms": case["h2d_ms"],
+        "d2h_ms": case["d2h_ms"],
+        "throughput_gbps": case["throughput_gbps"],
+    },
+    "anomalies": [],
+    "recommended_action": "continue",
+}
+(project / "results" / "benchmark_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+(project / "build" / "build_report.json").write_text(
+    json.dumps({"configure_status": "configured", "build_status": "built", "test_status": "passed"}, indent=2, ensure_ascii=False) + "\n",
+    encoding="utf-8",
+)
+(project / "profiles" / "nsys_summary.json").write_text(
+    json.dumps(
+        {
+            "backend": "nsys",
+            "tool_version": subprocess.check_output(["nsys", "--version"], text=True).strip(),
+            "kernel_time_ms": case["kernel_ms"],
+            "copy_time_ms": case["h2d_ms"] + case["d2h_ms"],
+            "recommended_action": "continue",
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n",
+    encoding="utf-8",
+)
+(project / "monitoring" / "last_benchmark_summary.json").write_text(
+    json.dumps(
+        {
+            "status": "completed",
+            "build_status": "built",
+            "test_status": "passed",
+            "benchmark_targets": ["cuda_mixed_benchmark"],
+            "primary_metrics": summary["primary_metrics"],
+            "baseline_deltas": {},
+            "anomalies": [],
+            "recommended_action": "continue",
+            "updated_at": "2026-04-17T00:00:00Z",
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n",
+    encoding="utf-8",
+)
+PY
+else
+  set +e
+  CUDA_PREFLIGHT_OUTPUT=$(bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$CUDA_PROJECT" 2>&1)
+  CUDA_PREFLIGHT_STATUS=$?
+  set -e
+  if (( CUDA_PREFLIGHT_STATUS == 0 )); then
+    echo "Expected CUDA fixture preflight to fail without full CUDA toolchain" >&2
+    exit 1
+  fi
+  if [[ "$CUDA_PREFLIGHT_OUTPUT" != *"nvcc"* && "$CUDA_PREFLIGHT_OUTPUT" != *"nvidia-smi"* && "$CUDA_PREFLIGHT_OUTPUT" != *"nsys"* ]]; then
+    echo "Expected CUDA preflight blocker to mention nvcc/nvidia-smi/nsys" >&2
+    printf '%s\n' "$CUDA_PREFLIGHT_OUTPUT" >&2
+    exit 1
+  fi
+fi
+
 codex mcp get claude-review --json > "$HOME/claude-review-first.json"
 
 python3 - "$HOME/claude-review-first.json" "$HOME/.codex/.aris/codex-claude-mainline/current-manifest.json" <<'PY'

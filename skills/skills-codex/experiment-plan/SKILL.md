@@ -29,6 +29,7 @@ The goal is not to generate a giant benchmark wishlist. The goal is to turn a pr
 - **MAX_BASELINE_FAMILIES = 3** — Prefer a few strong baselines over many weak ones.
 - **DEFAULT_SEEDS = 3** — Use 3 seeds when stochastic variance matters and budget allows.
 - **RESEARCH_INTELLIGENCE_PROFILE = `CODEX.md -> ## Research Intelligence Profile`** — Controls route portfolio retention, innovation intensity, and disconfirming-experiment defaults.
+- **EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`** — Declares whether the final plan must land as a training workflow, a compiled benchmark/CUDA workflow, or an offline robotics / SLAM workflow. Use it to decide build/test/benchmark requirements instead of assuming a Python trainer.
 - **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of unattended-safe planning boundaries and reviewer fallback policy.
 - **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before each planning phase and on blockers.
 
@@ -60,6 +61,9 @@ Extract:
 - **Critical reviewer concerns**
 - **Data / compute / timeline constraints**
 - **Which frontier primitive is central, if any**
+- if `project_stack: cpp_algorithm`, also extract benchmark suite, correctness oracle, compiler/toolchain constraints, baseline fairness rules, and the primary runtime/memory/scaling metrics
+- if `runtime_profile: cpu_cuda_mixed`, also extract CUDA toolkit / `nvcc` assumptions, profiler backend, CPU-GPU overlap concerns, and which kernel / transfer metrics must be reported
+- if `project_stack: robotics_slam`, also extract dataset / rosbag / simulator matrix, ground-truth source, baseline fairness rules, realtime constraints, and the primary trajectory / perception metrics
 
 If these files do not exist, derive the same information from the user's prompt.
 
@@ -116,6 +120,20 @@ For every kept block, fully specify:
 - **Failure interpretation**: if the result is negative, what does it mean?
 - **Table / figure target**: where this result should appear in the paper
 
+If `project_stack: cpp_algorithm`, also specify for each relevant block:
+
+- build targets and benchmark binaries
+- required test targets / correctness checks
+- benchmark matrix: input sizes, repeat count, timeout, parser type, baseline comparator
+- profiling trigger points and what hotspot signal would count as explanatory evidence
+
+If `project_stack: robotics_slam`, also specify for each relevant block:
+
+- build targets and replay / evaluation binaries or launchers
+- required test targets / correctness checks
+- dataset / rosbag / simulator matrix, repeat policy, timeout, parser type, baseline family
+- trajectory / perception metrics, failure buckets, and what drift / tracking / latency signal would count as decisive evidence
+
 Special rules:
 
 - A **simplicity check** should usually compare the final method against either an overbuilt variant or a tempting extra component that the paper intentionally rejects.
@@ -166,6 +184,27 @@ Use this structure:
 - Appendix can support:
 - Experiments intentionally cut:
 
+## Execution Profile
+- project_stack:
+- build_system:
+- runtime_profile:
+- artifact roots:
+
+## Compiled Project Block
+- build targets:
+- test targets:
+- benchmark matrix:
+- parser type:
+- profiling trigger points:
+- fairness / repeat policy:
+
+## Robotics / SLAM Block
+- dataset / rosbag / simulator matrix:
+- offline replay / eval command:
+- trajectory / perception metrics:
+- failure buckets:
+- realtime / latency / drift checks:
+
 ## Experiment Blocks
 
 ### Block 1: [Name]
@@ -189,7 +228,7 @@ Use this structure:
 | M0        | ...  | ...  | ...           | ...  | ...  |
 
 ## Compute and Data Budget
-- Total estimated GPU-hours:
+- Total estimated compute-hours:
 - Data preparation needs:
 - Human evaluation needs:
 - Biggest bottleneck:
@@ -213,6 +252,8 @@ This file should state:
 - which shadow routes remain alive
 - which experiment kills or validates each route
 - which disconfirming experiments are mandatory before claim freeze
+- if `project_stack: cpp_algorithm`, which build/test/benchmark or build/test/profile step is the first decisive gate for each route
+- if `project_stack: robotics_slam`, which build/test/offline-replay step is the first decisive gate for each route
 
 #### Step 5.3: Write `refine-logs/EXPERIMENT_TRACKER.md`
 

@@ -41,6 +41,7 @@ The end state is not just "some ideas." It is:
 - **COMPACT = false** — when true, also write `IDEA_CANDIDATES.md`
 - **REF_PAPER = false**
 - **RESEARCH_INTELLIGENCE_PROFILE = `CODEX.md -> ## Research Intelligence Profile`** — Controls topic routing, innovation intensity, portfolio retention, and literature-depth defaults.
+- **EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`** — Declares whether downstream execution is `python_ml`, `cpp_algorithm`, `robotics_slam`, or `hybrid_cpp_python`. Use it to keep idea selection compatible with the eventual implementation path.
 - **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Project-level unattended-safe defaults for reviewer fallback and paper-bound continuation.
 - **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated at phase boundaries and blockers.
 
@@ -71,6 +72,8 @@ Extract:
 - already-tried ideas and failures
 - non-goals
 - target contribution style
+- if `project_stack: cpp_algorithm`, also extract benchmark family, correctness oracle, toolchain constraints, baseline fairness rules, and expected runtime/memory/scaling metrics
+- if `project_stack: robotics_slam`, also extract dataset / rosbag / simulator regime, ground-truth source, fairness rules for SLAM / perception baselines, and expected trajectory / perception / latency metrics
 
 Treat this as the project anchor for all later phases. If both a brief and `$ARGUMENTS` exist, the brief supplies details and `$ARGUMENTS` supplies directional emphasis.
 
@@ -104,6 +107,8 @@ Goals:
 - identify saturated subspaces
 - identify open gaps
 - identify reusable mechanisms from adjacent domains
+- when the execution profile is `cpp_algorithm`, explicitly look for benchmark conventions, reproducibility pitfalls, compiler/toolchain assumptions, unfair baseline patterns, and CUDA profiling assumptions in the literature
+- when the execution profile is `robotics_slam`, explicitly look for dataset / rosbag conventions, trajectory-evaluation pitfalls, sensor-sync assumptions, and unfair offline-vs-real benchmark framing
 
 If `research-wiki/query_pack.md` exists, feed it in as prior memory so repeated failures become an anti-pattern list rather than forgotten history.
 
@@ -170,6 +175,8 @@ Expected outputs:
 - `refine-logs/FINAL_PROPOSAL.md`
 - `refine-logs/EXPERIMENT_PLAN.md`
 - `refine-logs/EXPERIMENT_TRACKER.md`
+- for `cpp_algorithm`, a plan that already names the expected build/test/benchmark or build/test/CUDA-profile path instead of assuming a Python training script
+- for `robotics_slam`, a plan that already names the expected build/test/offline-replay path, data backend, and trajectory/perception summaries instead of assuming a Python trainer
 
 If the reviewer outcome is weak, allow a lighter path:
 

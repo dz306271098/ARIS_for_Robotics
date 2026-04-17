@@ -13,7 +13,13 @@ from pathlib import Path
 from autonomy_lib import (
     allow_vast_reuse_without_provision,
     autonomy_state_path,
+    is_compiled_execution_profile,
+    is_cpu_benchmark_profile,
+    is_cpu_cuda_mixed_profile,
+    is_robotics_slam_profile,
+    is_slam_offline_profile,
     load_autonomy_profile,
+    load_execution_profile,
     load_gpu_profile,
     load_state,
     now_iso,
@@ -62,20 +68,45 @@ def build_workflow_args(args: argparse.Namespace, workflow: str) -> str:
     return args.topic or ""
 
 
-def build_prompt(workflow: str, workflow_args: str) -> str:
-    arg_literal = workflow_args.replace('"', '\\"')
-    return "\n".join([
+def build_prompt(workflow: str, workflow_args: str, execution_profile: dict[str, str]) -> str:
+    arg_literal = workflow_args.replace('"', '\"')
+    lines = [
         f'Run the `/{workflow}` skill for this project with arguments "{arg_literal}".',
         "",
         "Non-negotiable unattended-safe policy:",
-        "- Read CODEX.md, especially `## Autonomy Profile`, and obey it as the project contract.",
+        "- Read CODEX.md, especially `## Execution Profile`, `## CUDA Profile`, `## Robotics Profile`, and `## Autonomy Profile`, and obey them as the project contract.",
         "- Use `python3 tools/update_autonomy_state.py` to update AUTONOMY_STATE.json at each major phase transition, heartbeat, blocker, and completion.",
         "- Do not ask for human confirmation unless a hard safety boundary from the autonomy profile forces a stop.",
         "- Treat missing reviewer runtime, missing required W&B logging for unattended long runs, or forbidden cloud auto-provisioning as blocking conditions and record the blocker explicitly.",
         "- Use the autonomy-profile reviewer fallback policy: retry reviewer runtime first; if `review_fallback_mode` is `retry_then_local_critic`, a provisional local-critic pass is allowed only for intermediate progress and must set `review_mode=local_fallback` plus `review_replay_required=true` in AUTONOMY_STATE.json.",
         "- Never mark claim-freeze or final paper-polish stages as fully completed while `review_replay_required=true`.",
         "- Reuse existing workflow recovery files if they exist; do not restart completed work from scratch.",
-    ]) + "\n"
+    ]
+
+    if is_compiled_execution_profile(execution_profile):
+        lines.extend([
+            "- This project is using a compiled execution path: treat passing tests as a hard gate before benchmark runs, CUDA profiling sweeps, or offline SLAM replay.",
+            "- For non-training execution profiles, W&B is optional; rely on build logs, CTest results, benchmark summaries, trajectory/perception summaries, and profiler artifacts instead.",
+            "- Prefer `/dse-loop` and `/system-profile` as sidecars when the experiment plan calls for sweeps, CUDA hotspot diagnosis, or systems bottleneck analysis.",
+        ])
+
+    if is_cpu_benchmark_profile(execution_profile):
+        lines.append("- `runtime_profile: cpu_benchmark` should follow `cmake configure -> build -> ctest -> benchmark`, with machine-readable benchmark outputs.")
+
+    if is_cpu_cuda_mixed_profile(execution_profile):
+        lines.extend([
+            "- `runtime_profile: cpu_cuda_mixed` must keep nvcc/CMake CUDA, benchmark artifacts, and GPU profiling summaries (`perf`, `nsys`, or `ncu`) aligned with the experiment plan.",
+            "- Do not claim CUDA speedups without test-passing correctness and explicit evidence for kernel time, transfer cost, and throughput/overlap behavior.",
+        ])
+
+    if is_robotics_slam_profile(execution_profile) or is_slam_offline_profile(execution_profile):
+        lines.extend([
+            "- `project_stack: robotics_slam` / `runtime_profile: slam_offline` means offline dataset / rosbag / simulator execution only; never attempt autonomous real-robot runs.",
+            "- Use plain CMake by default; if `build_system: cmake_ros2`, treat ROS2 as an adapter (`colcon build`, `ros2 run` / launch) while keeping the same offline-only safety boundary.",
+            "- Do not let offline / simulator / rosbag evidence expand into real-robot claims; trajectory, perception, latency, and drift summaries must stay within offline scope.",
+        ])
+
+    return "\n".join(lines) + "\n"
 
 def run_health_check(repo_root: Path, project_root: Path, workflow: str) -> None:
     cmd = [
@@ -211,6 +242,7 @@ def main() -> int:
     project_root = Path(args.project_root).resolve()
     state_path = autonomy_state_path(project_root)
     profile = ensure_profile(project_root)
+    execution_profile = load_execution_profile(project_root)
     gpu_profile = load_gpu_profile(project_root)
 
     workflow = args.workflow
@@ -221,6 +253,10 @@ def main() -> int:
         if state.get("next_skill") in VALID_WORKFLOWS:
             workflow = str(state["next_skill"])
             workflow_args = str(state.get("next_args", workflow_args))
+
+    retry_count = int(state.get("retry_count", 0) or 0)
+    current_review_mode = str(state.get("review_mode", "external") or "external")
+    current_review_replay_required = bool(state.get("review_replay_required", False))
 
     if profile["allow_auto_cloud"] is False and gpu_profile.get("gpu", "").strip().lower() == "vast":
         if not allow_vast_reuse_without_provision(project_root):
@@ -241,14 +277,10 @@ def main() -> int:
             raise RuntimeError(
                 "This project is configured with `gpu: vast`, but unattended-safe mode forbids automatic cloud provisioning and no running instance was found in `vast-instances.json`."
             )
-
-    retry_count = int(state.get("retry_count", 0) or 0)
-    current_review_mode = str(state.get("review_mode", "external") or "external")
-    current_review_replay_required = bool(state.get("review_replay_required", False))
     if retry_count >= int(profile["max_auto_retries_per_stage"]):
         raise RuntimeError("Maximum unattended retries reached for the current stage. Inspect AUTONOMY_STATE.json before retrying.")
 
-    prompt = build_prompt(workflow, workflow_args)
+    prompt = build_prompt(workflow, workflow_args, execution_profile)
     supervisor_lock = lock_path(project_root)
     acquire_lock(supervisor_lock, workflow)
     try:
@@ -274,6 +306,7 @@ def main() -> int:
                 "workflow_args": workflow_args,
                 "project_root": str(project_root),
                 "generated_at": now_iso(),
+                "execution_profile": execution_profile,
                 "prompt": prompt,
             }
             print(json.dumps(payload, indent=2, ensure_ascii=False))

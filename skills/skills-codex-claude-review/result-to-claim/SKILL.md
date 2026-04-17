@@ -17,6 +17,7 @@ Experiments produce numbers; this gate decides what those numbers actually justi
 
 - **REVIEWER_MODEL = `claude-review`** — Claude reviewer invoked through the local `claude-review` MCP bridge. Set `CLAUDE_REVIEW_MODEL` if you need a specific Claude model override.
 - **REPEAT_PARTIAL_THRESHOLD = 2** — After two `partial` verdicts on the same claim, escalate to a deeper failure analysis instead of drifting forever.
+- **EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`** — Declares whether evidence should be interpreted as a training result package, a compiled/CUDA benchmark package, or an offline robotics / SLAM package.
 - **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of reviewer fallback policy in unattended-safe mode.
 - **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor for claim-freeze progress, provisional reviewer fallback, and replay requirements.
 
@@ -42,19 +43,19 @@ When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
 
 Pull evidence from the best sources available:
 
-1. **W&B** — metrics, learning curves, seed tables, baseline comparisons
+1. **Primary runtime evidence** — W&B for training projects; `build/build_report.json`, `results/benchmark_manifest.json`, `results/benchmark_summary.json`, `monitoring/last_benchmark_summary.json`, and when relevant `profiles/nsys_summary.json` for compiled/CUDA benchmark projects; `results/trajectory_summary.json`, `results/perception_summary.json`, and `monitoring/last_robotics_summary.json` for robotics / SLAM projects
 2. **`EXPERIMENT_LOG.md` / `EXPERIMENT_TRACKER.md`** — what was run and with which configs
-3. **Raw result files** — JSON, CSV, TensorBoard exports, or evaluation logs
+3. **Raw result files** — JSON, CSV, TensorBoard exports, evaluation logs, benchmark outputs, or profiler reports
 4. **`docs/research_contract.md` / `CODEX.md` / `RESEARCH_BRIEF.md`** — intended claim and success criteria
 5. **Research wiki** — if `research-wiki/` exists, inspect the corresponding `idea:` / `claim:` / `exp:` pages
 
 Assemble:
 
 - the exact intended claim
-- the tested scope: datasets, tasks, splits, ablations, seeds
+- the tested scope: datasets, tasks, splits, ablations, seeds, or benchmark matrix / input scales / repeat policy
 - baseline provenance: reproduced vs paper-reported
 - main deltas and whether they are statistically meaningful
-- caveats: missing baselines, weak seeds, unstable metrics, partial runs
+- caveats: missing baselines, weak seeds, unstable metrics, partial runs, failing tests, parser ambiguity, or profiler evidence that weakens the story
 
 Write a self-contained evidence brief to `CLAIMS_FROM_RESULTS.md` before routing:
 
@@ -92,7 +93,7 @@ mcp__claude-review__review_start:
     [dataset / config / seeds / baselines]
 
     Results:
-    [key metrics, deltas, confidence intervals or significance if available]
+    [key metrics, deltas, confidence intervals or significance if available; for compiled/CUDA projects include correctness status, runtime/memory/scaling numbers, repeat variance, kernel/copy/overlap evidence, and profiler artifacts; for robotics/SLAM projects include correctness status, ATE/RPE/latency/FPS/perception metrics, repeat variance, and failure-bucket evidence]
 
     Baseline provenance:
     [reproduced vs reported, tuning budget, evaluation parity]
@@ -242,5 +243,7 @@ If multiple ideas have recently failed or stalled at `partial`, explicitly recom
 - The reviewer judges; the executor routes. Keep those roles separate.
 - Never inflate a claim beyond the reviewer-approved scope.
 - Low-confidence `yes` is not a paper-ready claim.
+- For `cpp_algorithm`, a passing benchmark with failing tests is not claim support. Correctness is a hard gate before runtime, memory, or CUDA speedup claims.
+- For `robotics_slam`, offline / simulator / rosbag evidence is not a real-robot claim. Keep approved claims explicitly within offline scope.
 - Always preserve negative evidence and unsupported claim fragments in writing.
 - Record every verdict in `CLAIMS_FROM_RESULTS.md` and `findings.md`, even when the answer is disappointing.
