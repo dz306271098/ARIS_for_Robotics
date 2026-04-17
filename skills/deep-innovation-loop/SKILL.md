@@ -49,7 +49,40 @@ This is NOT a review-fix loop. This is a **research program** that discovers, sy
 | `TARGET_SCORE` | 8 | Primary stop condition (GPT-5.4 review score for target venue) |
 | `LIT_SEARCH_COOLDOWN` | 3 | Min rounds between literature searches on same topic |
 | `MAX_ACTIVE_VARIANTS` | 3 | Max variants proposed per round |
-| `FUSION_INTERVAL` | 5 | Every N rounds, run a special "fusion optimization" round |
+| `FUSION_INTERVAL` | 5 | Phase C Fusion rounds at rounds 5, 15, 25, 35, 45 (see precedence rule below) |
+| `CROSS_DOMAIN_INTERVAL` | 7 | Phase B replacement at rounds 7, 14, 21, 28, 35, 42 — forced Cross-Domain Analogy pass (see `../shared-references/divergent-techniques.md` Operator 4). Converts reactive cross-domain into deliberate creative step. Phase B only — no collision with C/E. |
+| `LEAP_ROUNDS` | {10, 20, 30} | Phase C rounds where cross-domain divergence is mandatory (see precedence rule below) |
+| `TRAJECTORY_CHECKPOINTS` | {15, 30, 45} | Phase E Step 2.9 Trajectory Reanalysis fires at these macro boundaries (see `../shared-references/reframing-triggers.md`). Phase E only — no collision with C. |
+
+### Round-Scheduling Precedence (resolves collisions at rounds 15, 30, 35)
+
+Different phases can fire on the same round:
+
+| Round | FUSION (Phase C) | LEAP (Phase C) | CROSS_DOMAIN (Phase B) | TRAJECTORY (Phase E) |
+|-------|:----------------:|:--------------:|:----------------------:|:--------------------:|
+| 10 | | ✓ | | |
+| 14 | | | ✓ | |
+| 15 | ✓ | | | ✓ |
+| 20 | | ✓ | | |
+| 21 | | | ✓ | |
+| 25 | ✓ | | | |
+| 28 | | | ✓ | |
+| 30 | | ✓ | | ✓ |
+| 35 | ✓ | | ✓ | |
+| 42 | | | ✓ | |
+| 45 | ✓ | | | ✓ |
+
+**Precedence rules** (when multiple fire on one round):
+
+1. **Phase B (`CROSS_DOMAIN_INTERVAL`)** is independent of Phase C/E — it only replaces Phase B's literature search. No collision possible with FUSION/LEAP/TRAJECTORY.
+
+2. **Phase C FUSION vs LEAP**: LEAP rounds {10,20,30} override FUSION rounds. On round 30, LEAP executes (not FUSION). Rationale: LEAP provides lateral creative jumps that a stagnant loop needs more than combinatorial optimization. FUSION rounds are 5/15/25/35/45 — the five rounds where `round % 5 == 0` AND round is NOT in LEAP_ROUNDS.
+
+3. **Phase E TRAJECTORY** always runs independently of Phase C outcome. On round 15 (FUSION + TRAJECTORY): Phase C runs as FUSION, then Phase E Step 2.9 TRAJECTORY runs on top of the FUSION results. On round 30 (LEAP + TRAJECTORY): Phase C runs as LEAP, Phase E TRAJECTORY runs. On round 45 (FUSION + TRAJECTORY): both run sequentially.
+
+4. **Round 35**: CROSS_DOMAIN (Phase B) + FUSION (Phase C) both fire — both run (Phase B replaces literature search, Phase C runs FUSION). No conflict.
+
+Summary: there are no true conflicts because collisions are across different phases. The precedence rules above resolve only the within-Phase-C ambiguity (FUSION vs LEAP on their overlap round 30 — resolved: LEAP wins).
 | `REVIEWER_MODEL` | gpt-5.4 | External reviewer model via Codex CLI |
 | `HUMAN_CHECKPOINT` | false | When true, pause after each round's diagnosis for user input |
 | `COMPACT` | false | When true, use compact logs for session recovery |
@@ -178,6 +211,26 @@ Repeat until a stopping condition is met.
 
 This is the critical differentiator from `auto-review-loop`. Instead of asking "what's wrong," ask "**why** is it wrong."
 
+**Step 0.5: Hypothesis Sparring (MANDATORY every round)** — see `../shared-references/hypothesis-sparring.md`.
+
+Before committing to any single root cause, generate **≥3 competing mechanistic hypotheses with probability weights in (0, 0.6) summing to 1.0**, and for each specify the cheapest falsifier. Run the cheapest-ranked falsifier first; update weights; proceed only when one hypothesis has weight ≥ 0.8 OR falsifier budget exhausted (2 falsifiers max).
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/hypothesis-sparring.md to the current failure pattern.
+
+Read:
+- innovation-logs/round-{N-1}/results.md
+- innovation-logs/score-history.csv (last 5 rounds)
+- src/ (relevant modules to reason about failure modes)
+
+Produce the hypothesis sparring table (≥3 competing hypotheses with weights, predicted evidence, cheapest falsifiers ranked by information-gain / cost).
+Run the #1-ranked falsifier only. Report the result and update weights. Do NOT design fixes.
+"
+```
+
+Save to `innovation-logs/round-NN/hypothesis-sparring.md`. The surviving hypothesis becomes the working root cause for the rest of Phase A.
+
 **Collaborative Root-Cause Reanalysis** (see `../shared-references/collaborative-protocol.md`):
 
 If `patience_counter >= 3` (no improvement for 3+ rounds), the current diagnosis may be WRONG. Before running the normal Phase A, trigger:
@@ -220,6 +273,61 @@ Claude responds with code/data evidence → GPT revises analysis → up to 4 tur
 Log to `innovation-logs/round-NN/collaborative-reanalysis.md`.
 
 Always use `--effort xhigh` for maximum reasoning depth.
+
+**Phase A.5: Assumption Attack (conditional — fires whenever diagnosis converges)** — see `../shared-references/reframing-triggers.md` Trigger 1.
+
+A convergent diagnosis is the danger zone: the loop is about to commit significant compute to fixing what may be a narrowly-correct-but-hiding-a-wrong-assumption diagnosis. Run Assumption Attack once before proceeding.
+
+**Fires when ANY of the following produce a convergent single root cause** (not doubly-conditional — fires in early rounds too):
+1. The Every-Round Phase A rescue call below produces a single-cause diagnosis (the common path, applies from Round 1 onward)
+2. Collaborative Reanalysis Step 1 (patience_counter ≥ 3) converges — the stuck-round path
+3. Step 0.5 Hypothesis Sparring converges on a surviving hypothesis with weight ≥ 0.8
+
+**Skip only when** the diagnosis is explicitly multi-cause (≥ 2 contributing root causes without one dominating). Multi-cause diagnoses are self-protective against the comfortable-convergence failure mode that Assumption Attack targets.
+
+**GATE (non-skippable when fired)**: before Phase B/C proceeds, verify Assumption Attack ran if convergence was detected:
+```bash
+if [ "$PHASE_A_CONVERGED" = "true" ]; then
+    test -f "innovation-logs/round-$N/assumption-attack.md" || { echo "HALT: Assumption Attack required after convergent diagnosis but output missing"; exit 1; }
+fi
+```
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/reframing-triggers.md Trigger 1 (Assumption Attack).
+
+Converged diagnosis: [the root cause the collaborative reanalysis agreed on]
+
+1. Parse the diagnosis — for each noun and verb, write the hidden assumption it encodes.
+2. Rank assumptions by fragility (1 clearly true, 5 clearly questionable). At least one must be rated ≥ 3.
+3. For the most fragile assumption, write the inverted hypothesis.
+4. Evidence check: does any existing evidence (logs, prior runs, ablations) look more consistent with inversion than with the diagnosis?
+5. Decision: proceed with original diagnosis, OR fork the inversion into Phase C as a competing variant design, OR replace the diagnosis if evidence clearly favors the inversion.
+"
+```
+
+Save to `innovation-logs/round-NN/assumption-attack.md`. If the decision is "fork inversion," add the inversion as a required additional variant in Phase C.
+
+---
+
+**Phase A execution enforcement** (see `../shared-references/codex-context-integrity.md` "Execution Enforcement Gates"):
+
+Before Phase B / C proceeds, verify the required Phase A artifacts exist for this round:
+
+```bash
+test -f "innovation-logs/round-$N/hypothesis-sparring.md" || { echo "HALT: Step 0.5 hypothesis sparring missing"; exit 1; }
+test -f "innovation-logs/round-$N/diagnosis.md" || { echo "HALT: Root cause diagnosis missing"; exit 1; }
+
+# If convergence triggered Phase A.5, assumption attack is also required:
+if [ "$PHASE_A_CONVERGED" = "true" ]; then
+    test -f "innovation-logs/round-$N/assumption-attack.md" || { echo "HALT: Assumption Attack required after convergent diagnosis"; exit 1; }
+fi
+
+# If patience_counter >= 3 triggered Step 1 collaborative reanalysis, that file is also required:
+if [ "$PATIENCE_COUNTER" -ge 3 ]; then
+    test -f "innovation-logs/round-$N/collaborative-reanalysis.md" || { echo "HALT: Collaborative reanalysis required when patience_counter >= 3"; exit 1; }
+fi
+```
 
 **Every round** — use a fresh `/codex:rescue` call (GPT-5.4 reads latest files directly; context accumulates in innovation-logs/ which GPT-5.4 reads):
 
@@ -288,16 +396,44 @@ Save to `innovation-logs/round-NN/diagnosis.md`.
 
 ---
 
-### Phase B: Targeted Literature Research (Conditional)
+### Phase B: Targeted Literature Research (Conditional) + Forced Cross-Domain Analogy
 
-**Goal**: Find techniques from the literature that address newly identified root causes.
+**Goal**: Find techniques from the literature that address newly identified root causes. On designated rounds, forcibly replace regular literature search with a proactive cross-domain analogy pass.
 
-**Trigger conditions** (Phase B is NOT executed every round — it triggers only when):
+**Proactive Cross-Domain Analogy Rounds** — fires on `round % CROSS_DOMAIN_INTERVAL == 0` (rounds 7, 14, 21, 28, 35, 42). These rounds **replace** regular Phase B with a deliberate analogical search, regardless of whether Phase A produced a new root cause.
+
+On a Cross-Domain round:
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/divergent-techniques.md Operator 4 (Cross-Domain Leap).
+
+Read:
+- innovation-logs/TECHNIQUE_LIBRARY.md — current best variant's principle set
+- innovation-logs/IDEA_DIVERGENCE_LOG.md (if exists) — previously-used source domains
+
+Source domain for this round: [DOMAIN — pick one from the Operator 4 rotating pool that has NOT been used in the last 3 entries of IDEA_DIVERGENCE_LOG. Priority to most distant: physics, biology, economics, signal processing, linguistics, materials science, neuroscience, games, ecology, music.]
+
+Steps:
+1. Abstract our current best variant's problem structure in 2 sentences using domain-neutral vocabulary.
+2. Find an analogous phenomenon in [DOMAIN]. Name it in [DOMAIN]'s native vocabulary.
+3. Identify the principle that makes the [DOMAIN] solution effective — one domain-agnostic sentence (cite principle-extraction.md Layer 3).
+4. Translate the principle into our problem's vocabulary. Re-derive a realization from scratch.
+5. Explicitly state what from [DOMAIN] we are NOT importing (Anti-Copying Guard).
+6. Produce one concrete UNTESTED technique entry for TECHNIQUE_LIBRARY.md, tagged `cross-domain-analogy`, with source domain logged.
+
+Append [DOMAIN] to IDEA_DIVERGENCE_LOG.md.
+"
+```
+
+Add the output to `TECHNIQUE_LIBRARY.md` as UNTESTED with tag `cross-domain-analogy`. This becomes a candidate for Phase C variants in subsequent rounds.
+
+**Regular Phase B trigger conditions** (on non-Cross-Domain rounds, Phase B is NOT executed every round — it triggers only when):
 - Phase A identified a root cause NOT already covered in `TECHNIQUE_LIBRARY.md`
 - At least `LIT_SEARCH_COOLDOWN` rounds have passed since last search on the same topic
 - Phase A identified a promising analogy to another field
 
-**If none of these conditions are met**: Skip Phase B, proceed directly to Phase C using existing knowledge from `TECHNIQUE_LIBRARY.md`.
+**If none of these conditions are met AND this is not a Cross-Domain round**: Skip Phase B, proceed directly to Phase C using existing knowledge from `TECHNIQUE_LIBRARY.md`.
 
 **For each new root cause requiring research:**
 
@@ -378,7 +514,33 @@ Save search results to `innovation-logs/round-NN/research.md`.
 | **Refine** (rounds PHASE_EXPLORE+1 to PHASE_EXPLORE+PHASE_REFINE) | Fusion optimization: systematically test technique combinations | Hyperparameter + architecture tuning of best variant |
 | **Polish** (rounds beyond PHASE_EXPLORE+PHASE_REFINE) | Ablation-guided trimming: remove unnecessary complexity | Edge case handling and robustness improvements |
 
-**Special case — Fusion Round** (triggered when `round % FUSION_INTERVAL == 0`, e.g., rounds 5, 10, 15, 20...):
+**Special case — Leap Round** (triggered when `round in LEAP_ROUNDS = {10, 20, 30}`):
+
+Replace normal Phase C with a forced cross-domain divergence pass. This complements Fusion rounds (5/15/25) by ensuring the loop gets three guaranteed lateral-thinking injections per 50-round run.
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/divergent-techniques.md Operator 4 (Cross-Domain Leap) AND Operator 1 (SCAMPER) to the current best variant.
+
+Read:
+- innovation-logs/TECHNIQUE_LIBRARY.md — cumulative principles (especially cross-domain-analogy tagged entries)
+- innovation-logs/BLACKLIST.md — do NOT propose anything similar
+- innovation-logs/IDEA_DIVERGENCE_LOG.md — previously-used source domains (rotate)
+- src/ — current best variant implementation
+
+Step 1 — Cross-Domain Leap: sample ONE source domain not used in last 3 log entries. Produce 1 concrete variant that embodies a [DOMAIN] principle re-specialized for our problem.
+
+Step 2 — SCAMPER: apply 2 of the 7 operators (Substitute, Combine, Adapt, Modify, Put-to-other-use, Eliminate, Reverse) to the current best variant. Produce 2 structurally different variants.
+
+Output: 3 candidate variants (1 cross-domain + 2 SCAMPER). Each tagged with the operator that produced it. Each must pass the adversarial challenge in the same round.
+
+Log the source domain to IDEA_DIVERGENCE_LOG.md.
+"
+```
+
+Leap rounds share Phase C's adversarial challenge (devil's advocate) — weak variants are still killed before implementation.
+
+**Special case — Fusion Round** (triggered when `round % FUSION_INTERVAL == 0`, e.g., rounds 5, 15, 25, note: rounds 10/20/30 are LEAP not FUSION):
 
 Replace normal Phase C with a fusion-specific round:
 
@@ -462,15 +624,32 @@ Current method (v{N-1}) if different from best:
     - Prefer techniques with UNTESTED status in the library
 ```
 
-**Adversarial Challenge** (GPT-5.4 plays devil's advocate on the proposed variants):
+**Pre-Adversarial Failure-Library Check** (NEW, runs before Adversarial Challenge):
 
-After receiving the variant proposals, immediately challenge them with a second rescue call:
+For each variant proposed, query the wiki failure library to surface known failure patterns BEFORE the adversarial challenge. This lets the adversarial prompt reference specific documented failures rather than only speculating.
+
+```
+If research-wiki/ exists:
+  For each variant in innovation-logs/round-NN/innovation.md:
+    1. Extract the principles it embodies (from the PRINCIPLE GROUNDING field — Phase 1 of this skill already requires this).
+    2. For each principle, query research-wiki/failures/ for failure patterns with failure_mode_of edges to that principle.
+    3. Detect OVERLAP: do any failure patterns afflict ≥ 2 of the variant's principles simultaneously? Co-occurring failures indicate the variant sits in a known failure cluster.
+    4. Check research-wiki/AUDIT_REPORT.md analysis (d) for Unresolved failures + failure-clusters that match.
+    5. Produce variant_failure_context.md per variant with: | principle | known failures (slug) | status | applies? | resolutions if any |
+```
+
+Append `variant_failure_context.md` (one per variant) to the adversarial prompt below, so the adversarial reviewer has specific failures to reference. If the library has no relevant failures, note "no library coverage for this variant's principles" in the prompt.
+
+**Adversarial Challenge** (GPT-5.4 plays devil's advocate on the proposed variants — now informed by failure library):
+
+After the failure-library check, immediately challenge the variants:
 
 ```
 /codex:rescue --effort xhigh "
 [Round N — ADVERSARIAL CHALLENGE]
 
 Read the variant proposals in innovation-logs/round-NN/innovation.md.
+Read the failure context in innovation-logs/round-NN/variant_failure_context_*.md (if produced).
 Also read src/ to understand the current codebase.
 
 Play DEVIL'S ADVOCATE on the proposed variants.
@@ -483,7 +662,13 @@ Play DEVIL'S ADVOCATE on the proposed variants.
     4. EVALUATION TRAP: How could this variant appear to improve metrics 
        but actually be a flawed improvement (e.g., overfitting, unfair 
        comparison, metric gaming)?
-    5. SURVIVAL VERDICT: After your own critique, which variant(s) survive?
+    5. KNOWN FAILURE CHECK (if variant_failure_context present): for each 
+       failure pattern in the context that applies to this variant, does 
+       the variant have a specific mechanism that breaks the failure trigger, 
+       or does it just hope the failure won't manifest? Hope is not a mechanism.
+       Failed pattern addressing ⇒ FATAL FLAW unless the variant names a 
+       concrete failure-breaking mechanism.
+    6. SURVIVAL VERDICT: After your own critique, which variant(s) survive?
        Kill any variant whose fatal flaw is unresolvable.
     
     Be BRUTALLY honest. The purpose is to eliminate weak ideas BEFORE 
@@ -770,6 +955,88 @@ Save to `innovation-logs/round-NN/failure-analysis.md`.
 
 > **Rule: ANY code change — including bug fixes from failure analysis — must pass Step 1.1 adversarial review before experiments.**
 
+**GATE (outcome enforcement)**: Step 2.7 rescue's outcome must be persisted to state before Phase E Step 3 proceeds. Write to `innovation-logs/round-${N}/failure-analysis-verdict.json`:
+
+```json
+{
+  "round": N,
+  "outcome": "implementation_bug" | "integration_conflict" | "hypothesis_wrong" | "insufficient_tuning" | "salvageable",
+  "retry_phase_d": true|false,
+  "persist_to_wiki": true|false,
+  "reasoning": "..."
+}
+```
+
+Phase E Step 3 reads this file:
+- If `retry_phase_d: true` and we have not yet retried this round → return to Phase D Step 1 with the revised approach (tracked via round sub-index: `round-${N}.${retry_count}`)
+- If `retry_phase_d: false` → mark variant according to outcome enum, proceed to Step 3
+
+Without this file, Phase E Step 3 halts — preventing silent deferral of "salvageable" outcomes.
+
+**Persist failure to wiki (NEW — when the mechanistic cause is generalizable)**:
+
+If the rescue analysis identified a mechanistic root cause (Hypothesis wrong, Integration conflict with a domain-agnostic trigger, or a systemic pattern not just hyperparameter sensitivity), upsert as a new failure-pattern to `research-wiki/failures/`:
+
+```
+If research-wiki/ exists AND rescue produced a generalizable mechanistic cause:
+  Apply shared-references/failure-extraction.md 5-layer protocol to the rescue findings:
+    Layer 1: Surface failure = the variant's regressed metric pattern
+    Layer 2: Underlying trigger = rescue's mechanistic cause (domain-agnostic)
+    Layer 3: Generalization = the condition under which any method with this principle would fail
+    Layer 4: Adaptation check = does this apply beyond our project?
+    Layer 5: Status = active (we did not resolve it)
+  Then:
+    /research-wiki upsert_failure-pattern <slug> — from: exp:<round-N-exp-id>
+    add_edge(exp:<round-N-exp-id>, failure-pattern:<slug>, "manifested_as")
+    for each principle in variant's PRINCIPLE GROUNDING:
+        add_edge(failure-pattern:<slug>, principle:<slug>, "failure_mode_of")
+```
+
+This closes the loop: the loop's own failures become cross-project knowledge. Future projects will find this failure in the library before designing variants with the same principles.
+
+**Step 2.9: Trajectory Reanalysis (MANDATORY at `round in TRAJECTORY_CHECKPOINTS = {15, 30, 45}`)** — see `../shared-references/reframing-triggers.md` Trigger 3.
+
+At the three macro boundaries, diff the current winning lineage against round 0 commitments and ask: which early commitment now looks wrong given subsequent evidence? If the answer is strong enough, propose a **branch-reset** variant for round N+1.
+
+**Fires at**: rounds {15, 30, 45} unconditionally (even if the round succeeded).
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/reframing-triggers.md Trigger 3 (Trajectory Reanalysis).
+
+Read:
+- innovation-logs/EVOLUTION_LOG.md — method lineage (full)
+- innovation-logs/TECHNIQUE_LIBRARY.md — tested principles, especially TESTED-POSITIVE
+- innovation-logs/score-history.csv — full progression
+- innovation-logs/INNOVATION_STATE.json — current best, plateau deltas
+- research-wiki/AUDIT_REPORT.md (if exists) — contextualize trends
+
+Checkpoint: round {15 | 30 | 45}
+
+Step 1 — Identify the single earliest commitment (rounds 0–5) that now looks questionable given what we have learned since.
+Step 2 — Construct the branch-reset variant: take current best, replace the questionable commitment with the better one, keep everything else.
+Step 3 — Estimate expected improvement and cost.
+  - Expected improvement / current plateau delta
+  - Cost vs one normal round
+Step 4 — Decision:
+  - If ratio > 1.5 AND cost < 2× a normal round: propose branch-reset as a required Phase C candidate for round N+1
+  - If ratio ≤ 1.5: trajectory is sound; no reset
+  - If cost prohibitive: log as 'retrospectively questionable' for post-loop reflection
+
+Write to TRAJECTORY_REANALYSIS_CHECKPOINT_{15|30|45}.md.
+"
+```
+
+If the decision is "propose branch-reset," the branch-reset variant is automatically added to Phase C's required variants in round N+1.
+
+**GATE (non-skippable when `$N in {15, 30, 45}`)** — before Phase E Step 3 proceeds at checkpoint rounds, verify the trajectory reanalysis artifact exists:
+
+```bash
+if [ "$N" -eq 15 ] || [ "$N" -eq 30 ] || [ "$N" -eq 45 ]; then
+    test -f "innovation-logs/TRAJECTORY_REANALYSIS_CHECKPOINT_${N}.md" || { echo "HALT: Trajectory Reanalysis mandatory at checkpoint round $N but artifact missing"; exit 1; }
+fi
+```
+
 **Step 3: Technique library update**
 - For each technique used in this round's variant:
   - If the round improved: mark as `TESTED-POSITIVE` (or update existing positive entry with conditions)
@@ -816,26 +1083,63 @@ Save to `innovation-logs/round-NN/failure-analysis.md`.
 - Check: is the current method still aligned with the target venue, domain, and baseline?
 - If drift detected (e.g., method has become too complex for a letter, or no longer comparable to baseline): flag and correct course in next round
 
-**Step 8: Macro phase transition check**
+**Step 8: Macro phase transition check + Problem Reframing Gate**
+
+When a macro phase patience counter is about to trigger transition, first run **Problem Reframing** (see `../shared-references/reframing-triggers.md` Trigger 2). This is the gate that asks whether the next phase should even be entered on the same problem, or whether the loop should pivot to a reframed problem.
+
+```
+Problem Reframing Gate (fires BEFORE macro transition):
+
+if (macro_phase == "explore" AND patience_counter >= PATIENCE_EXPLORE) OR
+   (macro_phase == "refine" AND patience_counter >= PATIENCE_REFINE):
+
+    /codex:rescue --effort xhigh "
+    Apply shared-references/reframing-triggers.md Trigger 2 (Problem Reframing).
+
+    Read:
+    - Research Anchor (frozen, in innovation-logs/)
+    - innovation-logs/score-history.csv (last 5 rounds — the plateau)
+    - innovation-logs/TECHNIQUE_LIBRARY.md
+
+    Produce up to 3 reframings, each tagged (metric | decomposition | family). For each:
+    - Reframed problem statement
+    - What changes, what stays
+    - Cost vs restart
+    - Recommendation: ADOPT | EVALUATE-FIRST | REJECT
+
+    If top-ranked is ADOPT on a family reframing: write REFRAMING_DECISION.md and seed Phase A of the next round with the new method family (DO NOT transition to refine/polish on the old frame).
+    If top-ranked is EVALUATE-FIRST: schedule a pilot round that tests the reframing cheaply before committing.
+    If all REJECT: proceed with the normal macro transition below.
+    "
+
+    Read REFRAMING_DECISION.md:
+    - If ADOPT: skip the macro transition logic below; next round starts in the reframed problem with fresh patience_counter = 0
+    - If EVALUATE-FIRST: next round is a one-shot pilot of the reframed variant; transition decision deferred
+    - If REJECT: proceed with normal macro transition below
+```
+
+**Normal macro transition (fires only if reframing gate REJECTED all reframings):**
 
 ```
 if macro_phase == "explore":
     if patience_counter >= PATIENCE_EXPLORE:
         macro_phase = "refine"
         patience_counter = 0
-        Log: "Transitioning from EXPLORE to REFINE — exploration plateau reached"
+        Log: "Transitioning from EXPLORE to REFINE — exploration plateau reached, reframings rejected"
 
 elif macro_phase == "refine":
     if patience_counter >= PATIENCE_REFINE:
         macro_phase = "polish"
         patience_counter = 0
-        Log: "Transitioning from REFINE to POLISH — refinement plateau reached"
+        Log: "Transitioning from REFINE to POLISH — refinement plateau reached, reframings rejected"
 
 elif macro_phase == "polish":
     if patience_counter >= PATIENCE_POLISH:
         STOP LOOP
         Log: "POLISH patience exhausted — terminating"
 ```
+
+Note: the reframing gate does NOT fire at the polish→terminate boundary. Polish is already the final phase — reframing at that point would restart the loop rather than transition. If polish exhausts, terminate.
 
 **Step 9: Write state**
 - Update `INNOVATION_STATE.json` with all current state

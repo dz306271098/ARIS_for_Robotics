@@ -44,6 +44,26 @@ For EACH core claim, search using ALL available sources:
 
 3. **Read abstracts**: For each potentially overlapping paper, WebFetch its abstract and related work section
 
+### Phase B.5: Failure-Library Cross-Check (if research-wiki/failures/ exists)
+
+A method can be **syntactically novel** (no paper does exactly this) but **semantically a known failure** (papers have tried similar principles and failed). This phase catches the second case before wasting pilot compute.
+
+```
+If research-wiki/failures/ exists:
+    1. Extract the principles embodied by the proposed method (apply shared-references/principle-extraction.md Layer 2 — no need to persist, just identify).
+    2. For each principle, grep research-wiki/failures/ for failure patterns with failure_mode_of edges to that principle.
+    3. For each match, apply shared-references/failure-extraction.md Layer 4 (Adaptation check): does the method satisfy the failure's generalized conditions?
+    4. If ≥ 1 match applies AND status=active AND resolved_by_principles=[]:
+       → Flag as SEMANTICALLY REDUNDANT — "novel on surface, embodies known unresolved failure pattern <slug>"
+       → Downgrade novelty score
+    5. If matches exist but all are resolved:
+       → Document which principles in the method resolve them; use in "Suggested Positioning"
+       → Novelty slightly boosted if the method's resolution mechanism is itself novel
+    6. If no matches: standard novelty analysis proceeds without failure penalty
+```
+
+The output is appended to the Phase D report as a "Failure-Library Cross-Check" section with the matching failure patterns (if any) and their resolution status.
+
 ### Phase C: Cross-Model Verification
 Call REVIEWER_MODEL via Codex CLI with structured output:
 ```bash
@@ -76,11 +96,15 @@ Output a structured report:
 | Paper | Year | Venue | Overlap | Key Difference |
 |-------|------|-------|---------|----------------|
 
+### Failure-Library Cross-Check (if research-wiki/failures/ exists)
+- Matching failure patterns: [list failure-pattern:<slug> with status]
+- Semantic novelty impact: [boost / neutral / penalty with reason]
+
 ### Overall Novelty Assessment
 - Score: X/10
-- Recommendation: PROCEED / PROCEED WITH CAUTION / ABANDON
+- Recommendation: PROCEED / PROCEED WITH CAUTION / ABANDON / SEMANTICALLY REDUNDANT (new verdict — idea is surface-novel but embodies a known unresolved failure; recommend redesign or abandon)
 - Key differentiator: [what makes this unique, if anything]
-- Risk: [what a reviewer would cite as prior work]
+- Risk: [what a reviewer would cite as prior work; ALSO: failure patterns the method may trigger]
 
 ### Suggested Positioning
 [How to frame the contribution to maximize novelty perception]

@@ -138,7 +138,15 @@ Save the rescue report to `findings.md` under `## Failure Analysis: [idea name]`
    - Constraints for future attempts (what NOT to try again)
    - If salvageable: the revised approach proposed by rescue
 2. Update CLAUDE.md Pipeline Status
-3. Decide: fix implementation / try revised approach / pivot to next idea from IDEA_CANDIDATES.md
+3. **Persist failure to research-wiki (NEW — if research-wiki/ exists AND root cause is mechanistic/generalizable)**:
+   - Apply `../shared-references/failure-extraction.md` 5-layer protocol to the rescue findings
+   - `/research-wiki upsert_failure-pattern <slug> — from: exp:<current-exp-id>`
+   - Add edges:
+     - `manifested_as` (exp:<id> → failure-pattern:<slug>)
+     - For each principle the failed method embodied: `failure_mode_of` (failure → principle)
+   - This closes the loop: the idea's failure becomes cross-project memory. Future projects querying the wiki will see this failure before designing similar methods.
+   - **Skip if**: the failure is purely an implementation bug or single-seed anomaly (not generalizable). Persistence is for **mechanistic** failures that would recur with the same principles + conditions.
+4. Decide: fix implementation / try revised approach / pivot to next idea from IDEA_CANDIDATES.md
 
 #### `partial` — Claim partially supported
 

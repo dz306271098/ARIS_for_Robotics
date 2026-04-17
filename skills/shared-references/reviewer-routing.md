@@ -144,12 +144,71 @@ claude mcp add oracle -s user -- oracle-mcp
 | Quick iterative fixes | Standard `codex exec` (faster) |
 | Code review | `/codex:adversarial-review` (specialized for code) |
 
+## Reviewer Roles (Orthogonal Axis to Channel)
+
+The `-- reviewer-role` axis is **orthogonal** to `-- reviewer:` (channel) and `-- effort:` (intensity). It controls what the reviewer DOES, not which model/backend provides the review.
+
+### The three roles
+
+| Role | When | What the reviewer produces |
+|------|------|---------------------------|
+| `adversarial` (default) | Default for all review calls | Scores + blocking weaknesses + concrete fix suggestions. Current behavior unchanged. |
+| `collaborative` | Escalation after stuck rounds (auto-triggered by `collaborative-protocol.md`) | Joint design: theoretical analysis + co-designed solution. No scoring. |
+| `lateral` | Plateau with 2+ unchanged scores, OR manually for idea-refresh | Propose 2 lateral reframings + 1 cross-domain analogy. No critique, no scoring. Uses `divergent-techniques.md` Operator 4. |
+
+### Role composition
+
+`reviewer-role` composes freely with `reviewer` (channel) and `effort`:
+
+```
+/auto-review-loop "topic" — reviewer: codex                                         # default: adversarial
+/auto-review-loop "topic" — reviewer: codex — reviewer-role: lateral                # lateral via codex exec
+/auto-review-loop "topic" — reviewer: oracle-pro — reviewer-role: lateral           # lateral via GPT-5.4 Pro
+/research-review "topic" — reviewer-role: collaborative                             # collaborative via default channel
+```
+
+### Lateral role prompt stanza
+
+When `-- reviewer-role: lateral` is set, the review prompt's scoring / critique template is replaced with:
+
+```
+Read the work directly (files, diff, or project state as specified).
+
+Do NOT score this work. Do NOT list weaknesses. Do NOT propose fixes.
+
+Instead:
+1. Read shared-references/divergent-techniques.md.
+2. Pick ONE cross-domain source field (Operator 4 rotating pool). Prefer a field whose vocabulary does not appear in the current work.
+3. Propose TWO lateral reframings of the problem this work addresses — each must change either the metric, the decomposition, or the method family (see reframing-triggers.md Trigger 2 for definitions).
+4. Propose ONE cross-domain analogy from the selected source field: the principle that makes that field's solution work, translated into this problem's vocabulary (Layer 3 of principle-extraction.md).
+
+Output format:
+- Reframing 1: [tag] [statement] [why it is motivated]
+- Reframing 2: [tag] [statement] [why it is motivated]
+- Cross-domain analogy: [source field] [principle] [concrete proposal in our vocabulary]
+```
+
+### Auto-trigger rules
+
+| Skill | When lateral mode fires automatically |
+|-------|--------------------------------------|
+| `/auto-review-loop` | 2 consecutive rounds with unchanged overall score AND no reframing has been proposed in those rounds |
+| `/deep-innovation-loop` | Explicitly at LEAP_ROUNDS = {10, 20, 30} via Phase C Leap Round (different mechanism but same underlying operator) |
+| Others | Manual only — user passes `-- reviewer-role: lateral` |
+
+### What does NOT change
+
+- `collaborative` role is the existing behavior defined in `collaborative-protocol.md` — this section just names it explicitly for orthogonality.
+- The three reviewer channels (codex / rescue / adversarial) and Oracle Pro remain the backends; `reviewer-role` changes the prompt template, not the backend.
+- Scoring dimensions (when `adversarial` mode is active) remain venue-specific as before.
+
 ## Routing Logic (add to any reviewer-invoking skill)
 
 ```
-Parse $ARGUMENTS for `-- reviewer:` directive.
+Parse $ARGUMENTS for `-- reviewer:` directive (selects CHANNEL — which backend).
+Parse $ARGUMENTS for `-- reviewer-role:` directive (selects ROLE — what the reviewer does).
 
-If not specified OR `-- reviewer: codex`:
+If `-- reviewer:` not specified OR `-- reviewer: codex`:
     -> Use codex exec --sandbox read-only -m gpt-5.4 with reasoning effort xhigh
     -> This is the DEFAULT. No change from current behavior.
 
@@ -167,12 +226,29 @@ If `— reviewer: oracle-pro`:
     -> Check if mcp__oracle__consult tool is available
     -> If available: use Oracle MCP with model "gpt-5.4-pro", pass file paths
     -> If NOT available: print "Oracle MCP not installed. Falling back to Codex xhigh.", use codex exec
+
+After channel resolution, resolve ROLE:
+
+If `-- reviewer-role:` not specified OR `-- reviewer-role: adversarial`:
+    -> Use the default scoring + weakness-list prompt for the invoking skill
+    -> This is the DEFAULT. No change from current behavior.
+
+If `-- reviewer-role: collaborative`:
+    -> Replace the standard prompt with the collaborative template from collaborative-protocol.md
+    -> Same channel, different prompt
+    -> Typically auto-triggered on escalation, not manually
+
+If `-- reviewer-role: lateral`:
+    -> Replace the standard prompt with the lateral template above (no scoring; 2 reframings + 1 cross-domain analogy)
+    -> Same channel, different prompt
+    -> Auto-triggered by auto-review-loop on 2 consecutive unchanged scores; manually available in research-review
 ```
 
 ## Invariants
 
 - **Reviewer independence** — GPT-5.4 always reads files directly; Claude never summarizes on GPT-5.4's behalf
 - **Effort orthogonality** — `effort` and `difficulty` parameters do not change the reviewer backend or reasoning effort (always xhigh)
+- **Role orthogonality** — `reviewer-role` changes the prompt template, NOT the backend or reasoning effort. All roles compose freely with all channels and all effort levels.
 - **`beast` mode** — may RECOMMEND `-- reviewer: rescue` for deeper analysis but never requires it
 - **Anti-framing** — before every review call, Claude must run the Anti-Framing Self-Check from `codex-context-integrity.md`
 - **Review Feedback Verification** — after receiving review results, Claude must follow the Review Feedback Verification Protocol from `codex-context-integrity.md` (evaluate, dispute with evidence if needed, log all decisions)
@@ -205,6 +281,16 @@ Post-fix validation?                  -> -- reviewer: adversarial (automatic)
 Pre-submission final audit?           -> -- reviewer: rescue
 Need the strongest reviewer?          -> — reviewer: oracle-pro (if installed)
 ```
+
+## Role Selection Guide
+
+```
+Default scoring + weakness list       -> no parameter (adversarial)
+Joint design with reviewer            -> -- reviewer-role: collaborative (auto on escalation)
+Lateral reframing + cross-domain      -> -- reviewer-role: lateral (auto on plateau)
+```
+
+Role and channel compose. Example: `-- reviewer: oracle-pro — reviewer-role: lateral` = GPT-5.4 Pro in lateral mode.
 
 ## Reference
 

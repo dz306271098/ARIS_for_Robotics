@@ -370,13 +370,34 @@ python3 "$S2_SCRIPT" author-papers "Author Name" --max 20
 ```
 This catches papers where the title uses novel terminology that no keyword query would find.
 
-### Step 2: Analyze Each Paper
+### Step 2: Analyze Each Paper + Mandatory Principle Extraction
+
 For each relevant paper (from all sources), extract:
 - **Problem**: What gap does it address?
 - **Method**: Core technical contribution (1-2 sentences)
 - **Results**: Key numbers/claims
 - **Relevance**: How does it relate to our work?
 - **Source**: Where we found it (Zotero/Obsidian/local/web) — helps user know what they already have vs what's new
+
+**Mandatory dual extraction for the top 5–8 most relevant papers**:
+- 5-layer **principle extraction** via `../shared-references/principle-extraction.md`
+- 5-layer **failure-pattern extraction** via `../shared-references/failure-extraction.md`
+
+This is a MUST, not a SHOULD — both extractions only have leverage if they happen consistently. Both run in a **single Codex call** per paper (principles from Method + Results; failure patterns from Limitations + negative ablations) — no doubled cost.
+
+For each of the top 5–8 papers (ranked by relevance + citation count + venue):
+
+1. Apply the **principle** 5-layer protocol: surface method → underlying principle → generalization → adaptation → anti-copying guard. Produce the principle record per `principle-extraction.md`'s output template.
+2. Apply the **failure-pattern** 5-layer protocol: surface failure → underlying trigger → generalization → adaptation check → resolution status. Produce failure records per `failure-extraction.md`'s output template. A paper may produce 0 failure patterns (no Limitations discussion) or several; do not force a count.
+3. If `research-wiki/` exists, persist both:
+   ```
+   /research-wiki upsert_principle <slug> — from: paper:<slug>
+   /research-wiki upsert_failure-pattern <slug> — from: paper:<slug>
+   ```
+   The wiki handles dedup and edge creation. Add `failure_mode_of` edges from each failure to the principles it affects, and `resolved_by` edges from each principle the paper's method uses to resolve a previously-documented failure.
+4. If no `research-wiki/`, inline both records in the research-lit output file (subsections `principles/` and `failures/` at the end of this step).
+
+**Why mandatory?** Without enforcement, principles and failure patterns stay scattered across skill outputs and never accumulate into queryable libraries. Extraction at ingest is the only way to build the cross-project substrate over time. The symmetry principle ↔ failure is what makes design-time queries ("what failure patterns affect the principles my variant embodies?") cheap and useful.
 
 ### Step 2.5: Gap-Driven Expansion (one round)
 
@@ -393,11 +414,48 @@ After analyzing the initial batch, check if the collected papers reveal **termin
 - Maximum 3 new queries
 - Only triggers if genuinely distinct terminology is found — do NOT repeat variants of existing queries
 
-### Step 3: Synthesize
-- Group papers by approach/theme
-- Identify consensus vs disagreements in the field
-- Find gaps that our work could fill
-- If Obsidian notes exist, incorporate the user's own insights into the synthesis
+### Step 3: Synthesize (STRUCTURED OUTPUT, not prose)
+
+Replace narrative synthesis with three structured tables. Narratives are too easy to skip or skim; tables force explicit enumeration.
+
+**Table A — Approach clusters**:
+| Cluster | Core approach | Representative papers | When it works / when it fails |
+|---------|---------------|-----------------------|-------------------------------|
+| ... | ... | ... | ... |
+
+**Table B — Contradictions** (MUST have ≥3 entries if the literature base has ≥10 papers; if fewer, show what you found):
+| Metric / claim | Paper A claim | Paper B claim | Resolution status | Matches wiki failure? | Next action |
+|----------------|---------------|---------------|-------------------|----------------------|-------------|
+| ... | ... | ... | OPEN / RECONCILED / OBSOLETE | failure-pattern:<slug> if any | ... |
+
+*Contradiction ↔ failure-pattern cross-reference*: when a contradiction matches a known failure-pattern's generalized condition (e.g., "method works at small scale, fails at large scale" contradicts "method works" — both are manifestations of a scalability failure-pattern), cite the failure-pattern in the "Matches wiki failure?" column and add the contradicting papers to the failure's `evidence_papers[]` via `/research-wiki upsert_failure-pattern`. Many contradictions ARE failure-patterns that manifest only under specific conditions.
+
+**Table C — Trend arcs** (MUST have ≥3 entries):
+| Technique / principle | Year range | Direction | Supporting papers | Prediction |
+|----------------------|------------|-----------|-------------------|------------|
+| ... | 2021-2025 | RISING / DECLINING / STABLE | [3-5 papers] | Will this continue? |
+
+Plus a narrative paragraph (≤ 200 words) on the **gaps our work could fill**, informed by:
+- Open contradictions from Table B
+- Declining-but-not-replaced techniques from Table C
+- Missing cells in the Approach Clusters (Table A) coverage
+- Obsidian note insights (if available — the user's own perspective on what is missing)
+
+### Step 3.5: Auto-Scan for Principle Clusters and Contradictions
+
+Deterministic pass that runs over the extracted principles (from Step 2) and collected paper metadata. Cheap; augments Step 3 Table B and Table C automatically.
+
+**Principle clustering**: group the extracted principles by Layer-2 (one-sentence underlying principle) cosine similarity. Principles with similarity ≥ 0.7 form a cluster. Flag clusters with ≥ 3 papers but NO tested_in_projects entries (if research-wiki present) as **latent opportunities** — the highest-leverage ideation seeds.
+
+**Contradiction heuristic scan**: for each pair of top papers, check their `Key Results` sections for the same metric keyword with opposite direction (e.g., "improves" vs "degrades" the same metric). Ambiguous pairs adjudicated by:
+
+```
+codex exec --sandbox read-only -m gpt-5.4 "Read these two papers' Key Results sections. Do they contradict each other on metric X? Answer YES / NO / AMBIGUOUS with one-sentence rationale."
+```
+
+Append findings to Step 3 Table B (contradictions) and the narrative paragraph (latent-opportunity principles).
+
+**Graceful degradation**: if `research-wiki/` absent, still run the scan but emit results inline in the research-lit output file instead of persisting to wiki. If literature base has < 10 papers, the heuristic scan is light-weight; still run it.
 
 ### Step 4: Output
 Present as a structured literature table:

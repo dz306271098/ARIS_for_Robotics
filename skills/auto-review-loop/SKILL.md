@@ -73,6 +73,33 @@ Long-running loops may hit the context window limit, triggering automatic compac
 
 #### Phase A: Review
 
+**Step A.0.0: Hypothesis Sparring (when Round ≥ 2)** — see `../shared-references/hypothesis-sparring.md`.
+
+Fires when the previous round produced a non-passing score AND the loop is entering Round 2 or later. Forces generation of **≥3 competing hypotheses** for why the previous round's fixes did not produce a passing review, before committing to Step A.0's file audit.
+
+Skip entirely on Round 1 (no prior failure to diagnose).
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/hypothesis-sparring.md.
+
+Previous round (Round N-1) applied fixes [summary from AUTO_REVIEW.md Round N-1 Actions Taken] but the reviewer still flagged [BLOCKING weaknesses that remained or were added in Round N-1 review].
+
+Produce ≥3 competing hypotheses for WHY the Round N-1 fixes did not resolve the reviewer's concern. Weights in (0, 0.6) summing to 1.0. For each, specify the cheapest falsifier (check existing logs, re-read AUTO_REVIEW.md Round N-1 details, inspect code diff — prefer zero-compute falsifiers).
+
+Run the cheapest falsifier. Report results. The surviving hypothesis becomes the working framing for this round's Phase B.5 fix strategy design.
+"
+```
+
+Save to `AUTO_REVIEW.md` under the current round's `## Hypothesis Sparring` heading.
+
+**GATE (non-skippable when Round ≥ 2)**: before Step A.0 proceeds, verify the sparring section exists:
+```bash
+if [ "$ROUND" -ge 2 ]; then
+    grep -q "## Round $ROUND — Hypothesis Sparring" AUTO_REVIEW.md || { echo "HALT: Hypothesis Sparring section missing for Round $ROUND"; exit 1; }
+fi
+```
+
 **Step A.0: Independent File Audit** (Codex Plugin — GPT-5.4 reads files directly)
 
 Before compiling the review prompt, run an independent code/experiment audit so GPT-5.4 forms its own view from ground truth:
@@ -130,14 +157,53 @@ Read the structured JSON from `/tmp/aris-review-round-N.json` and extract:
 - **STRENGTHENING weaknesses** — `strengthening_weaknesses[]`
 - **Action items** (ranked list of fixes, BLOCKING first)
 
-**Review Feedback Verification** (see `../shared-references/codex-context-integrity.md`):
+**Review Feedback Verification — MANDATORY, PER-FINDING, GATED** (see `../shared-references/codex-context-integrity.md` Section "Review Feedback Verification Protocol" + "Execution Enforcement Gates").
 
-Before implementing ANY fix from the review, Claude must verify each weakness:
-- **Blocking weaknesses**: Evaluate each BLOCKING finding — is it truly BLOCKING-level? If Claude believes the reviewer misjudged (e.g., flagging intentional design as a bug), submit a rebuttal via `/codex:rescue` for adjudication.
-- **Scoring disputes**: If Claude believes a dimension score is unfair (e.g., reviewer overlooked existing ablation studies), submit specific evidence-based rebuttal.
-- Log all agreements/rebuttals/discussions in `AUTO_REVIEW.md` under `## Feedback Verification` for that round.
+**This is NOT optional and NOT conditional on "if Claude disagrees."** Every single finding (blocking + strengthening) in `/tmp/aris-review-round-N.json` MUST appear in the verification table. The skill HALTS before Phase C if the table is incomplete or malformed.
 
-**STOP CONDITION**: If overall score meets POSITIVE_THRESHOLD for TARGET_VENUE AND no BLOCKING weaknesses remain (after verification) → stop loop, document final state. If verdict contains "ready" → also stop.
+**Step 1 — Per-finding evaluation (applies to EVERY finding, not just ones Claude happens to disagree with)**:
+
+For each finding in the review JSON, Claude assigns exactly ONE Step-1 verdict from the enum:
+- `Agree` — finding is correct, will be fixed
+- `Partially agree` — diagnosis valid, suggested fix inappropriate; will propose alternative fix
+- `Disagree` — finding incorrect; must provide file-path:line evidence AND proceed to Step 2 dispute
+- `Need more info` — cannot determine; must proceed to Step 2 clarification
+
+**Evidence quality gate** (pre-dispute filter): Claude's `Disagree` verdict REQUIRES concrete evidence (file:line citation + numeric data or log excerpt). Rebuttals lacking evidence are auto-downgraded to `Accepted (rejected rebuttal — insufficient evidence)` without submission to `/codex:rescue`. This prevents gut-feeling disputes from wasting compute.
+
+**Step 2 — Dispute via structured `/codex:rescue`** (only for `Disagree` + `Need more info` with valid evidence):
+
+Use the structured dispute template from `codex-context-integrity.md`. Dispute output MUST return JSON with `verdict ∈ {finding_correct, rebuttal_valid, compromise_needed}`. Up to 3 adjudication rounds per finding; round 3 exhaustion → conservative fallback (accept reviewer). Each dispute round's JSON is saved to `.aris/disputes/round-${N}-F${finding_id}-round-${R}.json`.
+
+**Step 3 — Produce verification table** in `AUTO_REVIEW.md` under `## Round N — Feedback Verification`, following the exact schema in `codex-context-integrity.md` Step 3.
+
+**GATE (non-skippable) — runs before Phase C can start**:
+
+```
+1. VERIFICATION_TABLE exists: grep '## Round N — Feedback Verification' AUTO_REVIEW.md → MUST match
+2. Every finding in /tmp/aris-review-round-N.json appears exactly once in the table → verify row count
+3. Every row has non-empty Verdict in the enum set → verify no empty cells
+4. Every 'Disputed' row has matching JSON file in .aris/disputes/ → verify file existence
+5. Every 'Disputed' row has non-empty Reasoning and Evidence cited fields
+
+If ANY of the above fails: HALT with explicit error pointing to the missing finding ID(s). Phase C cannot start.
+If all pass: proceed to Phase C with a clear per-finding action plan.
+```
+
+**STOP CONDITION**: If overall score meets POSITIVE_THRESHOLD for TARGET_VENUE AND no BLOCKING weaknesses remain (after Step 1 + 2 verification — not just based on the raw JSON) → stop loop, document final state. If verdict contains "ready" → also stop.
+
+**Persistence**: write each finding's final state to `REVIEW_STATE.json`:
+```json
+{
+  "round": N,
+  "findings": [
+    {"id": "F1", "dispute_rounds": 0, "final_verdict": "Accepted"},
+    {"id": "F3", "dispute_rounds": 2, "final_verdict": "Disputed → Compromise"}
+  ]
+}
+```
+
+Cross-round aggregation: if the same finding text reappears in Round N+1 AND `dispute_rounds >= 2` in Round N, flag as "persistently contested" and auto-invoke `-- reviewer-role: collaborative` on Round N+1 for that specific finding.
 
 #### Human Checkpoint (if enabled)
 
@@ -190,15 +256,19 @@ When `RESEARCH_DRIVEN_FIX = true` (default), for each critical weakness identifi
    - Root cause: "the model has no mechanism to handle contact state transitions during manipulation"
 
 2. **If root cause is novel** (not addressed in prior rounds):
-   a. Search arXiv + Semantic Scholar for techniques addressing this root cause.
+   a. **Consult research-wiki principle library FIRST** (if `research-wiki/` exists):
+      - Read `research-wiki/principles/` — latent-opportunity principles (cited by ≥3 papers, never tested in our projects) and TESTED-POSITIVE principles from other projects.
+      - Read `research-wiki/AUDIT_REPORT.md` for OPEN contradictions touching this root cause.
+      - If a relevant principle exists in the library, use it directly — skip external search.
+   b. If the library lacks coverage, search arXiv + Semantic Scholar for techniques addressing this root cause.
       **Web resilience**: Prefer API tools (`python tools/arxiv_fetch.py search "query"`, `python tools/semantic_scholar_fetch.py search "query"`) over WebSearch. If WebSearch/WebFetch hangs (~60s), abandon immediately and continue with available results. Phase B.5 must NEVER block the pipeline.
-   b. Look for solutions in adjacent domains (control theory, reinforcement learning, computer vision, motion planning)
-   c. **Extract distilled principles** — for each relevant technique, apply the 5-layer Principle Extraction Protocol from `../shared-references/principle-extraction.md` (surface method → underlying principle → generalization → adaptation → anti-copying guard)
-   d. Propose 2-3 fix strategies grounded in the distilled principles, not in transplanted methods:
+   c. Look for solutions in adjacent domains (control theory, reinforcement learning, computer vision, motion planning)
+   d. **Extract distilled principles** — for each relevant technique, apply the 5-layer Principle Extraction Protocol from `../shared-references/principle-extraction.md` (surface method → underlying principle → generalization → adaptation → anti-copying guard). If `research-wiki/` exists, persist extracted principles via `/research-wiki upsert_principle`.
+   e. Propose 2-3 fix strategies grounded in the distilled principles, not in transplanted methods:
       - Strategy A: Minimal fix (as reviewer suggested)
       - Strategy B: Novel design inspired by a distilled principle (cite the principle, not the paper's method)
       - Strategy C: Novel design fusing insights from multiple distilled principles
-   e. Select the most promising strategy based on:
+   f. Select the most promising strategy based on:
       - Integration elegance with existing method (prefer clean fusion over bolting on)
       - Expected improvement magnitude
       - Implementation cost (prefer quick wins for early rounds, deeper changes for later rounds)
@@ -274,10 +344,92 @@ Prioritization rules:
    ```
    Append findings. If adversarial-review flags CRITICAL issues Claude missed → the fix fails validation regardless of Claude's assessment.
 
-4. **Decision gate**:
-   - Fix is significant AND addresses root cause AND passes independent verification → proceed to Phase E (document), then next review round
-   - Fix is NOT significant OR doesn't address root cause OR independent review flags critical issues → try next strategy from Phase B.5 (Strategy B or C) before re-review
-   - All strategies exhausted without validated improvement → escalate to **Phase C.6 (Collaborative)**
+4. **Decision gate (MANDATORY persistence of verdict — not just in-memory decision)**:
+
+   Write the verdict to `/tmp/aris-fix-validation-round-N.json`:
+   ```json
+   {
+     "round": N,
+     "verdict": "PASS" | "FAIL" | "PASS_WITH_FINDINGS",
+     "significance": {"p_value": ..., "significant": true|false},
+     "addresses_root_cause": true|false,
+     "independent_verification": "approve" | "needs-attention",
+     "critical_findings": [...]
+   }
+   ```
+
+   Phase E reads this file BEFORE recording the round as "improvement":
+   - `verdict == PASS` → proceed to Phase E (document), then next review round
+   - `verdict == FAIL` → try next strategy from Phase B.5 (Strategy B or C) before re-review; reset validation artifacts
+   - `verdict == PASS_WITH_FINDINGS` → proceed BUT explicitly log the non-critical findings as "deferred" in AUTO_REVIEW.md; they become high-priority in next round
+   - All strategies exhausted without `verdict == PASS` → escalate to **Phase C.5.1 (Failure Archaeology)**, then to Phase C.6
+
+   **Gate for Phase E**: if `/tmp/aris-fix-validation-round-N.json` is missing when Phase E starts, HALT. Phase E cannot record metrics as "improved" without a prior validated PASS verdict.
+
+#### Phase C.5.1: Failure Archaeology (before Collaborative Escalation)
+
+**Fires when**: the same weakness has failed validation for the 2nd time in a row (two consecutive C.5 failures on the same root cause).
+
+**Purpose**: Before invoking Phase C.6's collaborative escalation, query the **wiki failure-pattern library FIRST** (fast, deterministic, cross-project), then fall back to literature search only if the wiki has thin coverage. This prevents C.6 from re-inventing a known dead end AND dominates the external-search fallback when the wiki has coverage.
+
+**Step 1 — Wiki failure-library query (PRIMARY, ~5s)**:
+
+```
+If research-wiki/failures/ exists:
+    1. Extract the core principle(s) being attempted in this failed fix.
+    2. For each principle, grep research-wiki/failures/ for failure patterns with failure_mode_of edges to it.
+    3. Filter to patterns with evidence_papers ≥ 3 (well-documented, not single-report anomalies).
+    4. Rank by: (evidence_papers count × manifestation count) / resolved_by_count.
+    5. For the top-ranked match (if any):
+       - Read its resolved_by_principles list — these are our prior art for the fix design.
+       - Read its manifested_in_ideas + manifested_in_experiments — these are the projects that already tried and failed.
+    6. Determine match score (0-10) based on mechanism similarity (Layer 3 generalized form match).
+
+If match score ≥ 7 AND resolved_by_principles is non-empty:
+    → Use resolved_by_principles as fix-strategy candidates for Phase C.6. Skip Step 2. Save match to AUTO_REVIEW.md and proceed to C.6.
+If match score ≥ 7 AND resolved_by_principles is empty:
+    → This is a KNOWN UNRESOLVED failure pattern. Proceed to C.6 with the explicit framing: "this is an open research problem, not a fixable engineering error." Adjust expectations.
+If match score < 7 OR no wiki coverage:
+    → Fall back to Step 2 (external literature search).
+```
+
+**Step 2 — External literature fallback (SECONDARY, if wiki is thin)**:
+
+Only runs if the wiki query returned no strong match. Keeps the Phase-1 Failure Archaeology as a secondary path.
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/reframing-triggers.md failure-archaeology mindset + shared-references/failure-extraction.md to this repeated failure.
+
+Read:
+- AUTO_REVIEW.md — the two failed attempts at this weakness
+- Current root cause diagnosis (from Phase B.5)
+- Strategy attempts (Strategy A and B from Phase B.5)
+
+Step 1 — Extract the core principle/architecture pattern being attempted.
+Step 2 — Search literature (arXiv + Semantic Scholar API tools, NOT WebSearch — we want published failure reports) for papers where the SAME principle or architecture was applied to a SIMILAR problem and failed.
+Step 3 — For each prior failure found, apply the failure-extraction.md 5-layer protocol to produce a structured failure record.
+Step 4 — Compare against current attempt. Is this a repeat of a known failure mode? If yes, what changed that would make it work this time (be honest — usually nothing)?
+
+Output: FAILURE_ARCHAEOLOGY.md with the pattern, prior failures cited, and a 'prior-failure match score' 0-10.
+"
+```
+
+**Step 3 — Persist to wiki (NEW — both paths feed this)**:
+
+Whether the pattern came from wiki lookup or external search, the current failure becomes data:
+
+```
+If research-wiki/ exists:
+    /research-wiki upsert_failure-pattern <slug> — from: idea:<current-idea-id>
+    add_edge(idea:<current-idea-id>, failure-pattern:<slug>, "manifested_as")
+    If a prior failure was newly identified in Step 2 (external search), also persist:
+        /research-wiki upsert_failure-pattern <prior-slug> — from: paper:<citation>
+```
+
+The wiki gains a new failure-pattern (or the existing one gains another manifestation) whichever way. Over many projects, the library becomes self-bootstrapping: wiki hits rise, external fallbacks decline.
+
+Save to `AUTO_REVIEW.md` under the current round's `## Failure Archaeology` heading. The output is prepended to Phase C.6's collaborative context as "prior failures matching this exact pattern — design must address these constraints, not re-encounter them."
 
 #### Phase C.6: Collaborative Escalation (when all strategies fail)
 
@@ -324,11 +476,41 @@ Produce a CONCRETE implementation plan (specific code changes, expected outcome)
 
 Claude evaluates the rescue proposal for feasibility. If adjustments needed, run a second `/codex:rescue` with Claude's feasibility feedback. Max 3 rounds of rescue calls.
 
-After collaborative session:
-1. Implement the jointly-designed solution (repeat Phase C steps C.1-C.4)
-2. Validate with Phase C.5 (significance + root-cause check)
-3. If validated → proceed to Phase E, then next review round
-4. If still fails → document as `[COLLABORATIVE IMPASSE]` in AUTO_REVIEW.md, proceed to next round
+**Step C.6.2: Assumption Attack + Problem Reframing (mandatory when collaborative converges)**
+
+If the collaborative session in C.6.1 converges on a jointly-designed solution, run Assumption Attack AND Problem Reframing on the converged proposal BEFORE implementing. This is the last safeguard against comfortable convergence — both models agreed, but both may have been wrong about the same assumption.
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/reframing-triggers.md — both Trigger 1 (Assumption Attack) AND Trigger 2 (Problem Reframing).
+
+Collaborative solution: [paste the jointly-designed solution from C.6.1]
+Failure archaeology findings (if any): [paste C.5.1 output]
+Review history: [recent rounds from AUTO_REVIEW.md]
+
+Trigger 1 (Assumption Attack):
+- Parse the collaborative solution for hidden assumptions
+- Rank fragility; invert the most fragile
+- Evidence check: does existing evidence lean toward the original or the inversion?
+
+Trigger 2 (Problem Reframing):
+- Is the reviewer's flagged weakness even the right thing to fix?
+- Should we propose a metric, decomposition, or method-family reframing?
+- Recommendation: ADOPT solution | EVALUATE-FIRST with pilot | REJECT collaborative solution + ADOPT reframing
+
+If Trigger 2 recommends ADOPT reframing, the next round starts on the reframed problem, NOT on the collaborative solution.
+"
+```
+
+Save to `AUTO_REVIEW.md` under `## Assumption-Attack + Reframing Gate` for this round.
+
+After collaborative session + reframing gate:
+1. If gate recommends ADOPT solution: implement the jointly-designed solution (repeat Phase C steps C.1-C.4)
+2. If gate recommends EVALUATE-FIRST: implement a minimal-cost pilot of the solution, verify basic signal, then decide whether to commit
+3. If gate recommends REJECT+reframe: skip C.6 implementation; next round's Phase A starts on the reframed problem (log REFRAMING_DECISION.md)
+4. Validate outcomes with Phase C.5 (significance + root-cause check)
+5. If validated → proceed to Phase E, then next review round
+6. If still fails → document as `[COLLABORATIVE IMPASSE]` in AUTO_REVIEW.md, proceed to next round
 
 Log collaborative dialogue to AUTO_REVIEW.md with `[COLLABORATIVE SESSION]` tag.
 

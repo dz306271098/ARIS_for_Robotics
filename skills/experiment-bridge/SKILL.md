@@ -388,7 +388,24 @@ Save rescue report. Then:
 
 > **Rule: ANY code fix from failure analysis must pass Phase 2.3 adversarial review before re-running experiments.**
 
-**Step 5.7b: Literature-based principle extraction** (for fundamental issues):
+**Step 5.7b: Wiki failure-library query (PRIMARY, fast — ~5s)**:
+
+If `research-wiki/failures/` exists, query it BEFORE external literature search. The library may already contain this failure pattern from prior projects or literature ingestion.
+
+```
+If research-wiki/failures/ exists:
+    1. Extract the failure's mechanistic signature from rescue analysis (root cause + symptom).
+    2. grep research-wiki/failures/ for patterns matching on:
+       - tags (scalability, data-efficiency, optimization, generalization, ...)
+       - generalized_form similarity to our failure
+    3. For each match with evidence_papers ≥ 3:
+       - Read its resolved_by_principles — these become the "Principles for Retry" list.
+       - Read its manifested_in_ideas + manifested_in_experiments — these are prior projects that hit this same pattern.
+    4. If ≥ 1 strong match → skip Step 5.7c (external search). Use library match as the retry intelligence.
+    5. If no strong match → fall back to Step 5.7c.
+```
+
+**Step 5.7c: Literature-based principle extraction (FALLBACK — only if wiki thin)**:
 
 3. **Quick literature scan**: Search for techniques addressing this specific root cause:
    ```bash
@@ -397,7 +414,20 @@ Save rescue report. Then:
    ```
    **Web resilience**: If searches hang (~60s), abandon and skip. This phase is advisory, not blocking.
 
-4. **Extract principles** (not methods): For the 2-3 most relevant papers, apply the Principle Extraction Protocol from `../shared-references/principle-extraction.md` (focus on Layers 2, 4, 5: underlying principle → adaptation → anti-copying guard)
+4. **Extract principles + failure patterns** (not just methods): For the 2-3 most relevant papers, apply BOTH the Principle Extraction Protocol (`../shared-references/principle-extraction.md` Layers 2, 4, 5) AND the Failure Extraction Protocol (`../shared-references/failure-extraction.md` — if the paper discusses failures).
+
+**Step 5.7d: Persist our failure to wiki (both paths feed this)**:
+
+Whether the cause came from wiki lookup or external search, our project's failure becomes data:
+
+```
+If research-wiki/ exists AND root cause is mechanistic (not a one-off bug):
+    Apply shared-references/failure-extraction.md 5-layer protocol to the rescue findings.
+    /research-wiki upsert_failure-pattern <slug> — from: exp:<current-exp-id>
+    add_edge(exp:<id>, failure-pattern:<slug>, "manifested_as")
+    For each principle in the method's PRINCIPLE GROUNDING:
+        add_edge(failure-pattern:<slug>, principle:<slug>, "failure_mode_of")
+```
 
 5. **Document in results summary**: Append a `## Failure Diagnosis and Principles for Retry` section:
    ```markdown
@@ -405,13 +435,14 @@ Save rescue report. Then:
    
    - **Symptom**: [what went wrong]
    - **Root cause**: [why]
-   - **Relevant principles from literature**:
+   - **Wiki failure-pattern match**: [failure-pattern:<slug>, if any — else "no library match, new pattern persisted"]
+   - **Relevant principles (from library or literature)**:
      1. [Principle name]: [one-sentence generalized insight] — adaptation: [how it could help our method]
      2. [Principle name]: [one-sentence generalized insight] — adaptation: [how it could help our method]
    - **Suggested next step**: /auto-review-loop or /deep-innovation-loop with these principles as starting context
    ```
 
-This provides actionable principle-based intelligence for the downstream review loop rather than a bare "results were negative" handoff.
+This provides actionable principle-based intelligence for the downstream review loop rather than a bare "results were negative" handoff. Over many projects, the library becomes self-bootstrapping: wiki hits rise, external fallbacks decline.
 
 ### Phase 6: Handoff
 

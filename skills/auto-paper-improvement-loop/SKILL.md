@@ -136,9 +136,53 @@ Reply "go" to implement all fixes, give custom instructions, "skip 2" to skip sp
 
 Parse user response same as `/auto-review-loop`: approve / custom instructions / skip / stop.
 
+### Step 2.5: Feedback Verification (MANDATORY before Step 3)
+
+Before implementing ANY paper fixes from the Round 1 review, apply the **Review Feedback Verification Protocol** from `../shared-references/codex-context-integrity.md` — the same protocol that governs code-review feedback handling.
+
+This protocol exists because paper reviews, like code reviews, can contain wrong findings (reviewer misread a theorem, missed a footnote, based claim on wrong assumption). Blindly implementing all findings can introduce worse problems than it solves (the April 2026 NeurIPS incident was exactly this: Round 1 "fix" introduced theorem-statement drift that Round 2 had to catch and revert).
+
+**Per-finding evaluation** — every CRITICAL / MAJOR / MINOR weakness in the Round 1 review gets exactly one Step-1 verdict (NOT optional, NOT only "if Claude disagrees"):
+- `Agree` — implement the fix
+- `Partially agree` — implement a different fix addressing the same diagnosis
+- `Disagree` — must cite file:line evidence from `paper/sections/*.tex` and proceed to Step 2 dispute
+- `Need more info` — submit clarification via `/codex:rescue`
+
+**Evidence quality gate**: `Disagree` verdicts require concrete file:line citation + numeric/text evidence. Rebuttals without evidence are auto-downgraded to `Rejected rebuttal — insufficient evidence` (accept the finding).
+
+**Dispute path** (structured, max 3 adjudication rounds per finding):
+
+```
+/codex:rescue --effort xhigh "
+[DISPUTE — Paper Round 1, Finding F<N>, Dispute Round R]
+
+REVIEWER said: [verbatim finding]
+
+EXECUTOR DISAGREES because: [evidence with file:line from paper/sections/*.tex]
+
+Read paper/sections/*.tex and paper/main.pdf directly to verify.
+
+Return structured JSON: {verdict: 'finding_correct'|'rebuttal_valid'|'compromise_needed', evidence, reasoning, compromise_proposal}
+"
+```
+
+Save dispute adjudication JSONs to `.aris/disputes/paper-round-1-F${N}-round-${R}.json`.
+
+**Verification table** — write to `PAPER_IMPROVEMENT_LOG.md` under `## Round 1 — Feedback Verification` with the schema from `codex-context-integrity.md` Step 3.
+
+**GATE (non-skippable)**: Step 3 (fix implementation) cannot begin until the verification table is complete:
+
+```bash
+grep -q "## Round 1 — Feedback Verification" PAPER_IMPROVEMENT_LOG.md || { echo "HALT: Feedback Verification missing before Step 3"; exit 1; }
+```
+
+**Persistence**: `PAPER_IMPROVEMENT_STATE.json` gains per-finding status array (same schema as `REVIEW_STATE.json` findings). Cross-round: if Round 2 review surfaces the same finding that was `Disputed → Rebuttal accepted` in Round 1, auto-invoke `-- reviewer-role: collaborative` on that specific finding in Round 2.
+
 ### Step 3: Implement Round 1 Fixes
 
-Parse the review and implement fixes by severity:
+Implement only findings whose verification verdict is `Accepted`, `Disputed → Compromise`, or `Rejected rebuttal — insufficient evidence`. Do NOT implement findings with verdict `Disputed → Rebuttal accepted` (those are explicit no-change decisions with documented reasoning).
+
+Parse the VERIFIED findings and implement fixes by severity:
 
 **Priority order:**
 1. CRITICAL fixes (assumption mismatches, internal contradictions)
@@ -315,9 +359,21 @@ This phase feeds directly into Step 6. The attack/defense findings must be merge
 
 **Skip if `HUMAN_CHECKPOINT = false`.** Same as Step 2b — present Round 2 review, wait for user input.
 
+### Step 5.5: Feedback Verification for Round 2 (MANDATORY before Step 6)
+
+Same protocol as Step 2.5, but for Round 2 review. Apply `../shared-references/codex-context-integrity.md` Review Feedback Verification Protocol.
+
+Write the verification table to `PAPER_IMPROVEMENT_LOG.md` under `## Round 2 — Feedback Verification`. All findings from Round 2 review must appear with a verdict before Step 6 proceeds.
+
+**Cross-round auto-escalation**: if a finding text from Round 2 review semantically matches a Round 1 finding that was `Disputed → Rebuttal accepted`, automatically invoke `-- reviewer-role: collaborative` for that Round 2 finding (it is persistently contested across two independent reviewer passes — time to jointly resolve rather than continue the adversarial dispute).
+
+**GATE**: Step 6 cannot begin until `## Round 2 — Feedback Verification` exists in `PAPER_IMPROVEMENT_LOG.md`.
+
 ### Step 6: Implement Round 2 Fixes
 
-Same process as Step 3. Typical Round 2 fixes:
+Implement only findings whose Round 2 verification verdict is `Accepted`, `Disputed → Compromise`, or `Rejected rebuttal — insufficient evidence`. Skip `Disputed → Rebuttal accepted` findings.
+
+Same implementation process as Step 3. Typical Round 2 fixes:
 - Add controlled synthetic experiments validating theory
 - Further soften any remaining overclaims
 - Formalize informal arguments (e.g., truncation → formal proposition)

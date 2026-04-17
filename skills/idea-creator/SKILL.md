@@ -31,15 +31,28 @@ Given a broad research direction from the user, systematically generate, validat
 
 If the wiki exists, load it BEFORE landscape survey to avoid repeating known work:
 
-1. Read `research-wiki/query_pack.md` — compressed context (gaps, failed ideas, top papers)
+1. Read `research-wiki/query_pack.md` — compressed context (gaps, failed ideas, top papers, principle library, top unresolved failures)
 2. **Treat listed gaps as priority search seeds** for Phase 1
 3. **Treat failed ideas as banlist** — do NOT regenerate similar ideas
 4. **Treat top papers as known prior work** — skip re-searching them
+5. **Treat latent-opportunity principles (from AUDIT_REPORT) as ideation seeds** — principles cited by ≥3 papers but never tested in any of OUR projects are high-leverage starting points for novel ideas
+6. **Treat OPEN contradictions (from AUDIT_REPORT) as unresolved tensions** — resolving a contradiction is often a publishable contribution in itself
+7. **Treat "Top unresolved failures" (from query_pack + AUDIT_REPORT) as the sharpest ideation seeds** — failure patterns with `status=active`, `evidence_papers ≥ 3`, and no known resolution are where "people have repeatedly tried and failed." Ideation focused on these has a much stronger signal than gap-based ideation. For each unresolved failure, brief GPT-5.4 with: "propose a method that, by its mechanism, avoids triggering this failure condition."
+8. **Treat failure-clusters (from AUDIT_REPORT analysis d) as meta-targets** — failure patterns spanning many principles point to solution directions larger than any single principle (e.g., "cold-start data scarcity" across multiple learning paradigms → data-centric meta-strategies)
 
 If `query_pack.md` is missing or > 7 days old:
 ```bash
 python3 tools/research_wiki.py rebuild_query_pack research-wiki/
 ```
+
+If `AUDIT_REPORT.md` is missing or > 24 hours old:
+```
+/research-wiki audit
+```
+
+**First-run graceful degradation**: if `research-wiki/` exists but is **newly initialized** (fewer than 3 papers, principles, or failures), the wiki's seeds (latent-opportunity principles, top unresolved failures, OPEN contradictions) will be empty. This is expected — skip those seed sources silently, do NOT error. Phase 2 brainstorm falls back to literature-only ideation (still works). Over time, as `/research-lit` ingests papers, these sections auto-populate and subsequent idea-creator runs get progressively richer seeds.
+
+**If `research-wiki/` is missing**: skip all wiki-sourced seeds (as Phase 0 already handles). Running `/research-wiki init` is the user's choice — we do not auto-initialize to avoid creating empty project artifacts.
 
 ### Phase 1: Landscape Survey (5-10 min)
 
@@ -71,37 +84,83 @@ Map the research area to understand what exists and where the gaps are.
    - Scaling regimes that haven't been explored
    - Diagnostic questions that nobody has asked
 
-### Phase 2: Idea Generation (brainstorm with external LLM)
+### Phase 2: Idea Generation — Morphological Seed + Divergent Brainstorm
 
-Use the external LLM via Codex CLI for divergent thinking:
+**Use structured divergence, not free-form brainstorming.** Free-form "generate N ideas" converges on safe variations near the seed prompt. A morphological matrix forces coverage of the idea space and surfaces cells that the LLM would otherwise skip.
+
+Read `shared-references/divergent-techniques.md` for the protocol.
+
+**Step 2a — Build the morphological matrix** (per divergent-techniques.md Operator 2):
 
 ```bash
-codex exec --sandbox read-only -m gpt-5.4 "You are a senior ML researcher brainstorming research ideas. Read the project files directly.
+codex exec --sandbox read-only -m gpt-5.4 "You are a senior ML researcher mapping the idea space for this research direction. Read the project files directly.
 
 Research direction: [user's direction]
+Landscape map (Phase 1 output): [paste]
+Key gaps: [paste]
+Latent-opportunity principles (from research-wiki AUDIT_REPORT, if available): [paste]
+OPEN contradictions (from AUDIT_REPORT, if available): [paste]
 
-Here is the current landscape:
-[paste landscape map from Phase 1]
+Apply shared-references/divergent-techniques.md Operator 2 (Morphological Matrix). Produce:
 
-Key gaps identified:
-[paste gaps from Phase 1]
+Step 1: Identify 3 independent design dimensions that together cover the relevant design choices for this research direction. Name them explicitly. Each has 3-5 levels.
 
-Generate 8-12 concrete research ideas. For each idea:
+Step 2: Produce the full matrix as a table. For each cell mark: EXPLORED (matches tested literature or our prior work), TRIED-FAILED (matches a failed-idea entry from research-wiki), or UNEXPLORED.
+
+Step 3: From the UNEXPLORED cells, select 5 most promising. For each selected cell, produce a one-sentence idea description AND the principle that emerges from that combination.
+
+Output as markdown: the matrix + 5 cell-based ideas."
+```
+
+**Step 2b — Free-form brainstorm seeded by the matrix** (use `codex exec resume --last`):
+
+```bash
+codex exec resume --last --sandbox read-only -m gpt-5.4 "Building on the morphological matrix above:
+
+Generate 8-12 additional concrete research ideas. For each idea:
 1. One-sentence summary
 2. Core hypothesis (what you expect to find and why)
-3. Minimum viable experiment (what's the cheapest way to test this?)
-4. Expected contribution type: empirical finding / new method / theoretical result / diagnostic
-5. Risk level: LOW (likely works) / MEDIUM (50-50) / HIGH (speculative)
-6. Estimated effort: days / weeks / months
+3. Which matrix cell / latent principle it relates to (or why it is outside the matrix)
+4. Minimum viable experiment (what is the cheapest way to test this?)
+5. Expected contribution type: empirical finding / new method / theoretical result / diagnostic
+6. Risk level: LOW / MEDIUM / HIGH
+7. Estimated effort: days / weeks / months
 
 Prioritize ideas that are:
 - Testable with moderate compute (8x RTX 3090 or less)
 - Likely to produce a clear positive OR negative result (both are publishable)
 - Not 'apply X to Y' unless the application reveals genuinely surprising insights
-- Differentiated from the 10-15 papers above
+- Differentiated from the 10-15 papers in the landscape
+- At least 3 ideas should exploit the AUDIT_REPORT latent-opportunity principles or OPEN contradictions (if they exist)
 
-Be creative but grounded. A great idea is one where the answer matters regardless of which way it goes."
+A great idea is one where the answer matters regardless of which way it goes."
 ```
+
+After Step 2b, the candidate pool = (5 matrix cells + 8–12 freeform) ≈ 13–17 ideas.
+
+### Phase 2.5: Structured Divergence Pass (expand pool to 20–30 ideas)
+
+Apply two divergent operators from `shared-references/divergent-techniques.md` to the Phase 2 pool:
+
+**Pass 2.5a — SCAMPER** (per divergent-techniques.md Operator 1):
+For each of the 3 most promising matrix cells, run SCAMPER — each seed idea spawns 2 variants chosen from the 7 SCAMPER outputs (Substitute, Combine, Adapt, Modify, Put-to-other-use, Eliminate, Reverse).
+
+**Pass 2.5b — Cross-Domain Leap** (per divergent-techniques.md Operator 4):
+Sample ONE source domain from the rotating pool (log the choice to `IDEA_DIVERGENCE_LOG.md` so future runs rotate). Translate 1 principle from that domain into our problem's vocabulary and produce 1 concrete idea. Explicitly record what you are NOT importing (Anti-Copying Guard from principle-extraction.md Layer 5).
+
+```bash
+codex exec resume --last --sandbox read-only -m gpt-5.4 "Apply shared-references/divergent-techniques.md:
+
+1. SCAMPER pass: for each of the 3 most promising matrix cells from Phase 2, pick 2 operators out of (S/C/A/M/P/E/R) and produce 2 structurally different variants per cell. 6 new variants total.
+
+2. Cross-Domain Leap: source domain for this run = [DOMAIN — pick one from the pool in divergent-techniques.md Operator 4 that has not been used in recent IDEA_DIVERGENCE_LOG entries]. Find an analogous phenomenon in [DOMAIN], extract the principle, translate into our problem's vocabulary. Produce 1 concrete idea. State explicitly what you are NOT copying from [DOMAIN].
+
+Total output: 6–8 new ideas. Each must be describable without mentioning [DOMAIN] directly — if you cannot, the translation is incomplete.
+
+Append the used domain to IDEA_DIVERGENCE_LOG.md."
+```
+
+After Phase 2.5 the candidate pool is ≈ 20–30 ideas — wide enough that Phase 3 filtering ruthlessly to 4–6 survivors actually discriminates, rather than rubber-stamping everything.
 
 ### Phase 3: First-Pass Filtering
 
@@ -119,7 +178,9 @@ For each generated idea, quickly evaluate:
    - "So what?" test: if the experiment succeeds, does it change how people think?
    - Is the finding actionable or just interesting?
 
-Eliminate ideas that fail any of these. Typically 8-12 ideas reduce to 4-6.
+4. **Failure-cluster risk screen** (only if `research-wiki/failures/` exists, quick version): extract the 1–2 load-bearing principles each candidate idea embodies. Grep `research-wiki/failures/` for failure patterns with `failure_mode_of` edges to those principles AND `status=active`. If any candidate sits squarely in a failure pattern that has manifested in ≥ 3 past ideas/experiments with no resolution, deprioritize — the deep check happens in Phase 4, but high-risk candidates should not consume Phase 3's filter budget if cheaper-looking alternatives are available.
+
+Eliminate ideas that fail any of these. Typically the now-larger pool (20–30 after Phase 2.5) reduces to 4–6.
 
 ### Phase 4: Deep Validation (for top ideas)
 
@@ -127,19 +188,41 @@ For each surviving idea, run a deeper evaluation:
 
 1. **Novelty check**: Use the `/novelty-check` workflow (multi-source search + GPT-5.4 cross-verification) for each idea
 
-2. **Critical review**: Use GPT-5.4 via `codex exec resume --last`:
+2. **Critical review with Hypothesis Sparring + Failure-Library Check** — for each surviving idea, force (a) generation of ≥2 alternative explanations for its core claim per `shared-references/hypothesis-sparring.md`, AND (b) a query against the wiki failure library for known failure patterns of the idea's principles.
+
    ```bash
    codex exec resume --last --sandbox read-only -m gpt-5.4 "Here are our top ideas after filtering. Read the project files directly.
    [paste surviving ideas with novelty check results]
+   If research-wiki/ exists, also read research-wiki/failures/ — the cross-project failure-pattern library.
 
-   For each, play devil's advocate:
-   - What's the strongest objection a reviewer would raise?
-   - What's the most likely failure mode?
-   - How would you rank these for a top venue submission?
-   - Which 2-3 would you actually work on?"
+   Apply shared-references/hypothesis-sparring.md AND shared-references/failure-extraction.md to each idea.
+
+   For each idea:
+
+   Step A — Identify the idea's core CLAIM (what the idea would prove if it works).
+   Step B — Generate 3 competing explanations for why that claim might actually be wrong or already-explained-by-something-else. Weight each in (0, 0.6). Weights sum to 1.0.
+   Step C — For the top-weighted competing explanation, specify the cheapest test that would rule it out (existing literature, quick probe, or small pilot).
+   Step D — FAILURE-LIBRARY CHECK. List every principle the idea embodies. For each principle, query research-wiki/failures/ for failure patterns with failure_mode_of edges to that principle. Produce:
+   - Table: | principle | known failure patterns | status (active/resolved) | applies to us? (Layer 4 check) |
+   - Risk classification:
+     * HIGH-RISK: ≥ 2 principles share failure patterns that have co-manifested in ≥ 2 past failed ideas/experiments (from manifested_in_ideas / manifested_in_experiments edges)
+     * MEDIUM-RISK: 1 principle has a failure pattern with status=active that applies to us
+     * LOW-RISK: failure patterns exist but are resolved by other principles the idea embodies, OR Layer 4 check says failures do not apply
+   - For HIGH-RISK ideas: either propose a specific mechanism that breaks the failure trigger, OR recommend downgrading the idea.
+   Step E — Devil's advocate questions (traditional):
+   - What is the strongest objection a reviewer would raise?
+   - What is the most likely failure mode NOT already in the library (novel failure)?
+   - How would you rank this for a top-venue submission?
+
+   Finally: which 2-3 ideas would you actually work on, given sparring + failure-library analysis?"
    ```
 
-3. **Combine rankings**: Merge your assessment with GPT-5.4's ranking. Select top 2-3 ideas for pilot experiments.
+3. **Combine rankings**: Merge your assessment with GPT-5.4's ranking. Select top 2-3 ideas for pilot experiments. Multiple rejection criteria — any one disqualifies an idea for pilot funding:
+   - Sparring surfaces a competing explanation with weight ≥ 0.4 AND no cheap falsifier → flagged "needs pre-pilot literature resolution"
+   - Failure-library check classifies the idea HIGH-RISK AND no mechanism proposed to break the failure cluster → flagged "refactor or drop"
+   - Both a high-risk sparring alternative AND a high-risk failure cluster → automatic drop (compound evidence against)
+
+4. **Persist risk classifications** to research-wiki (if exists): for each surviving idea, add `manifested_as` edges to the failure patterns the idea is at risk of manifesting (preemptive linking). If the pilot confirms a failure, the edge stays; if the pilot avoids the failure, update the edge with `resolved_by` to the specific principle that broke the trigger.
 
 ### Phase 5: Parallel Pilot Experiments (for top 2-3 ideas)
 

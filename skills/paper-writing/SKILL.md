@@ -46,6 +46,24 @@ The more detailed the input (especially figure descriptions and quantitative res
 
 ## Pipeline
 
+### Phase 0.5: Research-Wiki Context Load (if `research-wiki/` exists)
+
+**Skip entirely if `research-wiki/` does not exist.**
+
+Before paper-plan reads NARRATIVE_REPORT.md, harvest context from the research wiki for richer Related Work / Limitations / Method-positioning sections:
+
+1. **Read `research-wiki/query_pack.md`** — compressed landscape summary (principles + unresolved failures + paper clusters).
+2. **Read `research-wiki/AUDIT_REPORT.md`** if exists, focusing on:
+   - Analysis (c) Principle coverage — principles our method embodies; useful for Method section framing.
+   - Analysis (d) Unresolved failure patterns — if our method addresses one, this is a first-class Related Work / motivation citation.
+3. **Identify the principles our method embodies** (from `research-wiki/principles/` if populated from prior `/research-lit` runs).
+4. **Identify the failure patterns our method resolves or avoids** (from `research-wiki/failures/`). These become:
+   - Related Work positioning: "Prior work reports [failure X] for methods embodying [principle Y]. Our method avoids this by [mechanism]."
+   - Limitations: acknowledge any failure patterns we did NOT address (honest scoping).
+5. **Persist the harvest** to `NARRATIVE_REPORT.md` under a new `## Wiki-Sourced Positioning` section so `/paper-plan` reads it in Phase 1.
+
+This step is additive — it enriches paper-plan's inputs but does not replace them. If the wiki is thin, the harvest is short; paper-plan proceeds normally on NARRATIVE_REPORT.md alone.
+
 ### Phase 1: Paper Plan
 
 Invoke `/paper-plan` to create the structural outline:
@@ -55,11 +73,11 @@ Invoke `/paper-plan` to create the structural outline:
 ```
 
 **What this does:**
-- Parse NARRATIVE_REPORT.md for claims, evidence, and figure descriptions
+- Parse NARRATIVE_REPORT.md for claims, evidence, and figure descriptions (now including wiki-sourced positioning from Phase 0.5 if run)
 - Build a **Claims-Evidence Matrix** — every claim maps to evidence, every experiment supports a claim
 - Design section structure (5-8 sections depending on paper type)
 - Plan figure/table placement with data sources
-- Scaffold citation structure
+- Scaffold citation structure with wiki principle / failure citations where applicable
 - GPT-5.4 reviews the plan for completeness
 
 **Output:** `PAPER_PLAN.md` with section plan, figure plan, citation scaffolding.

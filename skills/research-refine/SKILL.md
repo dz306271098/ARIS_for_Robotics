@@ -137,6 +137,34 @@ If later reviewer feedback would change the problem being solved, mark that as *
 
 **Checkpoint:** Write `refine-logs/REFINE_STATE.json` with `{"phase": "anchor", "round": 0, "last_score": null, "last_verdict": null, "status": "in_progress", "timestamp": "<now>"}`.
 
+### Phase 0.5: Assumption Attack on the Problem Anchor (once, before proposal)
+
+Apply `../shared-references/reframing-triggers.md` Trigger 1 (Assumption Attack) **once** to the Problem Anchor itself. The entire pipeline is about to invest significant thinking in this anchor — if the anchor silently embeds a flawed assumption, every subsequent round will work on the wrong problem. This is a cheap one-pass verification.
+
+```
+/codex:rescue --effort xhigh "
+Apply shared-references/reframing-triggers.md Trigger 1 (Assumption Attack) to the Research Anchor below.
+
+Research Anchor:
+- Bottom-line problem: [paste]
+- Must-solve bottleneck: [paste]
+- Non-goals: [paste]
+- Constraints: [paste]
+- Success condition: [paste]
+
+Step 1 — Parse the anchor. For each noun and verb, write the hidden assumption it encodes.
+Step 2 — Rank assumptions by fragility (1 clearly true, 5 clearly questionable). Require at least one rated ≥ 3.
+Step 3 — For the single most fragile assumption, write the inverted framing.
+Step 4 — Does any existing evidence (papers/, literature/, prior experiments) lean toward inversion over the current anchor?
+Step 5 — Decision:
+  - Anchor survives attack → proceed to Phase 1 with the anchor as-is (note 'attack survived' in REFINE_STATE)
+  - Inversion is stronger → surface the inversion to the user with evidence and ask whether to re-anchor (pause loop; do not proceed silently)
+  - Evidence ambiguous → proceed with the current anchor BUT note the fragile assumption in Phase 1's Problem Anchor section as 'pending verification in the first claim-driven experiment'
+"
+```
+
+Save to `refine-logs/round-0-assumption-attack.md`. This step fires exactly once per run.
+
 ### Phase 1: Build the Initial Proposal
 
 #### Step 1.1: Scan Grounding Material
@@ -455,6 +483,15 @@ Bias the revisions toward:
 - leaner, claim-driven experiments
 
 Do **not** add multiple parallel contributions just to chase score. If the reviewer requests another module, first ask whether the same gain can come from a better interface, distillation signal, reward model, or inference policy on top of an existing backbone.
+
+**Lateral alternatives (when reviewer feedback suggests them):** if the review contains a **Modernization Opportunity** or **Simplification Opportunity** that proposes a qualitatively different approach (not a tweak), invoke one operator from `../shared-references/divergent-techniques.md` before revising:
+
+- If the suggestion involves borrowing from a different field → Operator 4 (Cross-Domain Leap).
+- If the suggestion involves inverting an assumption → Operator 3 (Inversion).
+- If the suggestion involves relaxing a constraint → Operator 5 (Constraint Relaxation).
+- If the suggestion involves mutating the current method → Operator 1 (SCAMPER).
+
+Use the operator to generate 2–3 alternative revisions before picking one. This prevents the revision from defaulting to the reviewer's first-named concrete suggestion when a richer alternative exists.
 
 Save to `refine-logs/round-N-refinement.md`:
 
