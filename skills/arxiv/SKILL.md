@@ -201,3 +201,28 @@ Suggest follow-up skills:
 - Handle both arXiv ID formats: new (`2301.07041`) and old (`cs/0601001`)
 - PAPER_DIR is created automatically if it does not exist
 - If the arXiv API is unreachable, report the error clearly and suggest using `/research-lit` with `- sources: web` as a fallback
+
+## Research Wiki Ingest Hook
+
+**Activation predicate** (per `../shared-references/integration-contract.md` §1): `if [ -d research-wiki/ ]`.
+
+After fetching a paper (metadata or full PDF), delegate wiki ingest to the canonical helper — do NOT hand-roll page creation:
+
+```bash
+if [ -d research-wiki/ ]; then
+    python3 tools/research_wiki.py ingest_paper research-wiki/ \
+        --arxiv-id "$ARXIV_ID" \
+        --thesis "$ONE_LINE_THESIS" \
+        --tags "$TAGS"
+fi
+```
+
+The helper is the **canonical implementation** (integration-contract §2). Every paper-reading skill delegates to one place so the wiki schema cannot drift between `/arxiv`, `/alphaxiv`, `/deepxiv`, `/exa-search`, `/semantic-scholar`, `/research-lit`. It handles dedup, slug generation, frontmatter, and `log.md` append automatically.
+
+**Backfill** (integration-contract §5) — if a paper was read without ingest:
+
+```bash
+python3 tools/research_wiki.py sync research-wiki/ --arxiv-ids "$ARXIV_ID_1,$ARXIV_ID_2"
+```
+
+**Diagnostic** (integration-contract §6): `bash tools/verify_wiki_coverage.sh research-wiki/` detects papers referenced in `.aris/traces/` that were never ingested.

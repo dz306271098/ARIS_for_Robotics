@@ -177,3 +177,32 @@ Suggest follow-up skills:
 - **TLDR may be null**: Some publishers (notably IEEE) elide the TLDR field. Fall back to showing the first sentence of the abstract.
 - **openAccessPdf may be empty**: Many IEEE papers are closed access. Always provide the DOI link as fallback.
 - If the S2 API is unreachable, suggest using `/arxiv` or `/research-lit "topic" - sources: web` as fallback.
+
+## Research Wiki Ingest Hook
+
+**Activation predicate** (per `../shared-references/integration-contract.md` §1): `if [ -d research-wiki/ ]`.
+
+After S2 returns a paper that the user reads (either the preprint or the published venue version), delegate wiki ingest to the canonical helper:
+
+```bash
+if [ -d research-wiki/ ]; then
+    # Prefer --arxiv-id when S2 returned externalIds.ArXiv; else manual fallback
+    if [ -n "$ARXIV_ID" ]; then
+        python3 tools/research_wiki.py ingest_paper research-wiki/ \
+            --arxiv-id "$ARXIV_ID" \
+            --thesis "$TLDR_OR_ABSTRACT_FIRST_SENTENCE" \
+            --tags "$TAGS"
+    else
+        # Venue-only paper (no arXiv preprint); use manual ingest
+        python3 tools/research_wiki.py ingest_paper research-wiki/ \
+            --title "$TITLE" --authors "$AUTHORS_COMMA" --year "$YEAR" \
+            --venue "$VENUE" --external-id-doi "$DOI" \
+            --thesis "$TLDR_OR_ABSTRACT_FIRST_SENTENCE" \
+            --tags "$TAGS"
+    fi
+fi
+```
+
+Do NOT hand-roll page creation — canonical helper per integration-contract §2. S2's unique value (venue metadata + citation count) is preserved in the wiki frontmatter automatically; the helper accepts DOI + venue as manual fields for venue-only papers.
+
+**Backfill**: `python3 tools/research_wiki.py sync research-wiki/ --arxiv-ids "$IDS"`.

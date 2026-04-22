@@ -46,6 +46,45 @@ The more detailed the input (especially figure descriptions and quantitative res
 
 ## Pipeline
 
+### Phase 0: Assurance Resolution (MANDATORY first step)
+
+Resolve the **assurance level** before any other work. See `../shared-references/assurance-contract.md` for the axis specification.
+
+```bash
+# Parse --assurance from arguments; default-map from effort if not given
+ASSURANCE="${ASSURANCE:-}"
+if [ -z "$ASSURANCE" ]; then
+    case "$EFFORT" in
+        lite|balanced|"") ASSURANCE="draft" ;;
+        max|beast)        ASSURANCE="submission" ;;
+        *)                ASSURANCE="draft" ;;
+    esac
+fi
+mkdir -p paper/.aris
+echo "$ASSURANCE" > paper/.aris/assurance.txt
+echo "📋 Assurance level: $ASSURANCE"
+```
+
+**Default mapping** (per `assurance-contract.md`):
+
+| `effort` | implied `assurance` |
+|----------|---------------------|
+| `lite` | `draft` |
+| `balanced` (default) | `draft` |
+| `max` | `submission` |
+| `beast` | `submission` |
+
+Override independently: `/paper-writing ... — effort: balanced, assurance: submission` is legal and means "normal depth, every audit must emit a verdict before finalization."
+
+**What this enables**:
+- `submission` level → Phase 6 invokes `tools/verify_paper_audits.sh`; non-zero exit blocks Final Report.
+- `draft` level → audits still run where their detector matches; verifier runs in advisory mode.
+- The mode is persisted to `paper/.aris/assurance.txt` — machine-readable so the verifier and subsequent phases all agree.
+
+**Why this phase exists**: historically `effort: beast` could silently skip mandatory audits because each audit's content detector could return negative and no artifact was written. Phase 0 separates "what depth of work to do" (`effort`) from "how rigorously must audits emit verdicts" (`assurance`). Passing only `— effort: beast` automatically engages `assurance: submission` — matching intent.
+
+---
+
 ### Phase 0.5: Research-Wiki Context Load (if `research-wiki/` exists)
 
 **Skip entirely if `research-wiki/` does not exist.**
@@ -304,24 +343,101 @@ fi
 
 **Empirical motivation:** In our April 2026 NeurIPS submission, the final paper claimed `w in {0,1,2,3}` for the width-tradeoff experiment but the raw JSON had `w in {0,1,2,3,4,5}`. The crossing-point tolerance was claimed as `0.05%` but the actual relative error was `0.0577%`. Both were caught only after manual `paper-claim-audit` invocation in the final round; the improvement loop did not detect them.
 
-### Phase 6: Final Report
+### Phase 5.7: Citation Audit (if assurance = submission OR bib has `\cite`)
+
+Invoke `/citation-audit` to verify every `\cite{...}` in the paper across three axes (existence / metadata / context). See `/citation-audit` skill for the full protocol.
+
+```
+/citation-audit paper/
+```
+
+The skill emits `paper/CITATION_AUDIT.json` (machine-readable, per `shared-references/assurance-contract.md` schema) and `paper/CITATION_AUDIT.md` (human-readable). Wrong-context citations (cited paper does not establish the claim) are the most dangerous bibliography bug — this phase catches them before submission.
+
+**Activation predicate** (per integration-contract §1): runs unconditionally at `assurance: submission`; at `assurance: draft` runs if the bib file contains any entries. If `paper/references.bib` is absent and no `\cite{...}` exists in any `sections/*.tex`, citation-audit emits `NOT_APPLICABLE` and exits cleanly.
+
+**Always emit, never block**: this phase writes the JSON artifact; the decision to block the Final Report lives in Phase 6 (the verifier + assurance combination). At `draft`, `FAIL` is advisory; at `submission`, `FAIL` blocks.
+
+### Phase 6: External Audit Verifier + Final Report
+
+**Pre-flight checklist** (per `../shared-references/integration-contract.md` §4 — visible to prevent lazy skipping):
+
+```
+📋 Submission audits required before Final Report (at assurance: submission):
+   [ ] 1. /proof-checker     → paper/PROOF_AUDIT.json
+   [ ] 2. /paper-claim-audit → paper/PAPER_CLAIM_AUDIT.json
+   [ ] 3. /citation-audit    → paper/CITATION_AUDIT.json
+   [ ] 4. bash tools/verify_paper_audits.sh paper/ --assurance submission
+   [ ] 5. Block Final Report iff verifier exit code != 0
+```
+
+All three audits follow the "always emit, never block" contract (`shared-references/assurance-contract.md`). They write JSON artifacts at `paper/*_AUDIT.json`; the parent (this phase) decides blocking via the verifier.
+
+**Step 6.0 — Invoke the verifier**:
+
+```bash
+ASSURANCE="$(cat paper/.aris/assurance.txt 2>/dev/null || echo draft)"
+bash tools/verify_paper_audits.sh paper/ --assurance "$ASSURANCE" \
+    --json-out paper/.aris/audit-verifier-report.json
+VERIFIER_EXIT=$?
+```
+
+The verifier:
+1. Locates the three mandatory audit JSONs (`PROOF_AUDIT.json`, `PAPER_CLAIM_AUDIT.json`, `CITATION_AUDIT.json`)
+2. Validates each against the schema in `shared-references/assurance-contract.md`
+3. Rehashes every file in `audited_input_hashes` to detect STALE audits (user edited paper after audit ran)
+4. Verifies each `trace_path` exists and is non-empty
+5. Emits structured JSON report to `paper/.aris/audit-verifier-report.json`
+6. Returns exit code: **0** (all green) or **1** (any FAIL/BLOCKED/ERROR/STALE/missing at submission level)
+
+**Step 6.1 — Branch on verifier exit code**:
+
+```
+if assurance == "submission" AND VERIFIER_EXIT != 0:
+    Final Report: REFUSED
+    - Print the verifier's JSON report to surface which audit failed
+    - Mark paper as `submission-ready: no` in the report below
+    - Instruct the user: "Rerun the failed audit(s), or downgrade with --assurance draft"
+    - Do NOT emit main.pdf as "submission-ready"
+
+if assurance == "submission" AND VERIFIER_EXIT == 0:
+    Final Report: submission-ready: yes
+    - All three mandatory audit JSONs exist, schema-valid, fresh
+    - Include verifier's JSON report as an appendix
+
+if assurance == "draft":
+    Final Report: draft-ready: yes
+    - Verifier's exit code is advisory only
+    - If exit != 0, log a warning but proceed
+    - Mark paper as `draft-ready` (not `submission-ready`)
+```
+
+**Step 6.2 — Write the Final Report**:
 
 ```markdown
 # Paper Writing Pipeline Report
 
 **Input**: [NARRATIVE_REPORT.md or topic]
 **Venue**: [ICLR/NeurIPS/ICML/CVPR/ACL/AAAI/ACM/IEEE_JOURNAL/IEEE_CONF]
+**Assurance**: [draft | submission]   ← from paper/.aris/assurance.txt
+**Submission-ready**: [yes | no | draft-ready]   ← from verifier exit code
 **Date**: [today]
 
 ## Pipeline Summary
 
 | Phase | Status | Output |
 |-------|--------|--------|
+| 0. Assurance Resolution | ✅ | paper/.aris/assurance.txt |
+| 0.5. Wiki Context Load | ✅ | NARRATIVE_REPORT.md § Wiki-Sourced Positioning |
 | 1. Paper Plan | ✅ | PAPER_PLAN.md |
 | 2. Figures | ✅ | figures/ ([N] auto + [M] manual) |
 | 3. LaTeX Writing | ✅ | paper/sections/*.tex ([N] sections, [M] citations) |
 | 4. Compilation | ✅ | paper/main.pdf ([X] pages) |
+| 4.5. Proof Audit | [PASS/WARN/FAIL/N/A/BLOCKED/ERROR] | paper/PROOF_AUDIT.json |
+| 4.7. Claim Audit (pre) | [PASS/WARN/FAIL/N/A/BLOCKED/ERROR] | paper/PAPER_CLAIM_AUDIT.json |
 | 5. Improvement | ✅ | [score0]/10 → [score2]/10 |
+| 5.5. Claim Audit (post) | [PASS/WARN/FAIL/N/A/BLOCKED/ERROR] | paper/PAPER_CLAIM_AUDIT.json (re-run) |
+| 5.7. Citation Audit | [PASS/WARN/FAIL/N/A/BLOCKED/ERROR] | paper/CITATION_AUDIT.json |
+| 6. Verifier | [exit 0 / exit 1] | paper/.aris/audit-verifier-report.json |
 
 ## Improvement Scores
 | Round | Score | Key Changes |

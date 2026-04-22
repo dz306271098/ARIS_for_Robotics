@@ -136,3 +136,25 @@ After presenting results, suggest:
 - Use `category: "research paper"` when the user is clearly looking for academic content
 - Use `text` content mode when the user needs full page content
 - Combine with `/arxiv` or `/semantic-scholar` for comprehensive literature coverage
+
+## Research Wiki Ingest Hook
+
+**Activation predicate** (per `../shared-references/integration-contract.md` §1): `if [ -d research-wiki/ ]`.
+
+When Exa surfaces an arXiv paper (URL pattern `arxiv.org/abs/<id>`) that the user reads, delegate wiki ingest to the canonical helper:
+
+```bash
+if [ -d research-wiki/ ]; then
+    # Extract arxiv_id from the Exa result URL, then:
+    python3 tools/research_wiki.py ingest_paper research-wiki/ \
+        --arxiv-id "$ARXIV_ID" \
+        --thesis "$EXA_HIGHLIGHT_SNIPPET" \
+        --tags "$TAGS"
+fi
+```
+
+For non-arXiv pages (blogs, lab homepages, Wikipedia), ingest is not automatic — Exa's broad web surface is deliberately looser than the paper-oriented helpers. Record non-arXiv sources in `research-wiki/index.md` or `gap_map.md` manually if they motivate gaps.
+
+Do NOT hand-roll paper-page creation — canonical helper per integration-contract §2.
+
+**Backfill**: `python3 tools/research_wiki.py sync research-wiki/ --arxiv-ids "$IDS"`.

@@ -149,3 +149,22 @@ This saves significant tokens by filtering out marginally relevant papers before
 ### As follow-up from other skills
 
 After `/research-lit`, `/novelty-check`, or `/idea-discovery` surface a specific paper, users can invoke `/alphaxiv PAPER_ID` for a fast deep-dive without re-running the full survey.
+
+## Research Wiki Ingest Hook
+
+**Activation predicate** (per `../shared-references/integration-contract.md` §1): `if [ -d research-wiki/ ]`.
+
+After AlphaXiv yields a paper overview that the user reads deeply, delegate wiki ingest to the canonical helper:
+
+```bash
+if [ -d research-wiki/ ]; then
+    python3 tools/research_wiki.py ingest_paper research-wiki/ \
+        --arxiv-id "$ARXIV_ID" \
+        --thesis "$ALPHAXIV_ONE_LINE_SUMMARY" \
+        --tags "$TAGS"
+fi
+```
+
+Do NOT hand-roll page creation — the helper is the single canonical implementation shared by all paper-reading skills (integration-contract §2). Tier-1 skim-only passes that did not read the paper deeply may skip ingest; any deep read SHOULD ingest so the principle/failure-extraction downstream workflows have a queryable wiki entry.
+
+**Backfill**: `python3 tools/research_wiki.py sync research-wiki/ --arxiv-ids "$IDS"` for retroactive ingest.

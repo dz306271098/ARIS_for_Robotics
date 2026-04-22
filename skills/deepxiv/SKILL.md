@@ -196,3 +196,22 @@ Do not jump to full-paper reads when a brief or one section answers the question
 - Use section-level reads to save tokens.
 - Treat DeepXiv as complementary to `/arxiv` and `/semantic-scholar`, not a replacement.
 - If the result overlaps with a published venue paper from Semantic Scholar, keep the richer venue metadata in the final summary.
+
+## Research Wiki Ingest Hook
+
+**Activation predicate** (per `../shared-references/integration-contract.md` §1): `if [ -d research-wiki/ ]`.
+
+After DeepXiv returns a paper brief or section-level content the user actually consumed, delegate wiki ingest to the canonical helper:
+
+```bash
+if [ -d research-wiki/ ]; then
+    python3 tools/research_wiki.py ingest_paper research-wiki/ \
+        --arxiv-id "$ARXIV_ID" \
+        --thesis "$DEEPXIV_BRIEF_TLDR" \
+        --tags "$TAGS"
+fi
+```
+
+Do NOT hand-roll page creation — the helper is the single canonical implementation shared by all paper-reading skills (integration-contract §2). Tier-1 skim-only "search" invocations that did not read a paper need not ingest; deep reads (section-level + beyond) should.
+
+**Backfill**: `python3 tools/research_wiki.py sync research-wiki/ --arxiv-ids "$IDS"` for retroactive ingest.

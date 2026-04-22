@@ -422,3 +422,63 @@ Write `PROOF_CHECK_STATE.json`:
 /proof-checker "check the GMM generalization proof, focus on dimension dependence"
 /proof-checker "verify proof in paper.tex -- difficulty: nightmare"
 ```
+
+## Submission Artifact Emission
+
+This skill **always** writes `paper/PROOF_AUDIT.json`, regardless of caller or detector outcome. A paper with no theorems, lemmas, or propositions emits verdict `NOT_APPLICABLE`; silent skip is forbidden. `paper-writing` Phase 6 and `tools/verify_paper_audits.sh` both rely on this artifact existing at a predictable path.
+
+The artifact conforms to the schema in `shared-references/assurance-contract.md`:
+
+```json
+{
+  "audit_skill":      "proof-checker",
+  "verdict":          "PASS | WARN | FAIL | NOT_APPLICABLE | BLOCKED | ERROR",
+  "reason_code":      "all_theorems_sound | missing_assumption | invalid_step | ...",
+  "summary":          "One-line human-readable verdict summary.",
+  "audited_input_hashes": {
+    "main.tex":                    "sha256:...",
+    "sections/3.theory.tex":       "sha256:...",
+    "sections/A.appendix.tex":     "sha256:..."
+  },
+  "trace_path":       ".aris/traces/proof-checker/<date>_run<NN>/",
+  "thread_id":        "<codex thread id>",
+  "reviewer_model":   "gpt-5.4",
+  "reviewer_reasoning": "xhigh",
+  "generated_at":     "<UTC ISO-8601>",
+  "details": {
+    "total_theorems":  <int>,
+    "issues_by_class": { "FATAL": <int>, "CRITICAL": <int>, "MAJOR": <int>, "MINOR": <int> },
+    "per_theorem":     [ { "label": "thm:main", "section": "3", "verdict": "SOUND | GAP | INVALID", "issues": [...] }, ... ],
+    "rounds_run":      <int>,
+    "state_file":      "PROOF_CHECK_STATE.json"
+  }
+}
+```
+
+### `audited_input_hashes` scope
+
+Hash the declared input set: `main.tex` + every `sections/*.tex` file that contains theorem/lemma/proposition/proof environments. Use paths relative to the paper directory. Do NOT hash `PROOF_SKELETON.md` or other intermediate staging files — those are derived artifacts, not audited inputs.
+
+### Verdict decision table
+
+| Input state | Verdict | `reason_code` example |
+|-------------|---------|----------------------|
+| No theorems / lemmas / propositions | `NOT_APPLICABLE` | `no_theorems` |
+| Theorems present but appendix proofs missing | `BLOCKED` | `no_appendix_proofs` |
+| All theorems sound after round N | `PASS` | `all_theorems_sound` |
+| Minor notation / exposition gaps | `WARN` | `minor_gaps` |
+| Any FATAL or CRITICAL issue remaining | `FAIL` | `critical_gap` |
+| Reviewer invocation failed / malformed output | `ERROR` | `reviewer_error` |
+
+### Thread independence
+
+Every fresh run uses a new `codex exec` session. During multi-round iteration within one audit run, `codex exec resume --last` is permitted (to carry the issue-list context across rounds). On re-invocation of the whole skill, start fresh.
+
+This skill never blocks by itself; `paper-writing` Phase 6 plus `tools/verify_paper_audits.sh` decide whether the verdict blocks finalization based on the `assurance` level. The `PROOF_AUDIT.md` human-readable report remains, side-by-side with the JSON artifact.
+
+## See Also
+
+- `/paper-claim-audit` — sibling skill for numerical claims
+- `/citation-audit` — sibling skill for bibliographic integrity
+- `shared-references/assurance-contract.md` — 6-verdict state machine + artifact schema
+- `shared-references/integration-contract.md` — architectural contract for cross-skill integration

@@ -240,3 +240,66 @@ Same pattern as `/experiment-audit`:
 ## Review Tracing
 
 After each `codex exec` reviewer call, save the trace following `shared-references/review-tracing.md`. Use `tools/save_trace.sh` or write files directly to `.aris/traces/<skill>/<date>_run<NN>/`. Respect the `--- trace:` parameter (default: `full`).
+
+## Submission Artifact Emission
+
+This skill **always** writes `paper/PAPER_CLAIM_AUDIT.json`, regardless of caller or detector outcome. A paper with no numeric claims emits verdict `NOT_APPLICABLE`; silent skip is forbidden. `paper-writing` Phase 6 and `tools/verify_paper_audits.sh` both rely on this artifact existing at a predictable path.
+
+The artifact conforms to the schema in `shared-references/assurance-contract.md`:
+
+```json
+{
+  "audit_skill":      "paper-claim-audit",
+  "verdict":          "PASS | WARN | FAIL | NOT_APPLICABLE | BLOCKED | ERROR",
+  "reason_code":      "all_numbers_match | number_mismatch | no_raw_evidence | ...",
+  "summary":          "One-line human-readable verdict summary.",
+  "audited_input_hashes": {
+    "main.tex":                   "sha256:...",
+    "sections/5.evidence.tex":    "sha256:...",
+    "/absolute/path/results/run.json": "sha256:..."
+  },
+  "trace_path":       ".aris/traces/paper-claim-audit/<date>_run<NN>/",
+  "thread_id":        "<codex thread id>",
+  "reviewer_model":   "gpt-5.4",
+  "reviewer_reasoning": "xhigh",
+  "generated_at":     "<UTC ISO-8601>",
+  "details": {
+    "total_claims":         <int>,
+    "number_mismatch":      <int>,
+    "aggregation_mismatch": <int>,
+    "config_mismatch":      <int>,
+    "per_claim":            [ { "section": "5.2", "claim": "accuracy = 89.2%",
+                                "verdict": "MATCH | MISMATCH | BLOCKED",
+                                "note": "..." }, ... ]
+  }
+}
+```
+
+### `audited_input_hashes` scope
+
+Hash the declared input set: `main.tex`, every `sections/*.tex` that contains numeric claims, AND every `results/*.json` / `results/*.csv` file consulted for verification. Use paths relative to the paper directory for in-paper files; absolute paths for external result files (e.g. `/home/me/project/results/run.json`). Do NOT hash `/tmp/*` or transient staging files — if you need to stage extracted numbers, materialize them under `paper/.aris/paper-claim-audit/` so the verifier can rehash.
+
+### Verdict decision table
+
+| Input state | Verdict | `reason_code` example |
+|-------------|---------|----------------------|
+| No numeric claims in paper | `NOT_APPLICABLE` | `no_numeric_claims` |
+| Claims present but no `results/` or referenced data | `BLOCKED` | `no_raw_evidence` |
+| All numbers match raw data | `PASS` | `all_numbers_match` |
+| Minor aggregation / rounding differences only | `WARN` | `rounding_drift` |
+| Any `MISMATCH` with material numerical difference | `FAIL` | `number_mismatch` |
+| Reviewer invocation failed / malformed output | `ERROR` | `reviewer_error` |
+
+### Thread independence
+
+Every invocation uses a fresh `codex exec` session. Never `codex exec resume --last`. Do not accept prior audit outputs as input — reviewer independence per `shared-references/reviewer-independence.md` and `shared-references/assurance-contract.md` ("always emit, never block").
+
+This skill never blocks by itself; `paper-writing` Phase 6 plus `tools/verify_paper_audits.sh` decide whether the verdict blocks finalization based on the `assurance` level. The `PAPER_CLAIM_AUDIT.md` human-readable report remains, side-by-side with the JSON artifact.
+
+## See Also
+
+- `/citation-audit` — sibling skill for bibliographic integrity
+- `/proof-checker` — sibling skill for theorem verification
+- `/experiment-audit` — sibling skill for evaluation code integrity
+- `shared-references/assurance-contract.md` — 6-verdict state machine + artifact schema
+- `shared-references/integration-contract.md` — architectural contract for cross-skill integration
