@@ -42,21 +42,21 @@
 
 - `skills/skills-codex/` = Codex 主线基础包
 - `skills/skills-codex-claude-review/` = Claude reviewer overlay
+- `skills/skills-codex-gemini-review/` = 可选 Gemini CLI reviewer overlay
 
 安装顺序固定为：
 
 1. 先装 base pack
-2. 再叠加 overlay
-3. 最后注册 `claude-review` MCP
+2. 再叠加选定 reviewer overlay
+3. 最后注册对应 reviewer MCP
 
 不能回退成“单包混写所有 reviewer 路径”，也不能把 overlay 重新写成手工长期分叉的主来源。
 
-仓库还保留两条非默认 reviewer 支路：
+默认 reviewer 仍是 Claude；Gemini reviewer 只能通过 `--reviewer gemini` 显式安装，并且必须走宿主机 Gemini CLI。仓库还保留一条非默认 reviewer 支路：
 
-- `skills/skills-codex-gemini-review/` + `mcp-servers/gemini-review/`
 - `skills/skills-codex/auto-review-loop-minimax/` + `mcp-servers/minimax-chat/`
 
-它们虽然不是默认安装链的一部分，但也必须继续遵守 Codex 命名和路径规则：
+Gemini 和 MiniMax 路径都必须继续遵守 Codex 命名和路径规则：
 
 - 不能重新写回 `~/.claude/...`
 - 不能重新把项目配置入口写回 `CLAUDE.md` / `AGENTS.md`
@@ -91,14 +91,16 @@
   - `Bash(codex*)`
 - reviewer-aware 主线 skill 统一用 `spawn_agent` / `send_input` 表达 reviewer 语义
 - Claude overlay 再把这些 reviewer 语义改写到 `claude-review` MCP
+- Gemini overlay 再把这些 reviewer 语义改写到 `gemini-review` MCP
 
 也就是说，**主线表达 reviewer 意图，overlay 决定 reviewer 传输实现**。
 
 ### 1.6 Overlay 生成规则
 
-Claude reviewer overlay 的维护基线是：
+Claude / Gemini reviewer overlay 的维护基线是：
 
 - 用 `tools/generate_codex_claude_review_overrides.py` 生成和刷新
+- 用 `tools/generate_codex_gemini_review_overrides.py` 生成和刷新
 - overlay target 列表必须覆盖全部 reviewer-aware skills
 - overlay frontmatter 必须是合法的 `SKILL.md`
 - overlay `description` 必须和源 skill 的规范化描述保持一致
@@ -159,7 +161,7 @@ python3 tools/check_codex_mainline_parity.py
 python3 tools/generate_codex_claude_review_overrides.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
-bash scripts/check_claude_review_runtime.sh
+bash scripts/check_claude_review_runtime.sh --host-required
 bash scripts/check_unattended_mainline.sh /path/to/project
 ```
 
@@ -174,13 +176,16 @@ bash scripts/check_unattended_mainline.sh /path/to/project
   - 关键执行型 skill 是否仍保留 Mandatory Test Gate / Reviewer Resolution Protocol / Convergence Memo
 - `tools/generate_codex_claude_review_overrides.py`
   - 重新生成 Claude overlay，验证生成链没有坏
+- `tools/generate_codex_gemini_review_overrides.py`
+  - 重新生成 Gemini overlay，验证 CLI reviewer 支路没有漂移
 - `git diff --check`
   - 防止文档、skill、生成结果里引入格式问题
 - `scripts/smoke_test_codex_claude_mainline.sh`
   - 验证安装、重装、卸载和回滚链路
 - `scripts/check_claude_review_runtime.sh`
+- `scripts/check_gemini_review_runtime.sh --host-required`
 - `scripts/check_unattended_mainline.sh`
-  - 验证无人值守 profile、reviewer fallback 策略、W&B / watchdog / illustration prerequisites 与宿主机 `Codex -> mcp__claude_review__review` 健康度
+  - 验证无人值守 profile、reviewer fallback 策略、W&B / watchdog / illustration prerequisites 与宿主机 reviewer MCP 健康度
 
 ### 2.3 推荐的审查顺序
 
@@ -195,6 +200,7 @@ bash scripts/check_unattended_mainline.sh /path/to/project
 如果修改涉及 reviewer-aware skill，必须同时看：
 
 - 生成后的 `skills/skills-codex-claude-review/`
+- 生成后的 `skills/skills-codex-gemini-review/`
 - `CODEX_CLAUDE_REVIEW_GUIDE*.md`
 - `README.md`
 

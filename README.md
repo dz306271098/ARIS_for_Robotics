@@ -132,13 +132,19 @@ claude --version
 python3 --version
 ```
 
-主线安装只负责把技能包和 reviewer bridge 放到位，不负责替你完成 Claude CLI 登录。安装前先确认：
+主线安装只负责把技能包和 reviewer bridge 放到位，不负责替你完成 reviewer CLI 登录。默认 reviewer 是 Claude。安装前先确认：
 
 ```bash
 claude -p "Reply with exactly READY" --output-format json --tools ""
 ```
 
 如果你的 Claude 访问依赖代理，先在当前 shell 里导出对应的代理环境变量，再运行安装器。安装器会默认把这些代理变量一并写入 `claude-review` 的 MCP 配置。
+
+如果你要使用可选 Gemini reviewer，需要先在宿主机完成 Gemini CLI 登录，并确认目标模型可用：
+
+```bash
+gemini -p "Reply with exactly READY" --output-format json -m gemini-3.1-pro-preview
+```
 
 ### 3.2 首次安装
 
@@ -151,9 +157,9 @@ bash scripts/install_codex_claude_mainline.sh
 安装器会：
 
 - 拷贝 `skills/skills-codex/*` 到 `~/.codex/skills/`
-- 叠加 `skills/skills-codex-claude-review/*`
-- 安装 `mcp-servers/claude-review/server.py`
-- 注册 `claude-review` MCP
+- 默认叠加 `skills/skills-codex-claude-review/*`
+- 默认安装 `mcp-servers/claude-review/server.py`
+- 默认注册 `claude-review` MCP
 - 自动继承当前 shell 中已有的常见代理环境变量到 `claude-review` MCP
 - 写入安装 manifest
 - 复制本地可执行卸载脚本到 `~/.codex/.aris/codex-claude-mainline/`
@@ -176,7 +182,7 @@ claude -p "Reply with exactly READY" --output-format json --tools ""
 最后跑一次运行时健康检查：
 
 ```bash
-bash scripts/check_claude_review_runtime.sh
+bash scripts/check_claude_review_runtime.sh --host-required
 ```
 
 这个检查会覆盖四层：
@@ -220,7 +226,42 @@ bash scripts/install_codex_claude_mainline.sh \
 --no-inherit-proxy-env
 ```
 
-### 3.5 使用 AWS wrapper
+### 3.5 可选 Gemini CLI reviewer
+
+如果没有 Gemini API key，但宿主机 Gemini CLI 已登录，可以显式安装 Gemini reviewer：
+
+```bash
+bash scripts/install_codex_claude_mainline.sh \
+  --reinstall \
+  --reviewer gemini \
+  --gemini-review-model gemini-3.1-pro-preview \
+  --gemini-review-max-retries 2 \
+  --gemini-review-retry-delay-sec 5
+```
+
+Gemini 分支会叠加 `skills/skills-codex-gemini-review/*`，注册 `gemini-review` MCP，并设置 `GEMINI_REVIEW_BACKEND=cli`。它不会自动回退到 Claude 或低阶 Gemini 模型；如果 CLI 认证、网络、模型或配额在当前宿主机环境失败，workflow 应记录 blocker。
+
+如果 Gemini CLI 依赖代理，先在运行安装器的宿主机 shell 中导出 `http_proxy` / `https_proxy` / `no_proxy` 等变量；安装器默认也会把这些代理变量写入 `gemini-review` MCP。运行时检查会打印 `proxy_env_keys`，用于确认直连 CLI 与 MCP bridge 是否继承了同一组代理环境。
+
+Gemini preview 模型可能偶发返回容量不足。`gemini-review` MCP 默认会对 `MODEL_CAPACITY_EXHAUSTED`、429、临时网络错误做 2 次重试；可用 `GEMINI_REVIEW_MAX_RETRIES` 和 `GEMINI_REVIEW_RETRY_DELAY_SEC` 调整。宿主机测试脚本 `scripts/host_test_gemini_review.sh` 使用同一组参数。
+
+真实 Gemini review 验证必须在宿主机环境运行：
+
+```bash
+bash scripts/check_gemini_review_runtime.sh --host-required
+```
+
+不要用 Codex/bwrap sandbox 中的 Gemini CLI 结果判断 reviewer 是否可用；sandbox 结果只能作为诊断。
+
+项目级启用方式：
+
+```markdown
+## Autonomy Profile
+- reviewer_provider: gemini
+- review_fallback_mode: retry_then_block
+```
+
+### 3.6 使用 AWS wrapper
 
 如果你的 Claude CLI 依赖 wrapper：
 
@@ -228,7 +269,7 @@ bash scripts/install_codex_claude_mainline.sh \
 bash scripts/install_codex_claude_mainline.sh --reinstall --use-aws-wrapper
 ```
 
-### 3.6 重装
+### 3.7 重装
 
 安装器默认拒绝覆盖已有主线安装。需要显式带上 `--reinstall`：
 
@@ -259,7 +300,7 @@ bash ~/.codex/.aris/codex-claude-mainline/uninstall_codex_claude_mainline.sh
 
 ```bash
 bash scripts/smoke_test_codex_claude_mainline.sh
-bash scripts/check_claude_review_runtime.sh
+bash scripts/check_claude_review_runtime.sh --host-required
 ```
 
 ---
@@ -343,7 +384,11 @@ codex -C .
 - require_wandb_for_unattended_training: true
 - paper_illustration: auto
 - notifications: push_only
+- reviewer_provider: claude
 - review_fallback_mode: retry_then_local_critic
+- external_model_runtime: host_first
+- external_model_failure_policy: retry_then_local_fallback
+- external_model_replay_required: false
 - resume_window_hours: 24
 - max_reviewer_runtime_retries: 2
 - max_auto_retries_per_stage: 3
@@ -516,7 +561,7 @@ bash scripts/check_unattended_mainline.sh /path/to/project
 cd /path/to/project && bash /path/to/ARIS/scripts/run_unattended_mainline.sh --workflow research-pipeline --topic "你的研究方向"
 ```
 
-宿主机控制层会读 `AUTONOMY_STATE.json`、各 workflow 自有 state 文件和 `CODEX.md`，优先保证 reviewer runtime、watchdog、W&B、claim freeze 和恢复链完整，而不是盲目追求吞吐。`review_fallback_mode: retry_then_local_critic` 只允许临时本地批判性审查继续推进，中间产物仍要等外部 reviewer replay 后才能算最终完成。
+宿主机控制层会读 `AUTONOMY_STATE.json`、各 workflow 自有 state 文件和 `CODEX.md`，优先保证 reviewer runtime、watchdog、W&B、claim freeze 和恢复链完整，而不是盲目追求吞吐。`external_model_runtime: host_first` 要求 Claude/Gemini/MiniMax review、Gemini/Paperbanana 图像生成等外部模型调用优先走宿主机 MCP / host runtime，而不是 Codex sandbox 直连。`review_fallback_mode: retry_then_local_critic` 和 `external_model_failure_policy: retry_then_local_fallback` 只允许临时本地批判性审查或 placeholder artifact 继续推进，中间产物仍要等外部 reviewer / external model replay 后才能算最终完成。
 
 默认的研究智能层现在独立写在 `CODEX.md -> ## Research Intelligence Profile`：`innovation_mode: high_innovation`、`topic_router: auto`、`literature_depth: principle_graph`、`idea_portfolio_size: 3`、`shadow_route_count: 1`。这层控制的是前半程创新和文献利用，不替代无人值守安全边界。
 
@@ -846,19 +891,21 @@ Meta Optimize：
 ```bash
 python3 tools/check_codex_mainline_parity.py
 python3 tools/generate_codex_claude_review_overrides.py
+python3 tools/generate_codex_gemini_review_overrides.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
-bash scripts/check_claude_review_runtime.sh
+bash scripts/check_claude_review_runtime.sh --host-required
+bash scripts/check_gemini_review_runtime.sh --host-required
 bash scripts/check_unattended_mainline.sh /path/to/project
 ```
 
 推荐顺序：
 
 1. 先跑 `check_codex_mainline_parity.py`
-2. 再重生 overlay
+2. 再重生 Claude / Gemini overlay
 3. 再看 `git diff --check`
 4. 先跑安装链 smoke test
-5. 最后跑真实 runtime 健康检查
+5. 最后在宿主机跑真实 runtime 健康检查
 
 如果你在维护主线，而不是单纯使用主线，再配合阅读：
 
@@ -883,7 +930,7 @@ bash scripts/check_unattended_mainline.sh /path/to/project
 - `skills/skills-codex-gemini-review/` + `mcp-servers/gemini-review/`
 - `skills/skills-codex/auto-review-loop-minimax/` + `mcp-servers/minimax-chat/`
 
-它们不是默认主线，也不参与默认安装脚本；同时它们也统一按 Codex 命名维护，不再保留旧的 Claude-era 路径或历史配置文件兼容语义。
+Gemini reviewer 现在可以通过 `--reviewer gemini` 显式安装，但默认主线仍是 Claude；MiniMax 仍不是默认安装链的一部分。它们也统一按 Codex 命名维护，不再保留旧的 Claude-era 路径或历史配置文件兼容语义。
 
 ### 11.2 我应该写哪个项目配置文件？
 
@@ -894,7 +941,7 @@ bash scripts/check_unattended_mainline.sh /path/to/project
 先查三件事：
 
 1. `~/.codex/skills/` 下是否有对应目录
-2. `codex mcp get claude-review --json` 是否正常
+2. `codex mcp get claude-review --json` 或 `codex mcp get gemini-review --json` 是否正常
 3. 是否曾有旧 ARIS / 旧 MCP 配置干扰
 
 必要时执行：

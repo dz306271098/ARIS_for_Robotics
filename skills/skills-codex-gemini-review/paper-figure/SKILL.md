@@ -1,9 +1,11 @@
 ---
 name: "paper-figure"
-description: "Generate publication-quality figures and tables from experiment results. Use when user says \"画图\", \"作图\", \"generate figures\", \"paper figures\", or needs plots for a paper."
+description: "Generate publication-quality figures and tables from experiment results. Use when user says \\\"画图\\\", \\\"作图\\\", \\\"generate figures\\\", \\\"paper figures\\\", or needs plots for a paper."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, mcp__gemini_review__review_start, mcp__gemini_review__review_reply_start, mcp__gemini_review__review_status
+argument-hint: [figure-plan-or-data-path]
 ---
 
-> Override for Codex users who want **Gemini**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
+> Override for Codex users who want **Gemini CLI**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
 # Paper Figure: Publication-Quality Plots from Experiment Data
 
@@ -16,11 +18,11 @@ Generate all figures and tables for a paper based on: **$ARGUMENTS**
 | **Data-driven plots** | ✅ Yes | Line plots (training curves), bar charts (method comparison), scatter plots, heatmaps, box/violin plots |
 | **Comparison tables** | ✅ Yes | LaTeX tables comparing prior bounds, method features, ablation results |
 | **Multi-panel figures** | ✅ Yes | Subfigure grids combining multiple plots (e.g., 3×3 dataset × method) |
-| **Architecture/pipeline diagrams** | ❌ No — manual | Model architecture, data flow diagrams, system overviews. At best can generate a rough TikZ skeleton, but **expect to draw these yourself** using tools like draw.io, Figma, or TikZ |
+| **Architecture/pipeline diagrams** | ⚠️ Partial — route to `/paper-illustration` | Model architecture, data flow diagrams, system overviews. Prefer `paper-illustration`; fall back to existing external artifacts only when automatic illustration is unavailable. |
 | **Generated image grids** | ❌ No — manual | Grids of generated samples (e.g., GAN/diffusion outputs). These come from running your model, not from this skill |
 | **Photographs / screenshots** | ❌ No — manual | Real-world images, UI screenshots, qualitative examples |
 
-**In practice:** For a typical ML paper, this skill handles ~60% of figures (all data plots + tables). The remaining ~40% (hero figure, architecture diagram, qualitative results) need to be created manually and placed in `figures/` before running `/paper-write`. The skill will detect these as "existing figures" and preserve them.
+**In practice:** For a typical ML paper, this skill handles the data plots and tables directly, while architecture / conceptual figures should prefer `/paper-illustration` and only fall back to existing external artifacts. Unattended-safe mode should block instead of silently accepting missing external assets.
 
 ## Constants
 
@@ -30,7 +32,7 @@ Generate all figures and tables for a paper based on: **$ARGUMENTS**
 - **COLOR_PALETTE = `tab10`** — Default matplotlib color cycle. Options: `tab10`, `Set2`, `colorblind` (deuteranopia-safe)
 - **FONT_SIZE = 10** — Base font size (matches typical conference body text)
 - **FIG_DIR = `figures/`** — Output directory for generated figures
-- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. Set `GEMINI_REVIEW_MODEL` if you need a specific Gemini model override.
+- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. This bridge is CLI-first; set `GEMINI_REVIEW_MODEL` if you need a specific Gemini CLI model override.
 
 ## Inputs
 
@@ -39,6 +41,16 @@ Generate all figures and tables for a paper based on: **$ARGUMENTS**
 3. **Existing figures** — any manually created figures to preserve
 
 If no PAPER_PLAN.md exists, scan for data files and ask the user which figures to generate.
+
+## Unattended Figure Classification
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`, classify each figure as one of:
+
+- `auto_data` — data plots and tables generated directly inside this skill
+- `auto_illustration` — architecture / pipeline / conceptual diagrams that should route to `/paper-illustration`
+- `external_artifact` — photos, screenshots, or other assets that must already exist on disk
+
+In unattended-safe mode, `external_artifact` is a blocker unless the file already exists, and `auto_illustration` should prefer `paper_illustration: auto` over waiting for manual drawing.
 
 ## Workflow
 
@@ -49,13 +61,13 @@ Parse the Figure Plan table from PAPER_PLAN.md:
 ```markdown
 | ID | Type | Description | Data Source | Priority |
 |----|------|-------------|-------------|----------|
-| Fig 1 | Architecture | ... | manual | HIGH |
+| Fig 1 | Architecture | ... | auto_illustration | HIGH |
 | Fig 2 | Line plot | ... | figures/exp.json | HIGH |
 ```
 
 Identify:
 - Which figures can be auto-generated from data
-- Which need manual creation (architecture diagrams, etc.)
+- Which should route to automatic illustration or rely on existing external artifacts
 - Which are comparison tables (generate as LaTeX)
 
 ### Step 2: Set Up Plotting Environment
@@ -164,11 +176,11 @@ Method & Rate & Depends on $D$? & Multi-modal? \\
 \end{table}
 ```
 
-**Architecture/pipeline diagrams** (MANUAL — outside this skill's scope):
-- These require manual creation using draw.io, Figma, Keynote, or TikZ
-- This skill can generate a rough TikZ skeleton as a starting point, but **do not expect publication-quality results**
+**Architecture/pipeline diagrams** (AUTO_ILLUSTRATION or EXTERNAL_ARTIFACT):
+- Prefer routing these to `/paper-illustration` when automatic illustration is available
 - If the figure already exists in `figures/`, preserve it and generate only the LaTeX `\includegraphics` snippet
-- Flag as `[MANUAL]` in the figure plan and `latex_includes.tex`
+- In unattended-safe mode, missing required external artifacts are blockers rather than manual reminders
+- Flag them as `[AUTO_ILLUSTRATION]` or `[EXTERNAL_ARTIFACT]` in the figure plan and `latex_includes.tex`
 
 ### Step 5: Run All Scripts
 
@@ -199,10 +211,10 @@ Save all snippets to `figures/latex_includes.tex` for easy copy-paste into the p
 
 ### Step 7: Figure Quality Review with REVIEWER_MODEL
 
-Send figure descriptions and captions to Gemini for review:
+Send figure descriptions and captions to Gemini through `gemini-review` for review:
 
 ```
-mcp__gemini-review__review_start:
+mcp__gemini_review__review_start:
   prompt: |
     Review these figure/table plans for a [VENUE] submission.
 
@@ -216,7 +228,7 @@ mcp__gemini-review__review_start:
     [list all figures with captions and descriptions]
 ```
 
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
+After this review-start or review-reply call, immediately save the returned `jobId` and poll `mcp__gemini_review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
 ### Step 8: Quality Checklist
 

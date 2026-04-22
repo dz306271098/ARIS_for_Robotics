@@ -1,7 +1,7 @@
 ---
 name: "auto-review-loop-minimax"
 description: "Autonomous multi-round research review loop using MiniMax API. Use when you want to use MiniMax instead of Codex MCP for external review. Trigger with \"auto review loop minimax\" or \"minimax review\"."
-allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, Skill
+allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Agent, Skill, mcp__minimax-chat__minimax_chat
 argument-hint: [topic-or-scope]
 ---
 
@@ -21,9 +21,9 @@ Autonomously iterate: review → implement fixes → re-review, until the extern
 
 ## API Configuration
 
-This skill uses MiniMax API for external review. Two methods are supported:
+This skill uses the host-registered MiniMax MCP for external review.
 
-### Method 1: MCP Tool (Primary)
+### Host MCP Tool (Primary)
 
 If `mcp__minimax-chat__minimax_chat` is available, use it:
 
@@ -35,25 +35,9 @@ mcp__minimax-chat__minimax_chat:
   system: "You are a senior machine learning researcher..."
 ```
 
-### Method 2: curl (Fallback)
+If MCP is not available, do **not** call MiniMax with `curl` from the Codex sandbox. Follow `CODEX.md -> ## Autonomy Profile -> external_model_failure_policy`: retry host runtime first, then use a provisional local critic only if allowed, setting `external_model_replay_required=true` in `AUTONOMY_STATE.json`.
 
-If MCP is not available, use curl directly:
-
-```bash
-curl -s "https://api.minimax.io/v1/chat/completions" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $MINIMAX_API_KEY" \
-  -d '{
-    "model": "MiniMax-M2.7",
-    "messages": [
-      {"role": "system", "content": "You are a senior ML researcher..."},
-      {"role": "user", "content": "[Review prompt]"}
-    ],
-    "max_tokens": 4096
-  }'
-```
-
-**API Key**: Read from `~/.codex/settings.json` under `env.MINIMAX_API_KEY`, or from environment variable.
+**API Key**: Configure `MINIMAX_API_KEY` in the host MCP environment, not as a sandbox-only shell variable.
 
 **Why MiniMax instead of a secondary Codex agent?** Codex CLI uses OpenAI's Responses API (`/v1/responses`) which is not supported by third-party providers. See: https://github.com/openai/codex/discussions/7782
 
@@ -102,9 +86,7 @@ Long-running loops may hit the context window limit, triggering automatic compac
 
 Send comprehensive context to the external reviewer.
 
-**Check MCP availability first**, then use appropriate method:
-
-**If MCP available (Primary):**
+**Check host MCP availability first**, then use the host MCP method:
 ```
 Use mcp__minimax-chat__minimax_chat tool with:
 - system: "You are a senior machine learning researcher serving as a reviewer for top-tier conferences like NeurIPS, ICML, and ICLR. Provide rigorous, constructive feedback."
@@ -112,28 +94,9 @@ Use mcp__minimax-chat__minimax_chat tool with:
 - model: "MiniMax-M2.7"
 ```
 
-**If MCP NOT available (Fallback):**
-```bash
-curl -s "https://api.minimax.io/v1/chat/completions" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $MINIMAX_API_KEY" \
-  -d '{
-    "model": "MiniMax-M2.7",
-    "messages": [
-      {
-        "role": "system",
-        "content": "You are a senior machine learning researcher serving as a reviewer for top-tier conferences like NeurIPS, ICML, and ICLR. Provide rigorous, constructive feedback."
-      },
-      {
-        "role": "user",
-        "content": "[Round N/MAX_ROUNDS of autonomous review loop]\n\n[Full research context: claims, methods, results, known weaknesses]\n[Changes since last round, if any]\n[For round 2+: Summary of previous review feedback and what was addressed]\n\nPlease act as a senior ML reviewer (NeurIPS/ICML level).\n\n1. Score this work 1-10 for a top venue\n2. List remaining critical weaknesses (ranked by severity)\n3. For each weakness, specify the MINIMUM fix (experiment, analysis, or reframing)\n4. State clearly: is this READY for submission? Yes/No/Almost\n\nBe brutally honest. If the work is ready, say so clearly."
-      }
-    ],
-    "max_tokens": 4096
-  }'
-```
+**If host MCP is not available:** retry according to `max_reviewer_runtime_retries`. If still unavailable and the autonomy profile permits `retry_then_local_fallback`, run the same rubric locally, mark the output `[pending host MiniMax replay]`, update `AUTONOMY_STATE.json` with `review_mode=local_fallback`, `review_replay_required=true`, and `external_model_replay_required=true`, then continue only as provisional work.
 
-**Note**: Each round is a standalone API call. For round 2+, include the summary of previous reviews and changes in the prompt itself.
+**Note**: Each host MCP round is a standalone API call. For round 2+, include the summary of previous reviews and changes in the prompt itself.
 
 #### Phase B: Parse Assessment
 
@@ -263,24 +226,4 @@ mcp__minimax-chat__minimax_chat:
     Be brutally honest. If the work is ready, say so clearly.
 ```
 
-**curl Fallback:**
-```bash
-curl -s "https://api.minimax.io/v1/chat/completions" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $MINIMAX_API_KEY" \
-  -d '{
-    "model": "MiniMax-M2.7",
-    "messages": [
-      {
-        "role": "system",
-        "content": "You are a senior machine learning researcher serving as a reviewer for top-tier conferences like NeurIPS, ICML, and ICLR. Provide rigorous, constructive feedback."
-      },
-      {
-        "role": "user",
-        "content": "[Round N/MAX_ROUNDS of autonomous review loop]\n\n## Previous Review Summary (Round N-1)\n- Previous Score: X/10\n- Previous Verdict: [ready/almost/not ready]\n- Previous Key Weaknesses: [list]\n\n## Changes Since Last Review\n1. [Action 1]: [result]\n2. [Action 2]: [result]\n3. [Action 3]: [result]\n\n## Updated Results\n[paste updated metrics/tables]\n\n## Current Research Context\n[brief summary of claims, methods, current state]\n\nPlease re-score and re-assess:\n1. Score this work 1-10 for a top venue\n2. List remaining critical weaknesses (ranked by severity)\n3. For each weakness, specify the MINIMUM fix\n4. State clearly: is this READY for submission? Yes/No/Almost\n\nBe brutally honest. If the work is ready, say so clearly."
-      }
-    ],
-    "max_tokens": 4096
-  }'
-```
-
+**No sandbox API fallback:** If host MiniMax MCP is unavailable in later rounds, do not run a direct sandbox HTTP call. Use the provisional local fallback protocol above and require host replay before final completion.

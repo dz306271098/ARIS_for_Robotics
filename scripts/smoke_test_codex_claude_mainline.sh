@@ -19,6 +19,7 @@ trap cleanup EXIT
 
 export HOME="$TEMP_HOME"
 unset http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY all_proxy ALL_PROXY
+unset GEMINI_API_KEY MINIMAX_API_KEY
 export http_proxy="http://proxy-lower.example:8080"
 export HTTPS_PROXY="http://proxy-upper.example:8443"
 export no_proxy="localhost,127.0.0.1"
@@ -45,6 +46,23 @@ mkdir -p "$SMOKE_PROJECT"
 cp "$SCRIPT_DIR/../templates/CODEX_TEMPLATE.md" "$SMOKE_PROJECT/CODEX.md"
 
 bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$SMOKE_PROJECT"
+bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check --target-skill paper-writing "$SMOKE_PROJECT" > "$HOME/paper-writing-preflight.json"
+python3 - "$HOME/paper-writing-preflight.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+profile = payload.get("autonomy_profile", {})
+if profile.get("external_model_runtime") != "host_first":
+    raise RuntimeError(payload)
+if profile.get("external_model_failure_policy") != "retry_then_local_fallback":
+    raise RuntimeError(payload)
+if payload.get("failures"):
+    raise RuntimeError(payload)
+if not any("external_model_replay_required=true" in note for note in payload.get("notes", [])):
+    raise RuntimeError(payload)
+PY
 python3 "$SCRIPT_DIR/../tools/update_autonomy_state.py" \
   --project-root "$SMOKE_PROJECT" \
   --workflow research-pipeline \
@@ -77,11 +95,13 @@ if "Autonomy Profile" not in payload.get("prompt", ""):
     raise RuntimeError(payload)
 if "review_replay_required=true" not in payload.get("prompt", ""):
     raise RuntimeError(payload)
-required = {"workflow", "phase", "status", "next_skill", "next_args", "blocking_reason", "retry_count", "last_heartbeat", "started_at", "updated_at", "review_mode", "review_replay_required", "recovery_step"}
+required = {"workflow", "phase", "status", "next_skill", "next_args", "blocking_reason", "retry_count", "last_heartbeat", "started_at", "updated_at", "review_mode", "review_replay_required", "external_model_replay_required", "recovery_step"}
 missing = sorted(required - set(state))
 if missing:
     raise RuntimeError(f"missing state keys: {missing}")
 if state["review_replay_required"] is not False:
+    raise RuntimeError(state)
+if state["external_model_replay_required"] is not False:
     raise RuntimeError(state)
 PY
 
@@ -102,6 +122,7 @@ state.update(
         "phase": "resume_candidate",
         "review_mode": "local_fallback",
         "review_replay_required": True,
+        "external_model_replay_required": True,
         "recovery_step": "waiting_for_reviewer_replay",
         "updated_at": now.isoformat().replace("+00:00", "Z"),
         "last_heartbeat": now.isoformat().replace("+00:00", "Z"),
@@ -426,11 +447,31 @@ if command -v nvcc >/dev/null 2>&1 && command -v nvidia-smi >/dev/null 2>&1 && c
   bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$CUDA_PROJECT"
   cmake -S "$CUDA_PROJECT" -B "$CUDA_PROJECT/build" -DCMAKE_BUILD_TYPE=Release
   cmake --build "$CUDA_PROJECT/build" -- -j2
-  (cd "$CUDA_PROJECT/build" && ctest --output-on-failure)
   mkdir -p "$CUDA_PROJECT/results" "$CUDA_PROJECT/monitoring" "$CUDA_PROJECT/profiles"
-  "$CUDA_PROJECT/build/bin/cuda_mixed_benchmark" --output "$CUDA_PROJECT/results/cuda_mixed_raw.json"
 
-  python3 - "$CUDA_PROJECT" <<'PY'
+  CUDA_TEST_LOG="$CUDA_PROJECT/results/cuda_runtime_probe.log"
+  set +e
+  python3 - "$CUDA_PROJECT/build/bin/vector_add_cuda_test" "$CUDA_TEST_LOG" <<'PY'
+import subprocess
+import sys
+from pathlib import Path
+
+exe = sys.argv[1]
+log_path = Path(sys.argv[2])
+with log_path.open("wb") as handle:
+    result = subprocess.run([exe], stdout=handle, stderr=subprocess.STDOUT, check=False)
+if result.returncode < 0:
+    sys.exit(128 - result.returncode)
+sys.exit(result.returncode)
+PY
+  CUDA_TEST_STATUS=$?
+  set -e
+
+  if (( CUDA_TEST_STATUS == 0 )); then
+    (cd "$CUDA_PROJECT/build" && ctest --output-on-failure)
+    "$CUDA_PROJECT/build/bin/cuda_mixed_benchmark" --output "$CUDA_PROJECT/results/cuda_mixed_raw.json"
+
+    python3 - "$CUDA_PROJECT" <<'PY'
 import json
 import subprocess
 import sys
@@ -506,6 +547,98 @@ summary = {
     encoding="utf-8",
 )
 PY
+  else
+    CUDA_TEST_OUTPUT="$(<"$CUDA_TEST_LOG")"
+    if [[ "$CUDA_TEST_OUTPUT" != *"OS call failed"* \
+      && "$CUDA_TEST_OUTPUT" != *"operation not supported"* \
+      && "$CUDA_TEST_OUTPUT" != *"no CUDA-capable device"* \
+      && "$CUDA_TEST_OUTPUT" != *"CUDA driver version is insufficient"* \
+      && "$CUDA_TEST_OUTPUT" != *"initialization error"* ]]; then
+      printf '%s\n' "$CUDA_TEST_OUTPUT" >&2
+      exit "$CUDA_TEST_STATUS"
+    fi
+
+    echo "Skipping CUDA runtime smoke because CUDA runtime allocation is unavailable in this environment." >&2
+    python3 - "$CUDA_PROJECT" "$CUDA_TEST_LOG" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+project = Path(sys.argv[1])
+log_path = Path(sys.argv[2])
+reason = log_path.read_text(encoding="utf-8", errors="replace").strip()
+(project / "build" / "build_report.json").write_text(
+    json.dumps(
+        {
+            "configure_status": "configured",
+            "build_status": "built",
+            "test_status": "skipped_cuda_runtime_unavailable",
+            "skip_reason": reason,
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n",
+    encoding="utf-8",
+)
+(project / "results" / "benchmark_manifest.json").write_text(
+    json.dumps(
+        {
+            "project_stack": "cpp_algorithm",
+            "runtime_profile": "cpu_cuda_mixed",
+            "benchmarks": [],
+            "skip_reason": reason,
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n",
+    encoding="utf-8",
+)
+summary = {
+    "status": "skipped",
+    "benchmark_targets": [],
+    "primary_metrics": {},
+    "anomalies": ["cuda_runtime_unavailable"],
+    "recommended_action": "rerun on a host with working CUDA runtime allocation",
+    "skip_reason": reason,
+}
+(project / "results" / "benchmark_summary.json").write_text(
+    json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+    encoding="utf-8",
+)
+(project / "profiles" / "nsys_summary.json").write_text(
+    json.dumps(
+        {
+            "backend": "nsys",
+            "status": "skipped",
+            "recommended_action": summary["recommended_action"],
+            "skip_reason": reason,
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n",
+    encoding="utf-8",
+)
+(project / "monitoring" / "last_benchmark_summary.json").write_text(
+    json.dumps(
+        {
+            "status": "skipped",
+            "build_status": "built",
+            "test_status": "skipped_cuda_runtime_unavailable",
+            "benchmark_targets": [],
+            "primary_metrics": {},
+            "baseline_deltas": {},
+            "anomalies": ["cuda_runtime_unavailable"],
+            "recommended_action": summary["recommended_action"],
+            "updated_at": "2026-04-17T00:00:00Z",
+            "skip_reason": reason,
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n",
+    encoding="utf-8",
+)
+PY
+  fi
 else
   set +e
   CUDA_PREFLIGHT_OUTPUT=$(bash "$SCRIPT_DIR/check_unattended_mainline.sh" --skip-reviewer-check "$CUDA_PROJECT" 2>&1)
@@ -712,5 +845,329 @@ fi
 [[ ! -e "$HOME/.codex/.aris/codex-claude-mainline/current-manifest.json" ]]
 [[ -f "$HOME/.codex/skills/research-review/LEGACY.txt" ]]
 grep -q '^legacy-bridge$' "$HOME/.codex/mcp-servers/claude-review/server.py"
+
+mkdir -p "$HOME/.codex/mcp-servers/gemini-review"
+printf 'legacy-gemini-bridge\n' > "$HOME/.codex/mcp-servers/gemini-review/server.py"
+
+bash "$INSTALL_SCRIPT" --reviewer gemini
+
+[[ -f "$HOME/.codex/skills/research-review/SKILL.md" ]]
+[[ -f "$HOME/.codex/mcp-servers/gemini-review/server.py" ]]
+grep -q 'gemini-review' "$HOME/.codex/skills/research-review/SKILL.md"
+codex mcp get gemini-review --json > "$HOME/gemini-review.json"
+
+python3 - "$HOME/.codex/mcp-servers/gemini-review/server.py" "$HOME/.codex/.aris/codex-claude-mainline/current-manifest.json" "$HOME/gemini-review.json" <<'PY'
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+server_path = sys.argv[1]
+manifest_path = Path(sys.argv[2])
+mcp_path = Path(sys.argv[3])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+if manifest.get("reviewer_provider") != "gemini":
+    raise RuntimeError(f"Unexpected reviewer provider: {manifest}")
+if manifest.get("review_backend") != "cli":
+    raise RuntimeError(f"Unexpected Gemini review backend: {manifest}")
+if manifest.get("review_model") != "gemini-3.1-pro-preview":
+    raise RuntimeError(f"Unexpected Gemini review model: {manifest}")
+if manifest.get("review_fallback_model") != "":
+    raise RuntimeError(f"Gemini reviewer must not set a fallback model: {manifest}")
+if manifest.get("gemini_review_max_retries") != 2:
+    raise RuntimeError(f"Unexpected Gemini retry count: {manifest}")
+if manifest.get("gemini_review_retry_delay_sec") != "5":
+    raise RuntimeError(f"Unexpected Gemini retry delay: {manifest}")
+
+mcp = json.loads(mcp_path.read_text(encoding="utf-8"))
+env = mcp["transport"]["env"]
+if env.get("GEMINI_REVIEW_BACKEND") != "cli":
+    raise RuntimeError(f"Missing Gemini backend env: {env}")
+if env.get("GEMINI_REVIEW_MODEL") != "gemini-3.1-pro-preview":
+    raise RuntimeError(f"Missing Gemini model env: {env}")
+if env.get("GEMINI_REVIEW_MAX_RETRIES") != "2":
+    raise RuntimeError(f"Missing Gemini retry env: {env}")
+if env.get("GEMINI_REVIEW_RETRY_DELAY_SEC") != "5":
+    raise RuntimeError(f"Missing Gemini retry delay env: {env}")
+expected_proxy_env = {
+    "http_proxy": "http://proxy-lower.example:8080",
+    "HTTPS_PROXY": "http://proxy-upper.example:8443",
+    "no_proxy": "localhost,127.0.0.1",
+}
+for key, value in expected_proxy_env.items():
+    if env.get(key) != value:
+        raise RuntimeError(f"Missing inherited Gemini proxy env {key}: {env}")
+
+expected_proxy_keys = {"http_proxy", "HTTPS_PROXY", "no_proxy"}
+if set(manifest.get("inherited_proxy_env_keys", [])) != expected_proxy_keys:
+    raise RuntimeError(f"Unexpected Gemini inherited_proxy_env_keys: {manifest}")
+if manifest.get("inherit_proxy_env") is not True:
+    raise RuntimeError(f"Expected Gemini inherit_proxy_env=true: {manifest}")
+
+
+def start_server(*, env: dict[str, str]) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [sys.executable, server_path],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+
+
+def call(proc: subprocess.Popen[str], payload: dict) -> dict:
+    assert proc.stdin is not None
+    assert proc.stdout is not None
+    proc.stdin.write(json.dumps(payload) + "\n")
+    proc.stdin.flush()
+    line = proc.stdout.readline()
+    if not line:
+        raise RuntimeError("Server returned no output")
+    return json.loads(line)
+
+
+temp_dir = Path(tempfile.mkdtemp(prefix="gemini-review-fake-"))
+fake_gemini = temp_dir / "gemini"
+fake_gemini.write_text(
+    """#!/usr/bin/env python3
+import json
+import os
+import sys
+import time
+
+args = sys.argv[1:]
+model = ""
+prompt = ""
+for idx, arg in enumerate(args):
+    if arg in {"-p", "--prompt"} and idx + 1 < len(args):
+        prompt = args[idx + 1]
+    if arg in {"-m", "--model"} and idx + 1 < len(args):
+        model = args[idx + 1]
+
+if model == "capacity-model":
+    print("MODEL_CAPACITY_EXHAUSTED: no capacity", file=sys.stderr)
+    raise SystemExit(1)
+
+if model == "capacity-timeout-model":
+    print("MODEL_CAPACITY_EXHAUSTED: no capacity", file=sys.stderr, flush=True)
+    time.sleep(5)
+    raise SystemExit(1)
+
+if model == "flaky-capacity-model":
+    counter_path = os.environ.get("FAKE_GEMINI_RETRY_COUNTER")
+    if not counter_path:
+        print("missing FAKE_GEMINI_RETRY_COUNTER", file=sys.stderr)
+        raise SystemExit(1)
+    try:
+        with open(counter_path, "r", encoding="utf-8") as handle:
+            attempts = int(handle.read().strip() or "0")
+    except FileNotFoundError:
+        attempts = 0
+    attempts += 1
+    with open(counter_path, "w", encoding="utf-8") as handle:
+        handle.write(str(attempts))
+    if attempts == 1:
+        print("MODEL_CAPACITY_EXHAUSTED: transient no capacity", file=sys.stderr)
+        raise SystemExit(1)
+    print(json.dumps({"session_id": "flaky-thread", "response": "FLAKY_GEMINI_OK", "model": model}, indent=2))
+    raise SystemExit(0)
+
+if model == "auth-model":
+    print(json.dumps({"error": {"message": "invalid_grant: token expired"}}), file=sys.stderr)
+    raise SystemExit(1)
+
+if model == "missing-model":
+    print(json.dumps({"error": {"status": "NOT_FOUND", "message": "model not found"}}), file=sys.stderr)
+    raise SystemExit(1)
+
+if "IMAGE_CHECK" in prompt:
+    if "@{" not in prompt:
+        print(json.dumps({"response": "MISSING_IMAGE_REFERENCE", "model": model}))
+        raise SystemExit(0)
+    print(json.dumps({"session_id": "image-thread", "response": "IMAGE_REFERENCE_OK", "model": model}, indent=2))
+    raise SystemExit(0)
+
+print(json.dumps({"session_id": "gemini-thread", "response": "FAKE_GEMINI_OK", "model": model}, indent=2))
+""",
+    encoding="utf-8",
+)
+fake_gemini.chmod(0o755)
+
+fake_env = dict(os.environ)
+fake_env["GEMINI_BIN"] = str(fake_gemini)
+fake_env["GEMINI_REVIEW_BACKEND"] = "cli"
+fake_env["GEMINI_REVIEW_MODEL"] = "gemini-3.1-pro-preview"
+fake_env["GEMINI_REVIEW_MAX_RETRIES"] = "2"
+fake_env["GEMINI_REVIEW_RETRY_DELAY_SEC"] = "0"
+fake_env["FAKE_GEMINI_RETRY_COUNTER"] = str(temp_dir / "retry-counter.txt")
+proc = start_server(env=fake_env)
+
+init = call(proc, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+if init.get("result", {}).get("serverInfo", {}).get("name") != "gemini-review":
+    raise RuntimeError(f"Unexpected initialize response: {init}")
+
+tools = call(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+tool_names = {tool["name"] for tool in tools.get("result", {}).get("tools", [])}
+required = {"review", "review_start", "review_reply_start", "review_status"}
+if not required.issubset(tool_names):
+    raise RuntimeError(f"Missing expected Gemini tools: {required - tool_names}")
+
+review_result = call(
+    proc,
+    {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {"name": "review", "arguments": {"prompt": "Reply with exactly: FAKE_GEMINI"}},
+    },
+)
+review_payload = json.loads(review_result["result"]["content"][0]["text"])
+if review_payload.get("response") != "FAKE_GEMINI_OK":
+    raise RuntimeError(f"Gemini fake response mismatch: {review_payload}")
+if review_payload.get("model") != "gemini-3.1-pro-preview":
+    raise RuntimeError(f"Gemini fake model mismatch: {review_payload}")
+
+image_path = temp_dir / "sample.png"
+image_path.write_bytes(
+    bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000a49444154789c6360000002000150a0f53a0000000049454e44ae426082"
+    )
+)
+image_result = call(
+    proc,
+    {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+            "name": "review",
+            "arguments": {
+                "prompt": "IMAGE_CHECK",
+                "imagePaths": [str(image_path)],
+            },
+        },
+    },
+)
+image_payload = json.loads(image_result["result"]["content"][0]["text"])
+if image_payload.get("response") != "IMAGE_REFERENCE_OK":
+    raise RuntimeError(f"Gemini image reference mismatch: {image_payload}")
+
+retry_result = call(
+    proc,
+    {
+        "jsonrpc": "2.0",
+        "id": 50,
+        "method": "tools/call",
+        "params": {
+            "name": "review",
+            "arguments": {"prompt": "retry", "model": "flaky-capacity-model"},
+        },
+    },
+)
+retry_payload = json.loads(retry_result["result"]["content"][0]["text"])
+if retry_payload.get("response") != "FLAKY_GEMINI_OK":
+    raise RuntimeError(f"Gemini retry response mismatch: {retry_payload}")
+if retry_payload.get("attempts") != 2:
+    raise RuntimeError(f"Gemini retry attempt count mismatch: {retry_payload}")
+
+failure_result = call(
+    proc,
+    {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+            "name": "review",
+            "arguments": {"prompt": "fail", "model": "capacity-model"},
+        },
+    },
+)
+if not failure_result.get("result", {}).get("isError"):
+    raise RuntimeError(f"Gemini explicit failure unexpectedly succeeded: {failure_result}")
+failure_payload = json.loads(failure_result["result"]["content"][0]["text"])
+if "MODEL_CAPACITY_EXHAUSTED" not in failure_payload.get("error", ""):
+    raise RuntimeError(f"Gemini explicit failure did not preserve diagnostic: {failure_payload}")
+
+auth_failure_result = call(
+    proc,
+    {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "tools/call",
+        "params": {
+            "name": "review",
+            "arguments": {"prompt": "fail", "model": "auth-model"},
+        },
+    },
+)
+if not auth_failure_result.get("result", {}).get("isError"):
+    raise RuntimeError(f"Gemini auth failure unexpectedly succeeded: {auth_failure_result}")
+auth_failure_payload = json.loads(auth_failure_result["result"]["content"][0]["text"])
+auth_error = auth_failure_payload.get("error", "")
+if "AUTH_FAILED" not in auth_error and "invalid_grant" not in auth_error:
+    raise RuntimeError(f"Gemini auth failure did not preserve diagnostic: {auth_failure_payload}")
+
+missing_model_result = call(
+    proc,
+    {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+            "name": "review",
+            "arguments": {"prompt": "fail", "model": "missing-model"},
+        },
+    },
+)
+if not missing_model_result.get("result", {}).get("isError"):
+    raise RuntimeError(f"Gemini missing-model failure unexpectedly succeeded: {missing_model_result}")
+missing_model_payload = json.loads(missing_model_result["result"]["content"][0]["text"])
+if "NOT_FOUND" not in missing_model_payload.get("error", ""):
+    raise RuntimeError(f"Gemini missing-model failure did not preserve diagnostic: {missing_model_payload}")
+
+proc.terminate()
+proc.wait(timeout=5)
+
+timeout_env = dict(fake_env)
+timeout_env["GEMINI_REVIEW_TIMEOUT_SEC"] = "1"
+timeout_env["GEMINI_REVIEW_MAX_RETRIES"] = "0"
+timeout_proc = start_server(env=timeout_env)
+timeout_init = call(timeout_proc, {"jsonrpc": "2.0", "id": 8, "method": "initialize", "params": {}})
+if timeout_init.get("result", {}).get("serverInfo", {}).get("name") != "gemini-review":
+    raise RuntimeError(f"Unexpected timeout initialize response: {timeout_init}")
+timeout_result = call(
+    timeout_proc,
+    {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {
+            "name": "review",
+            "arguments": {"prompt": "fail", "model": "capacity-timeout-model"},
+        },
+    },
+)
+if not timeout_result.get("result", {}).get("isError"):
+    raise RuntimeError(f"Gemini timeout failure unexpectedly succeeded: {timeout_result}")
+timeout_payload = json.loads(timeout_result["result"]["content"][0]["text"])
+timeout_error = timeout_payload.get("error", "")
+if "timed out" not in timeout_error or "MODEL_CAPACITY_EXHAUSTED" not in timeout_error:
+    raise RuntimeError(f"Gemini timeout failure did not preserve diagnostic: {timeout_payload}")
+
+timeout_proc.terminate()
+timeout_proc.wait(timeout=5)
+PY
+
+"$HOME/.codex/.aris/codex-claude-mainline/uninstall_codex_claude_mainline.sh"
+
+if codex mcp get gemini-review --json >/dev/null 2>&1; then
+  echo "Expected gemini-review MCP to be removed after uninstall" >&2
+  exit 1
+fi
+grep -q '^legacy-gemini-bridge$' "$HOME/.codex/mcp-servers/gemini-review/server.py"
 
 echo "Smoke test passed in isolated HOME: $TEMP_HOME"

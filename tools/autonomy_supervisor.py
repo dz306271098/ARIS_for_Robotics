@@ -78,8 +78,10 @@ def build_prompt(workflow: str, workflow_args: str, execution_profile: dict[str,
         "- Use `python3 tools/update_autonomy_state.py` to update AUTONOMY_STATE.json at each major phase transition, heartbeat, blocker, and completion.",
         "- Do not ask for human confirmation unless a hard safety boundary from the autonomy profile forces a stop.",
         "- Treat missing reviewer runtime, missing required W&B logging for unattended long runs, or forbidden cloud auto-provisioning as blocking conditions and record the blocker explicitly.",
+        "- Run every external model call through a host-first runtime (`external_model_runtime: host_first`): use host MCP bridges or host-side helper scripts, not direct `claude`, `gemini`, MiniMax, or Gemini API calls from the Codex sandbox.",
+        "- If an external model backend fails and `external_model_failure_policy: retry_then_local_fallback`, a provisional local critic or placeholder artifact may keep intermediate work moving, but set `external_model_replay_required=true` and preserve the recovery step.",
         "- Use the autonomy-profile reviewer fallback policy: retry reviewer runtime first; if `review_fallback_mode` is `retry_then_local_critic`, a provisional local-critic pass is allowed only for intermediate progress and must set `review_mode=local_fallback` plus `review_replay_required=true` in AUTONOMY_STATE.json.",
-        "- Never mark claim-freeze or final paper-polish stages as fully completed while `review_replay_required=true`.",
+        "- Never mark claim-freeze, final paper-polish, rebuttal, or required AI-generated figures as fully completed while `review_replay_required=true` or `external_model_replay_required=true`.",
         "- Reuse existing workflow recovery files if they exist; do not restart completed work from scratch.",
     ]
 
@@ -151,6 +153,7 @@ def write_state(
     retry_count: int | None = None,
     review_mode: str | None = None,
     review_replay_required: bool | None = None,
+    external_model_replay_required: bool | None = None,
     recovery_step: str | None = None,
     note: str = "",
 ) -> None:
@@ -181,6 +184,8 @@ def write_state(
         cmd.extend(["--review-mode", review_mode])
     if review_replay_required is not None:
         cmd.extend(["--review-replay-required", str(review_replay_required).lower()])
+    if external_model_replay_required is not None:
+        cmd.extend(["--external-model-replay-required", str(external_model_replay_required).lower()])
     if recovery_step is not None:
         cmd.extend(["--recovery-step", recovery_step])
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
@@ -257,6 +262,7 @@ def main() -> int:
     retry_count = int(state.get("retry_count", 0) or 0)
     current_review_mode = str(state.get("review_mode", "external") or "external")
     current_review_replay_required = bool(state.get("review_replay_required", False))
+    current_external_model_replay_required = bool(state.get("external_model_replay_required", False))
 
     if profile["allow_auto_cloud"] is False and gpu_profile.get("gpu", "").strip().lower() == "vast":
         if not allow_vast_reuse_without_provision(project_root):
@@ -271,6 +277,7 @@ def main() -> int:
                 blocking_reason="missing_running_vast_instance",
                 review_mode=current_review_mode,
                 review_replay_required=current_review_replay_required,
+                external_model_replay_required=current_external_model_replay_required,
                 recovery_step="preflight_vast_blocked",
                 note="allow_auto_cloud is false and no reusable vast.ai instance was found",
             )
@@ -296,6 +303,7 @@ def main() -> int:
             retry_count=retry_count,
             review_mode=current_review_mode,
             review_replay_required=current_review_replay_required,
+            external_model_replay_required=current_external_model_replay_required,
             recovery_step="supervisor_dispatch",
             note="Supervisor dispatch",
         )
@@ -327,6 +335,7 @@ def main() -> int:
                     blocking_reason=f"preflight_exit_{exc.returncode}",
                     review_mode=current_review_mode,
                     review_replay_required=current_review_replay_required,
+                    external_model_replay_required=current_external_model_replay_required,
                     recovery_step="supervisor_preflight_failed",
                     note="Unattended health check failed",
                 )
@@ -347,6 +356,7 @@ def main() -> int:
                 blocking_reason="",
                 review_mode="external",
                 review_replay_required=False,
+                external_model_replay_required=False,
                 recovery_step="supervisor_complete",
                 note=f"Completed successfully. Log: {log_path}",
             )
@@ -365,6 +375,7 @@ def main() -> int:
             retry_count=retry_count,
             review_mode=current_review_mode,
             review_replay_required=current_review_replay_required,
+            external_model_replay_required=current_external_model_replay_required,
             recovery_step="supervisor_failed",
             note=f"Codex exec failed. Inspect {log_path}",
         )

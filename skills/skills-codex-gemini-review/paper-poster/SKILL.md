@@ -2,10 +2,10 @@
 name: paper-poster
 description: "Generate a conference poster (article + tcbposter LaTeX → A0/A1 PDF + editable PPTX + SVG) from a compiled paper. Use when user says \"做海报\", \"制作海报\", \"conference poster\", \"make poster\", \"生成poster\", \"poster session\", or wants to create a poster for a conference presentation."
 argument-hint: [paper-directory-or-venue]
-allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, mcp__gemini-review__review, mcp__gemini-review__review_start, mcp__gemini-review__review_reply_start, mcp__gemini-review__review_status
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, mcp__gemini_review__review_start, mcp__gemini_review__review_reply_start, mcp__gemini_review__review_status
 ---
 
-> Override for Codex users who want **Gemini**, not a second Codex/Codex-MCP reviewer, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
+> Override for Codex users who want **Gemini CLI**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
 # Paper Poster: From Paper to Conference Poster
 
@@ -25,7 +25,7 @@ Unlike papers (dense prose, 8-15 pages), posters are **visual-first**: one page,
 - **COLUMNS = 4** — Number of content columns. Typical: 4 for landscape A0 (IMRAD), **3 for portrait A0** (research consensus), 2 for portrait A1. Portrait A0 should NEVER use 4 columns — text becomes too narrow and unreadable.
 - **PAPER_DIR = `paper/`** — Directory containing the compiled paper (main.tex + figures/).
 - **OUTPUT_DIR = `poster/`** — Output directory for all poster files.
-- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge for poster review.
+- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. This bridge is CLI-first; set `GEMINI_REVIEW_MODEL` if you need a specific Gemini CLI model override.
 - **AUTO_PROCEED = false** — At each checkpoint, **always wait for explicit user confirmation**. Set `true` only if user explicitly requests fully autonomous mode.
 - **COMPILER = `latexmk`** — LaTeX build tool.
 - **ENGINE = `pdflatex`** — LaTeX engine. Use `xelatex` for CJK text.
@@ -670,9 +670,9 @@ pdfinfo poster/main.pdf
 3. Figures are fully visible, not cut off
 4. Text is readable (zoom to 100% = actual A0 size)
 
-### Phase 5: Visual Review via Gemini (Iterative Refinement)
+### Phase 5: Visual Review via Gemini CLI review (Iterative Refinement)
 
-> This phase uses **Gemini multimodal assessment** through the local `gemini-review` MCP bridge on rendered poster PNGs to iteratively refine layout, readability, and visual hierarchy.
+> This phase uses **Gemini visual assessment through `gemini-review`** on rendered poster images to iteratively refine layout, readability, and visual hierarchy — similar to the `paper-illustration` skill's review loop.
 
 **Step 1: Render poster to PNG preview**
 
@@ -685,7 +685,7 @@ pix.save('poster/poster_review.png')
 doc.close()
 ```
 
-**Step 2: Gemini visual assessment**
+**Step 2: Gemini visual assessment through `gemini-review`**
 
 Read the rendered `poster/poster_review.png` and perform a **STRICT visual review** with the following rubric (score 1-10):
 
@@ -717,19 +717,16 @@ SCORE_THRESHOLD = 9
 
 for iteration in 1..MAX_ITERATIONS:
     1. Render poster to poster/poster_v{iteration}.png (200 DPI)
-    2. Call mcp__gemini-review__review_start with:
-       - prompt: [STRICT visual rubric + scoring instructions]
-       - imagePaths: ["poster/poster_v{iteration}.png"]
-    3. Save the returned jobId and poll mcp__gemini-review__review_status until done=true
-    4. Score the poster (1-10) with detailed feedback
-    5. If score >= SCORE_THRESHOLD → PASS, proceed to Phase 6
-    6. If score < SCORE_THRESHOLD:
+    2. Gemini reviewer reads the PNG and performs STRICT visual review
+    3. Score the poster (1-10) with detailed feedback
+    4. If score >= SCORE_THRESHOLD → PASS, proceed to Phase 6
+    5. If score < SCORE_THRESHOLD:
        a. Identify top 3 issues (ranked by visual impact)
        b. Generate targeted LaTeX fixes for each issue
        c. Apply fixes to main.tex
        d. Recompile (Phase 4 error loop)
        e. Continue to next iteration
-    7. Save all versions: poster/poster_v{iteration}.png
+    6. Save all versions: poster/poster_v{iteration}.png
 ```
 
 > ⚠️ **All versions are preserved.** Never overwrite previous renders. Save as `poster_v1.png`, `poster_v2.png`, etc. This allows comparison and rollback.
@@ -741,7 +738,7 @@ for iteration in 1..MAX_ITERATIONS:
 For poster elements that need custom illustrations (e.g., hero architecture diagram, method workflow), use the Gemini illustration pipeline:
 1. Write a detailed specification for the illustration
 2. Call `mcp__illustrator__run` with the specification
-3. Gemini reviews the generated image for accuracy via `mcp__gemini-review__review_start` with `imagePaths`
+3. Gemini reviewer reviews the generated image for accuracy
 4. Iterate until score ≥ 9 or max 3 attempts
 5. Save final illustration to `poster/figures/` and embed in LaTeX
 
@@ -764,12 +761,13 @@ Append all iteration scores and feedback to `poster/POSTER_VISUAL_REVIEW.md`:
 - Decision: PASS — print-ready
 ```
 
-### Phase 6: Gemini Review
+### Phase 6: Codex MCP Review
 
-Send the poster content plan + key LaTeX sections to Gemini for review.
+Send the poster content plan + key LaTeX sections to Gemini CLI review for review.
 
 ```
-mcp__gemini-review__review_start:
+mcp__gemini_review__review_start:
+  config: {"model_reasoning_effort": "xhigh"}
   prompt: |
     Review this academic conference poster for [VENUE].
 
@@ -795,7 +793,7 @@ mcp__gemini-review__review_start:
     - Overall: Ready to print? (Yes / Needs revision / Major issues)
 ```
 
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the textual poster review.
+After this review-start or review-reply call, immediately save the returned `jobId` and poll `mcp__gemini_review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
 Apply CRITICAL and MAJOR fixes to `poster/main.tex`. Recompile if changes were made.
 

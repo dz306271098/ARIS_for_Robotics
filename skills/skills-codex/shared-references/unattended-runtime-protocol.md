@@ -22,6 +22,15 @@ Stop and record a blocker instead of improvising when any of these are true:
 - `allow_auto_real_robot: false` but the next step needs physical robot execution
 - paper-writing needs automatic illustration generation and no usable backend or existing artifact exists
 
+## External Model Runtime
+
+- `external_model_runtime: host_first` is the only unattended-safe runtime for external models.
+- External model calls include Claude/Gemini/MiniMax review, Gemini/Paperbanana image generation, and any future third-party model API.
+- Prefer host MCP bridges or host terminal checks. Do not treat Codex/bwrap sandbox CLI/API results as authoritative availability.
+- If a host external model call fails, retry according to the project limit first.
+- If `external_model_failure_policy: retry_then_local_fallback`, a local critic or placeholder artifact may keep the workflow moving, but update `AUTONOMY_STATE.json` with `external_model_replay_required=true` and a concrete `recovery_step`.
+- Do not mark claim freeze, final paper polish, rebuttal, or required AI-generated figures as complete until the host external model replay succeeds.
+
 ## AUTONOMY_STATE Contract
 
 `AUTONOMY_STATE.json` is the cross-workflow state anchor. Keep these keys present:
@@ -33,6 +42,7 @@ Stop and record a blocker instead of improvising when any of these are true:
 - `next_args`
 - `blocking_reason`
 - `retry_count`
+- `external_model_replay_required`
 - `last_heartbeat`
 - `started_at`
 - `updated_at`

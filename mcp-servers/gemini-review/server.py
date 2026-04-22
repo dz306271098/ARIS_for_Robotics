@@ -2,10 +2,10 @@
 """Gemini review MCP server for Codex-first workflows.
 
 This server mirrors the narrow review-only interface used by the existing
-review bridges, but defaults to the direct Gemini API so Codex can reuse the
-original ARIS review-heavy skill structure with minimal changes. Gemini CLI is
-kept only as an optional fallback. It is intentionally self-contained so it can
-be copied into `~/.codex/mcp-servers/gemini-review/` without depending on this
+review bridges, but defaults to Gemini CLI rather than the direct Gemini API.
+That keeps the reviewer path usable for Codex installations that have a logged
+in Gemini CLI but no API key. It is intentionally self-contained so it can be
+copied into `~/.codex/mcp-servers/gemini-review/` without depending on this
 repository.
 """
 
@@ -33,10 +33,12 @@ sys.stdin = os.fdopen(sys.stdin.fileno(), "rb", buffering=0)
 
 SERVER_NAME = os.environ.get("GEMINI_REVIEW_SERVER_NAME", "gemini-review")
 GEMINI_BIN = os.environ.get("GEMINI_BIN", "gemini")
-DEFAULT_MODEL = os.environ.get("GEMINI_REVIEW_MODEL", "")
 DEFAULT_SYSTEM = os.environ.get("GEMINI_REVIEW_SYSTEM", "")
-DEFAULT_BACKEND = os.environ.get("GEMINI_REVIEW_BACKEND", "api")
+DEFAULT_MODEL = os.environ.get("GEMINI_REVIEW_MODEL", "gemini-3.1-pro-preview").strip()
+DEFAULT_BACKEND = os.environ.get("GEMINI_REVIEW_BACKEND", "cli")
 DEFAULT_TIMEOUT_SEC = int(os.environ.get("GEMINI_REVIEW_TIMEOUT_SEC", "600"))
+DEFAULT_MAX_RETRIES = int(os.environ.get("GEMINI_REVIEW_MAX_RETRIES", "2"))
+DEFAULT_RETRY_DELAY_SEC = float(os.environ.get("GEMINI_REVIEW_RETRY_DELAY_SEC", "5"))
 DEFAULT_API_MODEL = os.environ.get("GEMINI_REVIEW_API_MODEL", "gemini-2.5-flash")
 DEBUG_LOG = Path(os.environ.get("GEMINI_REVIEW_DEBUG_LOG", f"/tmp/{SERVER_NAME}-mcp-debug.log"))
 STATE_DIR = Path(
@@ -209,10 +211,18 @@ def get_api_key() -> str | None:
 
 
 def parse_gemini_json(raw_stdout: str) -> tuple[dict[str, Any] | None, str | None]:
-    lines = [line.strip() for line in raw_stdout.splitlines() if line.strip()]
-    if not lines:
+    stripped_stdout = raw_stdout.strip()
+    if not stripped_stdout:
         return None, "Gemini CLI returned empty output"
 
+    try:
+        payload = json.loads(stripped_stdout)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        return payload, None
+
+    lines = [line.strip() for line in stripped_stdout.splitlines() if line.strip()]
     for candidate in reversed(lines):
         try:
             payload = json.loads(candidate)
@@ -224,6 +234,56 @@ def parse_gemini_json(raw_stdout: str) -> tuple[dict[str, Any] | None, str | Non
     return None, "Gemini CLI did not return JSON output"
 
 
+def compact_text(text: str, *, limit: int = 2000) -> str:
+    one_line = " ".join(text.strip().split())
+    if len(one_line) <= limit:
+        return one_line
+    return one_line[: limit - 3] + "..."
+
+
+def subprocess_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def extract_json_error(payload: Any) -> str | None:
+    if isinstance(payload, list) and payload:
+        for item in payload:
+            message = extract_json_error(item)
+            if message:
+                return message
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    error = payload.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+        status = error.get("status")
+        details = error.get("details")
+        reason = ""
+        if isinstance(details, list):
+            for detail in details:
+                if not isinstance(detail, dict):
+                    continue
+                candidate = detail.get("reason")
+                if isinstance(candidate, str) and candidate.strip():
+                    reason = candidate.strip()
+                    break
+        parts = [str(item).strip() for item in (status, reason, message) if str(item or "").strip()]
+        if parts:
+            return " | ".join(parts)
+
+    for key in ("message", "response", "result"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def extract_cli_error_message(raw_stdout: str, raw_stderr: str) -> str:
     for text in (raw_stdout, raw_stderr):
         stripped = text.strip()
@@ -232,19 +292,67 @@ def extract_cli_error_message(raw_stdout: str, raw_stderr: str) -> str:
         try:
             payload = json.loads(stripped)
         except json.JSONDecodeError:
-            return stripped
-        if not isinstance(payload, dict):
-            return stripped
-        error = payload.get("error")
-        if isinstance(error, dict):
-            message = error.get("message")
-            if isinstance(message, str) and message.strip():
-                return message.strip()
-        response = payload.get("response")
-        if isinstance(response, str) and response.strip():
-            return response.strip()
-        return stripped
+            if "MODEL_CAPACITY_EXHAUSTED" in stripped or "No capacity available" in stripped:
+                return "MODEL_CAPACITY_EXHAUSTED | No capacity available for requested Gemini model"
+            if "Manual authorization is required" in stripped:
+                return "AUTH_REQUIRED | Manual Gemini CLI authorization is required"
+            if "Unauthorized" in stripped or "invalid_grant" in stripped:
+                return "AUTH_FAILED | Gemini CLI authorization failed"
+            return compact_text(stripped)
+        message = extract_json_error(payload)
+        if message:
+            return compact_text(message)
+        return compact_text(stripped)
     return "unknown error"
+
+
+def is_retryable_cli_error(message: str) -> bool:
+    normalized = message.lower()
+    non_retryable_markers = (
+        "auth_failed",
+        "auth_required",
+        "invalid_grant",
+        "unauthorized",
+        "auth_config_missing",
+        "not_found",
+        "model not found",
+        "unsupported",
+    )
+    if any(marker in normalized for marker in non_retryable_markers):
+        return False
+
+    retryable_markers = (
+        "model_capacity_exhausted",
+        "no capacity available",
+        "resource_exhausted",
+        "rate limit",
+        "429",
+        "temporarily unavailable",
+        "unavailable",
+        "deadline exceeded",
+        "timeout",
+        "timed out",
+        "econnreset",
+        "etimedout",
+        "socket hang up",
+    )
+    return any(marker in normalized for marker in retryable_markers)
+
+
+def runtime_context(*, model: str | None, backend: str = "cli") -> str:
+    selected_model = model or DEFAULT_MODEL or DEFAULT_API_MODEL
+    cli_home = os.environ.get("GEMINI_CLI_HOME") or "<unset>"
+    proxy_keys = [
+        key
+        for key in ("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "all_proxy", "ALL_PROXY")
+        if os.environ.get(key)
+    ]
+    proxy_context = ",".join(proxy_keys) if proxy_keys else "<none>"
+    return (
+        f"backend={backend}, model={selected_model}, "
+        f"GEMINI_BIN={GEMINI_BIN}, GEMINI_CLI_HOME={cli_home}, HOME={Path.home()}, "
+        f"proxy_env_keys={proxy_context}, max_retries={DEFAULT_MAX_RETRIES}"
+    )
 
 
 def extract_api_response_text(payload: dict[str, Any]) -> str:
@@ -366,9 +474,10 @@ def build_cli_prompt(
     *,
     history: list[dict[str, str]],
     system: str | None,
+    image_paths: list[str],
 ) -> str:
     selected_system = (system or DEFAULT_SYSTEM).strip()
-    if not history and not selected_system:
+    if not history and not selected_system and not image_paths:
         return prompt
 
     sections: list[str] = []
@@ -382,7 +491,27 @@ def build_cli_prompt(
             sections.append(item["text"])
             sections.append("")
     sections.extend(["## New User Prompt", prompt])
+    if image_paths:
+        sections.extend(["", "## Attached Image Files"])
+        for image_path in image_paths:
+            sections.append(f"@{{{image_path}}}")
     return "\n".join(sections).strip()
+
+
+def normalize_cli_image_references(image_paths: list[str]) -> tuple[list[str], str | None]:
+    references: list[str] = []
+    for raw_path in image_paths:
+        path = Path(raw_path).expanduser()
+        if not path.is_file():
+            return [], f"image file not found: {raw_path}"
+        mime_type, _ = mimetypes.guess_type(path.name)
+        if not mime_type or not mime_type.startswith("image/"):
+            return [], f"unsupported image type for Gemini CLI review: {raw_path}"
+        try:
+            references.append(str(path.resolve()))
+        except OSError as exc:
+            return [], f"failed to resolve image file {raw_path}: {exc}"
+    return references, None
 
 
 def run_gemini_cli_review(
@@ -393,47 +522,85 @@ def run_gemini_cli_review(
     system: str | None,
     image_paths: list[str],
 ) -> tuple[dict[str, Any] | None, str | None]:
-    if image_paths:
-        return None, "Gemini CLI backend in this bridge does not support imagePaths; use backend=api"
-
     bin_path = find_gemini_bin()
     if not bin_path:
-        return None, f"Gemini CLI not found: {GEMINI_BIN}"
+        return None, f"Gemini CLI not found: {GEMINI_BIN}. {runtime_context(model=model)}"
 
-    effective_prompt = build_cli_prompt(prompt, history=history, system=system)
+    image_references, image_error = normalize_cli_image_references(image_paths)
+    if image_error:
+        return None, image_error
+
+    effective_prompt = build_cli_prompt(
+        prompt,
+        history=history,
+        system=system,
+        image_paths=image_references,
+    )
     cmd = [bin_path, "-p", effective_prompt, "--output-format", "json"]
     selected_model = model or DEFAULT_MODEL
     if selected_model:
         cmd.extend(["-m", selected_model])
 
-    debug_log(f"RUN {' '.join(cmd)}")
-    try:
-        started = time.monotonic()
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            stdin=subprocess.DEVNULL,
-            timeout=DEFAULT_TIMEOUT_SEC,
-            check=False,
-        )
-        duration_ms = int((time.monotonic() - started) * 1000)
-    except subprocess.TimeoutExpired:
-        return None, f"Gemini review timed out after {DEFAULT_TIMEOUT_SEC} seconds"
+    max_attempts = max(1, DEFAULT_MAX_RETRIES + 1)
+    for attempt in range(1, max_attempts + 1):
+        debug_log(f"RUN attempt={attempt}/{max_attempts} {' '.join(cmd)}")
+        try:
+            started = time.monotonic()
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                timeout=DEFAULT_TIMEOUT_SEC,
+                check=False,
+            )
+            duration_ms = int((time.monotonic() - started) * 1000)
+        except subprocess.TimeoutExpired as exc:
+            stdout = subprocess_text(exc.stdout)
+            stderr = subprocess_text(exc.stderr)
+            diagnostic = extract_cli_error_message(stdout, stderr)
+            if attempt < max_attempts and is_retryable_cli_error(diagnostic):
+                debug_log(f"RETRY attempt={attempt}/{max_attempts} error={diagnostic}")
+                if DEFAULT_RETRY_DELAY_SEC > 0:
+                    time.sleep(DEFAULT_RETRY_DELAY_SEC)
+                continue
+            return None, (
+                f"Gemini CLI review timed out after {DEFAULT_TIMEOUT_SEC} seconds "
+                f"(attempts={attempt}/{max_attempts}). "
+                f"{runtime_context(model=selected_model)}. "
+                f"error={diagnostic}"
+            )
+
+        if result.returncode != 0:
+            diagnostic = extract_cli_error_message(result.stdout, result.stderr)
+            if attempt < max_attempts and is_retryable_cli_error(diagnostic):
+                debug_log(f"RETRY attempt={attempt}/{max_attempts} error={diagnostic}")
+                if DEFAULT_RETRY_DELAY_SEC > 0:
+                    time.sleep(DEFAULT_RETRY_DELAY_SEC)
+                continue
+            return None, (
+                "Gemini CLI review failed "
+                f"(attempts={attempt}/{max_attempts}). "
+                f"{runtime_context(model=selected_model)}. "
+                f"error={diagnostic}"
+            )
+
+        break
 
     payload, parse_error = parse_gemini_json(result.stdout)
     if parse_error:
         stderr = result.stderr.strip()
-        message = parse_error if not stderr else f"{parse_error}. stderr: {stderr}"
+        message = parse_error if not stderr else f"{parse_error}. stderr: {compact_text(stderr)}"
+        message = f"{message}. {runtime_context(model=selected_model)}"
         return None, message
 
     assert payload is not None
-    if result.returncode != 0:
-        return None, f"Gemini review failed: {extract_cli_error_message(result.stdout, result.stderr)}"
-
     response_text = str(payload.get("response", "")).strip()
     if not response_text:
-        return None, "Gemini CLI JSON payload does not contain a non-empty response field"
+        return None, (
+            "Gemini CLI JSON payload does not contain a non-empty response field. "
+            f"{runtime_context(model=selected_model)}"
+        )
 
     return {
         "response": response_text,
@@ -441,6 +608,7 @@ def run_gemini_cli_review(
         "duration_ms": duration_ms,
         "stop_reason": payload.get("stop_reason"),
         "backend": "cli",
+        "attempts": attempt,
     }, None
 
 
@@ -791,7 +959,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             "imagePaths": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Optional local image paths for Gemini API multimodal review",
+                "description": "Optional local image paths for Gemini multimodal review",
             },
             "image_paths": {
                 "type": "array",

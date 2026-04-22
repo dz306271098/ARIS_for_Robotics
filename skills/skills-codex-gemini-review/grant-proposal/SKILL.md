@@ -1,9 +1,11 @@
 ---
 name: grant-proposal
 description: "Draft a structured grant proposal from research ideas and literature. Supports KAKENHI (Japan), NSF (US), NSFC (China, including 面上/青年/优青/杰青/海外优青/重点), ERC (EU), DFG (Germany), SNSF (Switzerland), ARC (Australia), NWO (Netherlands), and generic formats. Use when user says \"write grant\", \"grant proposal\", \"申請書\", \"write KAKENHI\", \"科研費\", \"基金申请\", \"写基金\", \"NSF proposal\", or wants to turn research ideas into a funding application."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, Skill, mcp__gemini_review__review_start, mcp__gemini_review__review_reply_start, mcp__gemini_review__review_status
+argument-hint: [research-direction — grant-type]
 ---
 
-> Override for Codex users who want **Gemini**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
+> Override for Codex users who want **Gemini CLI**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
 # Grant Proposal: From Research Ideas to Fundable Application
 
@@ -34,7 +36,7 @@ Grant proposals argue for **future work** (feasibility + potential), not complet
 
 - **GRANT_TYPE = `KAKENHI`** — Default grant type. Supported: `KAKENHI`, `NSF`, `NSFC`, `ERC`, `DFG`, `SNSF`, `ARC`, `NWO`, `GENERIC`. Override via argument (e.g., `/grant-proposal "topic — NSF"`).
 - **GRANT_SUBTYPE = `auto`** — Sub-type within the grant agency. Examples: KAKENHI `Start-up`/`Wakate`/`Kiban-B`; NSFC `Youth`/`Excellent-Youth`/`Distinguished`/`Overseas`/`Key`; NSF `CAREER`/`CRII`/`Standard`. Auto-detected from argument or defaults to the most common sub-type.
-- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge for proposal review. Set `GEMINI_REVIEW_MODEL` if you need a specific Gemini model override.
+- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. This bridge is CLI-first; set `GEMINI_REVIEW_MODEL` if you need a specific Gemini CLI model override.
 - **OUTPUT_FORMAT = `markdown`** — Output format. Supported: `markdown`, `latex`. LaTeX uses grant-specific templates when available.
 - **MAX_REVIEW_ROUNDS = 2** — Maximum external review-revise cycles before finalizing.
 - **OUTPUT_DIR = `grant-proposal/`** — Directory for generated proposal files.
@@ -290,7 +292,7 @@ Timeline: [timeline]
 ```
 
 **What this does:**
-- Gemini acts as a grant review panelist (not a paper reviewer)
+- Gemini CLI review acts as a grant review panelist (not a paper reviewer)
 - Evaluates aims independence, narrative arc, risk identification, timeline realism
 - Identifies the single biggest reviewer concern
 - Provides actionable fixes ranked by severity
@@ -306,7 +308,7 @@ Apply structural feedback before proceeding to drafting.
 - Aim 2: [title] — Risk: MEDIUM
 - Aim 3: [title] — Risk: LOW
 - Timeline: [summary]
-- Reviewer feedback: [key points from Gemini]
+- Reviewer feedback: [key points from Gemini reviewer]
 
 Proceed to section drafting? Or adjust the structure?
 ```
@@ -319,7 +321,7 @@ Options for the user:
 - Reply **"back"** → return to Phase 1 to adjust the gap/positioning
 - Reply **"stop"** → save current structure to `grant-proposal/DRAFT_NOTES.md`
 
-**State**: Write `GRANT_STATE.json` with `phase: 2`, aims summary, and the completed reviewer `thread_id` if you ran the reviewer directly.
+**State**: Write `GRANT_STATE.json` with `phase: 2`, aims summary, and the completed reviewer `threadId`.
 
 ### Phase 3: Section Drafting
 
@@ -419,20 +421,20 @@ Invoke `/research-review` on the complete draft for grant-type-specific evaluati
 ```
 
 **What this does:**
-- Gemini acts as a grant review panelist
+- Gemini CLI review acts as a grant review panelist
 - Scores each section 1-5 using agency-specific criteria
 - Identifies fatal flaws and recommends funding/revisions/rejection
 - Provides ranked action items for improvement
 - All feedback saved to `grant-proposal/GRANT_REVIEW.md`
 
-> ⚠️ **External review fallback**: If `gemini-review` MCP is unavailable or Gemini credentials are missing, skip external review. Note "External review skipped — gemini-review unavailable." in `GRANT_REVIEW.md`. The proposal is still usable without external review.
+> ⚠️ **External review fallback**: If reviewer agents are unavailable, skip external review. Note "External review skipped — no reviewer agent available." in `GRANT_REVIEW.md`. The proposal is still usable without external review.
 
-If `/research-review` is invoked (preferred), it handles the external review internally. If you run the reviewer directly, use `mcp__gemini-review__review_start` for Round 1 and `mcp__gemini-review__review_reply_start` for follow-up rounds.
+If `/research-review` is invoked (preferred), it handles the external review internally. If you run the reviewer directly, use `mcp__gemini_review__review_start` for Round 1 and `mcp__gemini_review__review_reply_start` plus `mcp__gemini_review__review_status` for follow-up rounds.
 
 #### Round 1 (full draft review):
 
 ```
-mcp__gemini-review__review_start:
+mcp__gemini_review__review_start:
   prompt: |
     Review this complete [GRANT_TYPE] [GRANT_SUBTYPE] proposal draft.
 
@@ -454,15 +456,17 @@ mcp__gemini-review__review_start:
     [PASTE FULL PROPOSAL TEXT]
 ```
 
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the review output, and save the completed `threadId` in `GRANT_STATE.json` if you want to continue the same dialogue in Round 2.
+After this review-start or review-reply call, immediately save the returned `jobId` and poll `mcp__gemini_review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
+
+Save the returned completed reviewer `threadId` in `GRANT_STATE.json` if you want to continue the same reviewer thread in Round 2.
 
 #### Round 2+ (after revisions):
 
 If MAX_REVIEW_ROUNDS > 1 and revisions were applied:
 
 ```
-mcp__gemini-review__review_reply_start:
-  threadId: [saved completed threadId from Round 1]
+mcp__gemini_review__review_reply_start:
+  agent_id: [saved from Round 1]
   prompt: |
     [Round N review of revised [GRANT_TYPE] [GRANT_SUBTYPE] proposal]
 
@@ -477,7 +481,7 @@ mcp__gemini-review__review_reply_start:
     [PASTE REVISED PROPOSAL TEXT]
 ```
 
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the updated review output.
+After this review-start or review-reply call, immediately save the returned `jobId` and poll `mcp__gemini_review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
 ### Phase 5: Revision & Output
 
@@ -488,7 +492,7 @@ Parse reviewer feedback into severity levels:
 - **MAJOR** — significant weaknesses. Fix before submission.
 - **MINOR** — suggestions for improvement. Fix if time allows.
 
-Implement CRITICAL and MAJOR fixes. If MAX_REVIEW_ROUNDS > 1, re-submit for another round via `send_input`.
+Implement CRITICAL and MAJOR fixes. If MAX_REVIEW_ROUNDS > 1, re-submit for another round via `mcp__gemini_review__review_reply_start` plus `mcp__gemini_review__review_status`.
 
 #### 5.2 Generate Output
 
@@ -542,7 +546,7 @@ Before declaring done:
 - Language: [language]
 - Aims: [N] aims covering [summary]
 - Timeline: [N] years
-- Review score: [summary from Gemini]
+- Review score: [summary from Gemini reviewer]
 - Output: grant-proposal/GRANT_PROPOSAL.md
 
 Files saved to grant-proposal/. Please review and customize:
@@ -588,7 +592,7 @@ Parameters can be passed inline with `—` separator. They flow to sub-skills wh
 | `max review rounds` | 2 | External review cycles | — |
 | `sources` | all | Literature sources | → `/research-lit` |
 | `arxiv download` | false | Download arXiv PDFs | → `/research-lit` |
-| `reviewer model` | gemini-review | Gemini reviewer bridge | → reviewer thread |
+| `reviewer model` | gpt-5.4 | Codex review model | → reviewer agent |
 | `auto proceed` | false | Skip checkpoints | — |
 
 ## Composing with Other Skills

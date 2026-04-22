@@ -1,9 +1,11 @@
 ---
 name: "idea-creator"
-description: "Generate and rank research ideas given a broad direction. Use when user says \"\u627eidea\", \"brainstorm ideas\", \"generate research ideas\", \"what can we work on\", or wants to explore a research area for publishable directions."
+description: "Generate and rank research ideas given a broad direction. Use when user says \"找idea\", \"brainstorm ideas\", \"generate research ideas\", \"what can we work on\", or wants to explore a research area for publishable directions."
+allowed-tools: Bash(*), Read, Write, Grep, Glob, WebSearch, WebFetch, Agent, mcp__gemini_review__review_start, mcp__gemini_review__review_reply_start, mcp__gemini_review__review_status
+argument-hint: [research-direction]
 ---
 
-> Override for Codex users who want **Gemini**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
+> Override for Codex users who want **Gemini CLI**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
 # Research Idea Creator
 
@@ -19,11 +21,34 @@ Given a broad research direction from the user, systematically generate, validat
 - **PILOT_TIMEOUT_HOURS = 3** — Hard timeout: kill pilots exceeding 3 hours. Collect partial results if available.
 - **MAX_PILOT_IDEAS = 3** — Pilot at most 3 ideas in parallel. Additional ideas are validated on paper only.
 - **MAX_TOTAL_GPU_HOURS = 8** — Total GPU budget for all pilots combined.
-- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge for brainstorming and critique. Set `GEMINI_REVIEW_MODEL` if you need a specific Gemini model override.
+- **IDEATION_LANES = gap-closing, cross-domain analogy, contradiction-resolution, anti-assumption, failure-reframing** — Default divergent ideation lanes.
+- **PORTFOLIO_SIZE = 3** — Keep at least `safe`, `bold`, and `contrarian` routes until novelty/review/cheap pilots narrow them.
+- **SHADOW_ROUTE_COUNT = 1** — Preserve one non-mainline route after ranking when the evidence is still ambiguous.
+- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. This bridge is CLI-first; set `GEMINI_REVIEW_MODEL` if you need a specific Gemini CLI model override.
 
 > 💡 Override via argument, e.g., `/idea-creator "topic" — pilot budget: 4h per idea, 20h total`.
 
 ## Workflow
+
+### Phase 0: Load Research Wiki (if `research-wiki/` exists)
+
+**Skip entirely if `research-wiki/` directory does not exist.**
+
+If the wiki exists, load it BEFORE landscape survey to avoid repeating known work:
+
+1. Read `research-wiki/query_pack.md` — compressed context (gaps, failed ideas, top papers)
+2. Read `research-wiki/principle_pack.md` — transferable principles and adaptation hints
+3. Read `research-wiki/analogy_pack.md` — cross-domain opportunities
+4. Read `research-wiki/failure_pack.md` — anti-repetition memory and revive conditions
+5. Treat listed gaps as priority search seeds for Phase 1
+6. Treat failed ideas as a banlist unless a revive condition is explicitly satisfied
+7. Treat top principles and analogy candidates as ideation fuel, not as copy targets
+
+If `query_pack.md` is missing or obviously stale:
+
+```bash
+python3 tools/research_wiki.py rebuild_query_pack research-wiki/
+```
 
 ### Phase 1: Landscape Survey (5-10 min)
 
@@ -50,43 +75,36 @@ Map the research area to understand what exists and where the gaps are.
    - Scaling regimes that haven't been explored
    - Diagnostic questions that nobody has asked
 
-### Phase 2: Idea Generation (brainstorm with external LLM)
+### Phase 2: Multi-Lane Idea Generation
 
-Use the local `gemini-review` MCP bridge for divergent thinking:
+Use a Gemini reviewer via `gemini-review` MCP for deliberate divergent thinking. Do NOT ask for one pooled brainstorm first. Generate ideas lane by lane using `../shared-references/innovation-lanes.md`:
 
-```
-mcp__gemini-review__review_start:
-  prompt: |
-    You are a senior ML researcher brainstorming research ideas.
+- gap-closing
+- cross-domain analogy
+- contradiction-resolution
+- anti-assumption
+- failure-reframing
 
-    Research direction: [user's direction]
+For each lane, ask for 3-5 ideas with:
+- one-sentence summary
+- source lane
+- core hypothesis
+- principle(s) used from `principle_pack.md` or newly synthesized from the literature
+- minimum viable experiment
+- closest prior work
+- main kill criterion
+- expected contribution type
+- risk level
+- estimated effort
 
-    Here is the current landscape:
-    [paste landscape map from Phase 1]
+Then merge the lanes, de-duplicate idea families, and preserve a portfolio split:
+- `safe` — best evidence-backed route
+- `bold` — highest-upside route with a credible mechanism
+- `contrarian` — route that attacks a dominant assumption or prevailing framing
 
-    Key gaps identified:
-    [paste gaps from Phase 1]
+Save the raw divergent pool before filtering so later loops can revisit killed branches intelligently.
 
-    Generate 8-12 concrete research ideas. For each idea:
-    1. One-sentence summary
-    2. Core hypothesis (what you expect to find and why)
-    3. Minimum viable experiment (what's the cheapest way to test this?)
-    4. Expected contribution type: empirical finding / new method / theoretical result / diagnostic
-    5. Risk level: LOW (likely works) / MEDIUM (50-50) / HIGH (speculative)
-    6. Estimated effort: days / weeks / months
-
-    Prioritize ideas that are:
-    - Testable with moderate compute (8x RTX 3090 or less)
-    - Likely to produce a clear positive OR negative result (both are publishable)
-    - Not "apply X to Y" unless the application reveals genuinely surprising insights
-    - Differentiated from the 10-15 papers above
-
-    Be creative but grounded. A great idea is one where the answer matters regardless of which way it goes.
-```
-
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the brainstorm output, and save the completed `threadId` for follow-up critique in Phase 4.
-
-### Phase 3: First-Pass Filtering
+### Phase 3: First-Pass Filtering and Portfolio Merge
 
 For each generated idea, quickly evaluate:
 
@@ -102,32 +120,27 @@ For each generated idea, quickly evaluate:
    - "So what?" test: if the experiment succeeds, does it change how people think?
    - Is the finding actionable or just interesting?
 
-Eliminate ideas that fail any of these. Typically 8-12 ideas reduce to 4-6.
+Eliminate ideas that fail any of these. Typically the raw multi-lane pool reduces to 4-6 serious candidates. Preserve the best surviving `safe`, `bold`, and `contrarian` routes in `IDEA_PORTFOLIO.md` even if one route already leads the ranking.
 
 ### Phase 4: Deep Validation (for top ideas)
 
 For each surviving idea, run a deeper evaluation:
 
-1. **Novelty check**: Use the `/novelty-check` workflow (multi-source search + Gemini cross-verification) for each idea
+1. **Novelty check**: Use the `/novelty-check` workflow (multi-source search + Gemini reviewer cross-verification) for each idea
 
-2. **Critical review**: Use `mcp__gemini-review__review_reply_start` with the saved completed `threadId`:
+2. **Critical review**: Use Gemini via `mcp__gemini_review__review_reply_start` with the saved completed `threadId`:
    ```
-   mcp__gemini-review__review_reply_start:
-     threadId: [saved completed threadId from Phase 2]
-     prompt: |
-       Here are our top ideas after filtering:
-       [paste surviving ideas with novelty check results]
+   Here are our top ideas after filtering:
+   [paste surviving ideas with novelty check results]
 
-       For each, play devil's advocate:
-       - What's the strongest objection a reviewer would raise?
-       - What's the most likely failure mode?
-       - How would you rank these for a top venue submission?
-       - Which 2-3 would you actually work on?
+   For each, play devil's advocate:
+   - What's the strongest objection a reviewer would raise?
+   - What's the most likely failure mode?
+   - How would you rank these for a top venue submission?
+   - Which 2-3 would you actually work on?
    ```
 
-   After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the follow-up critique.
-
-3. **Combine rankings**: Merge your assessment with Gemini's ranking. Select top 2-3 ideas for pilot experiments.
+3. **Combine rankings**: Merge your assessment with the Gemini reviewer's ranking. Select top 2-3 ideas for pilot experiments.
 
 ### Phase 5: Parallel Pilot Experiments (for top 2-3 ideas)
 
@@ -157,16 +170,16 @@ Before committing to a full research effort, run cheap pilot experiments to get 
 
 Note: Skip this phase if the ideas are purely theoretical or if no GPU is available. Flag skipped ideas as "needs pilot validation" in the report.
 
-### Phase 6: Output — Ranked Idea Report
+### Phase 6: Output — Ranked Idea Report and Portfolio
 
-Write a structured report to `IDEA_REPORT.md` in the project root:
+Write a structured report to `IDEA_REPORT.md` in the project root and a branch-aware `IDEA_PORTFOLIO.md` alongside it:
 
 ```markdown
 # Research Idea Report
 
 **Direction**: [user's research direction]
 **Generated**: [date]
-**Ideas evaluated**: X generated → Y survived filtering → Z piloted → W recommended
+**Ideas evaluated**: X generated across lanes → Y survived filtering → Z piloted → W retained in portfolio
 
 ## Landscape Summary
 [3-5 paragraphs on the current state of the field]
@@ -203,14 +216,47 @@ Write a structured report to `IDEA_REPORT.md` in the project root:
 | Idea 3 | GPU 2 | 1.5 hr | +0.8% CE | WEAK POSITIVE |
 
 ## Suggested Execution Order
-1. Start with Idea 1 (positive pilot signal, lowest risk)
-2. Idea 3 as backup (weak signal, may need larger scale to confirm)
-3. Idea 2 eliminated by pilot — negative result documented
+1. Mainline route: [best evidence-backed route]
+2. Shadow route: [bold or contrarian route that still survives]
+3. Eliminated routes: [documented with kill reasons]
 
 ## Next Steps
 - [ ] Scale up Idea 1 to full experiment (multi-seed, full dataset)
 - [ ] If confirmed, invoke /auto-review-loop for full iteration
 ```
+
+### Phase 7: Write Ideas to Research Wiki (if `research-wiki/` exists)
+
+**Skip entirely if `research-wiki/` directory does not exist.**
+
+Write **all** generated ideas back to the wiki, not just the final recommendation. Also persist the principle lineage so later loops can reuse the idea logic without regenerating it from scratch:
+
+```bash
+for each idea (recommended AND eliminated):
+    # Create or update research-wiki/ideas/<id>.md with:
+    #   - node_id, stage, outcome
+    #   - hypothesis, method sketch, pilot result
+    #   - based_on papers and target gaps
+
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "idea:<id>" --to "paper:<slug>" --type "inspired_by" \
+      --evidence "Idea builds on or reacts to this paper"
+
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "idea:<id>" --to "gap:<gid>" --type "addresses_gap" \
+      --evidence "Idea explicitly targets this gap"
+
+    python3 tools/research_wiki.py add_edge research-wiki/ \
+      --from "idea:<id>" --to "principle:<pid>" --type "applies_principle" \
+      --evidence "Idea instantiates this distilled principle"
+done
+
+python3 tools/research_wiki.py rebuild_packs research-wiki/
+python3 tools/research_wiki.py log research-wiki/ \
+  "idea-creator wrote N ideas (recommended + eliminated)"
+```
+
+Failed ideas are the most valuable wiki memory because they prevent future re-ideation from looping back into the same dead ends.
 
 ## Key Rules
 

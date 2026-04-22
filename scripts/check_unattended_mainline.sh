@@ -38,7 +38,31 @@ if [[ ! -f "$PROJECT_ROOT/CODEX.md" ]]; then
 fi
 
 if (( SKIP_REVIEWER_CHECK == 0 )); then
-  bash "$REPO_ROOT/scripts/check_claude_review_runtime.sh"
+  REVIEWER_PROVIDER="$(
+    python3 - "$REPO_ROOT" "$PROJECT_ROOT" <<'PY'
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+project_root = Path(sys.argv[2])
+sys.path.insert(0, str(repo_root / "tools"))
+from autonomy_lib import load_autonomy_profile
+
+print(str(load_autonomy_profile(project_root).get("reviewer_provider", "claude")).strip().lower() or "claude")
+PY
+  )"
+  case "$REVIEWER_PROVIDER" in
+    claude)
+      bash "$REPO_ROOT/scripts/check_claude_review_runtime.sh" --host-required
+      ;;
+    gemini)
+      bash "$REPO_ROOT/scripts/check_gemini_review_runtime.sh" --host-required
+      ;;
+    *)
+      echo "Unsupported reviewer_provider in CODEX.md: $REVIEWER_PROVIDER" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 python3 - "$REPO_ROOT" "$PROJECT_ROOT" "$TARGET_SKILL" <<'PY2'
@@ -91,8 +115,19 @@ if profile["priority"] != "quality_stability":
     failures.append("Unattended mode only supports `priority: quality_stability`.")
 
 review_fallback_mode = str(profile.get("review_fallback_mode", "retry_then_local_critic")).strip().lower()
+reviewer_provider = str(profile.get("reviewer_provider", "claude")).strip().lower()
+external_model_runtime = str(profile.get("external_model_runtime", "host_first")).strip().lower()
+external_model_failure_policy = str(profile.get("external_model_failure_policy", "retry_then_local_fallback")).strip().lower()
+if reviewer_provider not in {"claude", "gemini"}:
+    failures.append("`reviewer_provider` must be `claude` or `gemini`.")
 if review_fallback_mode not in {"retry_then_block", "retry_then_local_critic"}:
     failures.append("`review_fallback_mode` must be `retry_then_block` or `retry_then_local_critic`.")
+if reviewer_provider == "gemini" and review_fallback_mode != "retry_then_block":
+    failures.append("`reviewer_provider: gemini` requires `review_fallback_mode: retry_then_block`.")
+if external_model_runtime not in {"host_first"}:
+    failures.append("`external_model_runtime` must be `host_first` in unattended-safe mode.")
+if external_model_failure_policy not in {"retry_then_local_fallback", "retry_then_block"}:
+    failures.append("`external_model_failure_policy` must be `retry_then_local_fallback` or `retry_then_block`.")
 
 max_reviewer_runtime_retries = int(profile.get("max_reviewer_runtime_retries", 2) or 0)
 if max_reviewer_runtime_retries < 1:
@@ -238,8 +273,18 @@ elif execution["runtime_profile"] in {"cpu_benchmark", "cpu_cuda_mixed", "slam_o
 
 check_paper_backend = target_skill == "paper-writing" or state.get("next_skill") == "paper-writing"
 if check_paper_backend and str(profile["paper_illustration"]).strip().lower() == "auto":
-    if not os.environ.get("GEMINI_API_KEY"):
-        failures.append("paper-writing unattended mode requires GEMINI_API_KEY when `paper_illustration: auto`.")
+    if external_model_runtime != "host_first":
+        failures.append("paper-writing unattended mode requires `external_model_runtime: host_first` when `paper_illustration: auto`.")
+    elif not os.environ.get("GEMINI_API_KEY"):
+        message = (
+            "paper-writing illustration backend not proven in this shell: "
+            "missing GEMINI_API_KEY. Host-first workflow may continue only with "
+            "`external_model_replay_required=true` until real illustration artifacts are generated."
+        )
+        if external_model_failure_policy == "retry_then_block":
+            failures.append(message)
+        else:
+            notes.append(message)
 
 if state_path.exists():
     required_keys = {
@@ -250,6 +295,7 @@ if state_path.exists():
         "next_args",
         "blocking_reason",
         "retry_count",
+        "external_model_replay_required",
         "last_heartbeat",
         "started_at",
         "updated_at",
@@ -263,7 +309,10 @@ else:
 summary = {
     "project_root": str(project_root),
     "target_skill": target_skill or state.get("next_skill", ""),
+    "reviewer_provider": reviewer_provider,
     "review_fallback_mode": review_fallback_mode,
+    "external_model_runtime": external_model_runtime,
+    "external_model_failure_policy": external_model_failure_policy,
     "max_reviewer_runtime_retries": max_reviewer_runtime_retries,
     "autonomy_profile": profile,
     "execution_profile": execution,

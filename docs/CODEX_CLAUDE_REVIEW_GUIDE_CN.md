@@ -37,7 +37,7 @@
 
 - **Mandatory Test Gate**：每次写完代码后，先过模块测试和 workflow smoke test，再允许部署或进入下一轮 review
 - **Reviewer Resolution Protocol**：每条 reviewer 反馈都必须分类并在有争议时回到同一 thread 讨论，直到收敛到 fix / analysis / experiment / claim change
-- **Unattended Runtime Protocol**：`CODEX.md -> ## Autonomy Profile`、`AUTONOMY_STATE.json`、watchdog、W&B 和宿主机 health check 组成无人值守主线控制层；`review_fallback_mode: retry_then_local_critic` 只允许临时本地批判性审查，最终 claim freeze / paper polish 仍要 replay 外部 reviewer
+- **Unattended Runtime Protocol**：`CODEX.md -> ## Autonomy Profile`、`AUTONOMY_STATE.json`、watchdog、W&B 和宿主机 health check 组成无人值守主线控制层；`external_model_runtime: host_first` 要求外部模型调用走宿主机 MCP / host runtime；`review_fallback_mode: retry_then_local_critic` 和 `external_model_failure_policy: retry_then_local_fallback` 只允许临时本地批判性审查或 placeholder artifact，最终 claim freeze / paper polish 仍要 replay 外部 reviewer / external model
 - **Execution Profile**：`CODEX.md -> ## Execution Profile` 现在也是主线合同的一部分。默认仍是 `python_ml`，但已经支持把同一条主线切换到 `cpp_algorithm + cmake + cpu_benchmark`、`cpp_algorithm + cmake + cpu_cuda_mixed`、以及 `robotics_slam + (cmake | cmake_ros2) + slam_offline`，而不是再维护平行 workflow
 
 ---
@@ -90,7 +90,7 @@ claude -p "Reply with exactly READY" --output-format json --tools ""
 运行时健康检查：
 
 ```bash
-bash scripts/check_claude_review_runtime.sh
+bash scripts/check_claude_review_runtime.sh --host-required
 bash scripts/check_unattended_mainline.sh /path/to/project
 ```
 
@@ -238,18 +238,39 @@ bridge 还支持可选的 `jsonSchema` / `json_schema`，并透传给 Claude CLI
 
 如果你所在环境需要代理，`claude-review` 能否通过 Codex 托管路径成功，取决于这些代理变量是否被注册进 MCP 配置；仅仅 direct CLI 可用还不够。
 
+可选 Gemini CLI reviewer 不替换默认 Claude 主线。如果宿主机 Gemini CLI 已登录，可以显式安装：
+
+```bash
+bash scripts/install_codex_claude_mainline.sh \
+  --reinstall \
+  --reviewer gemini \
+  --gemini-review-model gemini-3.1-pro-preview \
+  --gemini-review-max-retries 2 \
+  --gemini-review-retry-delay-sec 5
+```
+
+Gemini 分支使用 `GEMINI_REVIEW_BACKEND=cli`，不要求 API key，也不自动回退 Claude 或低阶 Gemini。真实 reviewer runtime 验收必须在宿主机运行：
+
+```bash
+bash scripts/check_gemini_review_runtime.sh --host-required
+```
+
+Codex/bwrap sandbox 里的 Gemini CLI 结果只能作为诊断，不能作为 Gemini reviewer 不可用的结论。
+
 ---
 
 ## 6. 维护者回归流程
 
-修改主线 skill、overlay、安装器或 bridge 后，至少跑这五条：
+修改主线 skill、overlay、安装器或 bridge 后，至少跑这些检查：
 
 ```bash
 python3 tools/check_codex_mainline_parity.py
 python3 tools/generate_codex_claude_review_overrides.py
+python3 tools/generate_codex_gemini_review_overrides.py
 git diff --check
 bash scripts/smoke_test_codex_claude_mainline.sh
-bash scripts/check_claude_review_runtime.sh
+bash scripts/check_claude_review_runtime.sh --host-required
+bash scripts/check_gemini_review_runtime.sh --host-required
 ```
 
 推荐顺序：

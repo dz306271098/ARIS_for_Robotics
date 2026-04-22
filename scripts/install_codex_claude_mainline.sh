@@ -5,9 +5,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 UNINSTALL_SCRIPT="$SCRIPT_DIR/uninstall_codex_claude_mainline.sh"
 
-MCP_NAME="claude-review"
+REVIEWER_PROVIDER="claude"
+MCP_NAME=""
 REVIEW_MODEL="claude-opus-4-7[1m]"
 REVIEW_FALLBACK_MODEL="claude-opus-4-6"
+GEMINI_REVIEW_MODEL="gemini-3.1-pro-preview"
+GEMINI_REVIEW_BACKEND="cli"
+GEMINI_REVIEW_MAX_RETRIES="2"
+GEMINI_REVIEW_RETRY_DELAY_SEC="5"
 USE_AWS_WRAPPER=0
 REINSTALL=0
 INHERIT_PROXY_ENV=1
@@ -18,10 +23,19 @@ usage() {
 Usage: install_codex_claude_mainline.sh [options]
 
 Options:
-  --mcp-name NAME       MCP server name to register (default: claude-review)
+  --reviewer PROVIDER   Reviewer provider to install: claude or gemini (default: claude)
+  --mcp-name NAME       MCP server name to register (default: claude-review or gemini-review)
   --review-model MODEL  Set primary CLAUDE_REVIEW_MODEL (default: claude-opus-4-7[1m])
   --review-fallback-model MODEL
                         Set CLAUDE_REVIEW_FALLBACK_MODEL (default: claude-opus-4-6)
+  --gemini-review-model MODEL
+                        Set GEMINI_REVIEW_MODEL (default: gemini-3.1-pro-preview)
+  --gemini-review-backend BACKEND
+                        Set GEMINI_REVIEW_BACKEND (default: cli)
+  --gemini-review-max-retries N
+                        Set GEMINI_REVIEW_MAX_RETRIES (default: 2)
+  --gemini-review-retry-delay-sec SECONDS
+                        Set GEMINI_REVIEW_RETRY_DELAY_SEC (default: 5)
   --no-inherit-proxy-env
                         Do not copy current shell proxy env vars into the MCP config
   --use-aws-wrapper     Register run_with_claude_aws.sh instead of python3 server.py
@@ -32,6 +46,11 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --reviewer)
+      [[ $# -ge 2 ]] || { echo "Missing value for --reviewer" >&2; exit 1; }
+      REVIEWER_PROVIDER="$2"
+      shift 2
+      ;;
     --mcp-name)
       [[ $# -ge 2 ]] || { echo "Missing value for --mcp-name" >&2; exit 1; }
       MCP_NAME="$2"
@@ -45,6 +64,26 @@ while [[ $# -gt 0 ]]; do
     --review-fallback-model)
       [[ $# -ge 2 ]] || { echo "Missing value for --review-fallback-model" >&2; exit 1; }
       REVIEW_FALLBACK_MODEL="$2"
+      shift 2
+      ;;
+    --gemini-review-model)
+      [[ $# -ge 2 ]] || { echo "Missing value for --gemini-review-model" >&2; exit 1; }
+      GEMINI_REVIEW_MODEL="$2"
+      shift 2
+      ;;
+    --gemini-review-backend)
+      [[ $# -ge 2 ]] || { echo "Missing value for --gemini-review-backend" >&2; exit 1; }
+      GEMINI_REVIEW_BACKEND="$2"
+      shift 2
+      ;;
+    --gemini-review-max-retries)
+      [[ $# -ge 2 ]] || { echo "Missing value for --gemini-review-max-retries" >&2; exit 1; }
+      GEMINI_REVIEW_MAX_RETRIES="$2"
+      shift 2
+      ;;
+    --gemini-review-retry-delay-sec)
+      [[ $# -ge 2 ]] || { echo "Missing value for --gemini-review-retry-delay-sec" >&2; exit 1; }
+      GEMINI_REVIEW_RETRY_DELAY_SEC="$2"
       shift 2
       ;;
     --no-inherit-proxy-env)
@@ -71,6 +110,35 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+REVIEWER_PROVIDER="$(printf '%s' "$REVIEWER_PROVIDER" | tr '[:upper:]' '[:lower:]')"
+case "$REVIEWER_PROVIDER" in
+  claude|gemini)
+    ;;
+  *)
+    echo "Unsupported --reviewer value: $REVIEWER_PROVIDER" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
+
+if [[ -z "$MCP_NAME" ]]; then
+  if [[ "$REVIEWER_PROVIDER" == "gemini" ]]; then
+    MCP_NAME="gemini-review"
+  else
+    MCP_NAME="claude-review"
+  fi
+fi
+
+if [[ "$REVIEWER_PROVIDER" == "gemini" && "$USE_AWS_WRAPPER" == "1" ]]; then
+  echo "--use-aws-wrapper is only valid with --reviewer claude" >&2
+  exit 1
+fi
+
+if [[ "$REVIEWER_PROVIDER" == "gemini" && "$GEMINI_REVIEW_BACKEND" != "cli" ]]; then
+  echo "Gemini reviewer is CLI-only in this installer; use --gemini-review-backend cli." >&2
+  exit 1
+fi
+
 require_command() {
   local name="$1"
   if ! command -v "$name" >/dev/null 2>&1; then
@@ -81,6 +149,9 @@ require_command() {
 
 require_command codex
 require_command python3
+if [[ "$REVIEWER_PROVIDER" == "gemini" ]]; then
+  require_command gemini
+fi
 
 TARGET_HOME="${HOME:?HOME must be set}"
 CODEX_HOME="$TARGET_HOME/.codex"
@@ -206,32 +277,49 @@ done < <(find "$REPO_ROOT/skills/skills-codex" -mindepth 1 -maxdepth 1 -print0 |
 
 while IFS= read -r -d '' src; do
   copy_exact "$src" "$CODEX_HOME/skills/$(basename "$src")"
-done < <(find "$REPO_ROOT/skills/skills-codex-claude-review" -mindepth 1 -maxdepth 1 -print0 | sort -z)
-
-copy_exact "$REPO_ROOT/mcp-servers/claude-review/server.py" "$CODEX_HOME/mcp-servers/claude-review/server.py"
-copy_exact "$REPO_ROOT/mcp-servers/claude-review/run_with_claude_aws.sh" "$CODEX_HOME/mcp-servers/claude-review/run_with_claude_aws.sh"
-chmod +x "$CODEX_HOME/mcp-servers/claude-review/run_with_claude_aws.sh"
+done < <(find "$REPO_ROOT/skills/skills-codex-$REVIEWER_PROVIDER-review" -mindepth 1 -maxdepth 1 -print0 | sort -z)
 
 cmd=(codex mcp add "$MCP_NAME")
-if [[ -n "$REVIEW_MODEL" ]]; then
-  cmd+=(--env "CLAUDE_REVIEW_MODEL=$REVIEW_MODEL")
-fi
-if [[ -n "$REVIEW_FALLBACK_MODEL" ]]; then
-  cmd+=(--env "CLAUDE_REVIEW_FALLBACK_MODEL=$REVIEW_FALLBACK_MODEL")
+if [[ "$REVIEWER_PROVIDER" == "claude" ]]; then
+  copy_exact "$REPO_ROOT/mcp-servers/claude-review/server.py" "$CODEX_HOME/mcp-servers/claude-review/server.py"
+  copy_exact "$REPO_ROOT/mcp-servers/claude-review/run_with_claude_aws.sh" "$CODEX_HOME/mcp-servers/claude-review/run_with_claude_aws.sh"
+  chmod +x "$CODEX_HOME/mcp-servers/claude-review/run_with_claude_aws.sh"
+
+  if [[ -n "$REVIEW_MODEL" ]]; then
+    cmd+=(--env "CLAUDE_REVIEW_MODEL=$REVIEW_MODEL")
+  fi
+  if [[ -n "$REVIEW_FALLBACK_MODEL" ]]; then
+    cmd+=(--env "CLAUDE_REVIEW_FALLBACK_MODEL=$REVIEW_FALLBACK_MODEL")
+  fi
+else
+  copy_exact "$REPO_ROOT/mcp-servers/gemini-review/server.py" "$CODEX_HOME/mcp-servers/gemini-review/server.py"
+  cmd+=(--env "GEMINI_REVIEW_BACKEND=$GEMINI_REVIEW_BACKEND")
+  cmd+=(--env "GEMINI_REVIEW_MAX_RETRIES=$GEMINI_REVIEW_MAX_RETRIES")
+  cmd+=(--env "GEMINI_REVIEW_RETRY_DELAY_SEC=$GEMINI_REVIEW_RETRY_DELAY_SEC")
+  if [[ -n "$GEMINI_REVIEW_MODEL" ]]; then
+    cmd+=(--env "GEMINI_REVIEW_MODEL=$GEMINI_REVIEW_MODEL")
+  fi
 fi
 append_proxy_envs cmd
-if (( USE_AWS_WRAPPER )); then
+if [[ "$REVIEWER_PROVIDER" == "claude" ]] && (( USE_AWS_WRAPPER )); then
   cmd+=(-- "$CODEX_HOME/mcp-servers/claude-review/run_with_claude_aws.sh")
-else
+elif [[ "$REVIEWER_PROVIDER" == "claude" ]]; then
   cmd+=(-- python3 "$CODEX_HOME/mcp-servers/claude-review/server.py")
+else
+  cmd+=(-- python3 "$CODEX_HOME/mcp-servers/gemini-review/server.py")
 fi
 "${cmd[@]}"
 MCP_ADDED=1
 
 export INSTALL_ID
+export REVIEWER_PROVIDER
 export MCP_NAME
 export REVIEW_MODEL
 export REVIEW_FALLBACK_MODEL
+export GEMINI_REVIEW_MODEL
+export GEMINI_REVIEW_BACKEND
+export GEMINI_REVIEW_MAX_RETRIES
+export GEMINI_REVIEW_RETRY_DELAY_SEC
 export USE_AWS_WRAPPER
 export INHERIT_PROXY_ENV
 export REPO_ROOT
@@ -265,10 +353,18 @@ for raw_line in touched_file.read_text(encoding="utf-8").splitlines():
 payload = {
     "install_id": os.environ["INSTALL_ID"],
     "repo_root": os.environ["REPO_ROOT"],
+    "reviewer_provider": os.environ["REVIEWER_PROVIDER"],
     "mcp_name": os.environ["MCP_NAME"],
     "wrapper_mode": "aws-wrapper" if os.environ["USE_AWS_WRAPPER"] == "1" else "direct-python",
-    "review_model": os.environ["REVIEW_MODEL"],
-    "review_fallback_model": os.environ["REVIEW_FALLBACK_MODEL"],
+    "review_backend": os.environ["GEMINI_REVIEW_BACKEND"] if os.environ["REVIEWER_PROVIDER"] == "gemini" else "claude-cli",
+    "review_model": os.environ["GEMINI_REVIEW_MODEL"] if os.environ["REVIEWER_PROVIDER"] == "gemini" else os.environ["REVIEW_MODEL"],
+    "review_fallback_model": "" if os.environ["REVIEWER_PROVIDER"] == "gemini" else os.environ["REVIEW_FALLBACK_MODEL"],
+    "claude_review_model": os.environ["REVIEW_MODEL"],
+    "claude_review_fallback_model": os.environ["REVIEW_FALLBACK_MODEL"],
+    "gemini_review_model": os.environ["GEMINI_REVIEW_MODEL"],
+    "gemini_review_backend": os.environ["GEMINI_REVIEW_BACKEND"],
+    "gemini_review_max_retries": int(os.environ["GEMINI_REVIEW_MAX_RETRIES"]),
+    "gemini_review_retry_delay_sec": os.environ["GEMINI_REVIEW_RETRY_DELAY_SEC"],
     "inherit_proxy_env": os.environ["INHERIT_PROXY_ENV"] == "1",
     "inherited_proxy_env_keys": [
         item for item in os.environ.get("INHERITED_PROXY_ENV_KEYS_JOINED", "").split() if item
@@ -290,13 +386,19 @@ chmod +x "$LOCAL_UNINSTALL"
 
 trap - EXIT
 
-echo "Installed ARIS Codex+Claude mainline into $CODEX_HOME"
+echo "Installed ARIS Codex+$REVIEWER_PROVIDER mainline into $CODEX_HOME"
 echo "Registered MCP server: $MCP_NAME"
-if [[ -n "$REVIEW_MODEL" ]]; then
+echo "Reviewer provider: $REVIEWER_PROVIDER"
+if [[ "$REVIEWER_PROVIDER" == "claude" && -n "$REVIEW_MODEL" ]]; then
   echo "Primary reviewer model: $REVIEW_MODEL"
 fi
-if [[ -n "$REVIEW_FALLBACK_MODEL" ]]; then
+if [[ "$REVIEWER_PROVIDER" == "claude" && -n "$REVIEW_FALLBACK_MODEL" ]]; then
   echo "Fallback reviewer model: $REVIEW_FALLBACK_MODEL"
+fi
+if [[ "$REVIEWER_PROVIDER" == "gemini" ]]; then
+  echo "Gemini reviewer backend: $GEMINI_REVIEW_BACKEND"
+  echo "Gemini reviewer model: $GEMINI_REVIEW_MODEL"
+  echo "Gemini reviewer retries: $GEMINI_REVIEW_MAX_RETRIES (delay ${GEMINI_REVIEW_RETRY_DELAY_SEC}s)"
 fi
 if (( INHERIT_PROXY_ENV )); then
   if (( ${#INHERITED_PROXY_ENV_KEYS[@]} > 0 )); then

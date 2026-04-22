@@ -1,9 +1,11 @@
 ---
 name: "paper-writing"
-description: "Workflow 3: Full paper writing pipeline. Orchestrates paper-plan \u2192 paper-figure \u2192 paper-write \u2192 paper-compile \u2192 auto-paper-improvement-loop to go from a narrative report to a polished, submission-ready PDF. Use when user says \\\"\u5199\u8bba\u6587\u5168\u6d41\u7a0b\\\", \\\"write paper pipeline\\\", \\\"\u4ece\u62a5\u544a\u5230PDF\\\", \\\"paper writing\\\", or wants the complete paper generation workflow."
+description: "Workflow 3: Full paper writing pipeline. Orchestrates paper-plan → paper-figure → paper-write → paper-compile → auto-paper-improvement-loop to go from a narrative report to a polished, submission-ready PDF. Use when user says \\\"写论文全流程\\\", \\\"write paper pipeline\\\", \\\"从报告到PDF\\\", \\\"paper writing\\\", or wants the complete paper generation workflow."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, Skill, mcp__gemini_review__review_start, mcp__gemini_review__review_reply_start, mcp__gemini_review__review_status
+argument-hint: [narrative-report-path-or-topic]
 ---
 
-> Override for Codex users who want **Gemini**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
+> Override for Codex users who want **Gemini CLI**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
 # Workflow 3: Paper Writing Pipeline
 
@@ -22,13 +24,16 @@ Each phase builds on the previous one's output. The final deliverable is a polis
 
 ## Constants
 
-- **VENUE = `ICLR`** — Target venue. Options: `ICLR`, `NeurIPS`, `ICML`. Affects style file, page limit, citation format.
+- **VENUE = `ICLR`** — Target venue. Options: `ICLR`, `NeurIPS`, `ICML`, `CVPR`, `ACL`, `AAAI`, `ACM`, `IEEE_JOURNAL` (IEEE Transactions / Letters), `IEEE_CONF` (IEEE conferences). Affects style file, page limit, citation format.
 - **MAX_IMPROVEMENT_ROUNDS = 2** — Number of review→fix→recompile rounds in the improvement loop.
-- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge for plan review, figure review, writing review, and the improvement loop.
+- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. This bridge is CLI-first; set `GEMINI_REVIEW_MODEL` if you need a specific Gemini CLI model override.
 - **AUTO_PROCEED = true** — Auto-continue between phases. Set `false` to pause and wait for user approval after each phase.
 - **HUMAN_CHECKPOINT = false** — When `true`, the improvement loop (Phase 5) pauses after each round's review to let you see the score and provide custom modification instructions. When `false` (default), the loop runs fully autonomously. Passed through to `/auto-paper-improvement-loop`.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Project-level unattended-safe policy, including `paper_illustration: auto`.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before each phase transition and final completion/block.
 
 > Override inline: `/paper-writing "NARRATIVE_REPORT.md" — venue: NeurIPS, human checkpoint: true`
+> IEEE example: `/paper-writing "NARRATIVE_REPORT.md" — venue: IEEE_JOURNAL`
 
 ## Inputs
 
@@ -37,14 +42,25 @@ This pipeline accepts one of:
 1. **`NARRATIVE_REPORT.md`** (best) — structured research narrative with claims, experiments, results, figures
 2. **Research direction + experiment results** — the skill will help draft the narrative first
 3. **Existing `PAPER_PLAN.md`** — skip Phase 1, start from Phase 2
+4. **`CLAIMS_FROM_RESULTS.md`** — preferred claim-freeze artifact when the narrative needs to be refreshed before planning
 
 The more detailed the input (especially figure descriptions and quantitative results), the better the output.
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- treat `paper_illustration: auto` as the default policy for architecture / pipeline figures
+- update `AUTONOMY_STATE.json` before every phase transition and on any hard blocker
+- if a required illustration has no existing artifact and no usable automatic backend, stop with `blocking_reason=missing_illustration_backend` instead of pretending the paper is complete
+- if any section/outline/polish review used provisional local fallback, keep `review_replay_required=true` until the external reviewer replay succeeds
+- keep `AUTO_PROCEED=true` and `HUMAN_CHECKPOINT=false` unless a hard safety boundary forces a stop
 
 ## Pipeline
 
 ### Phase 1: Paper Plan
 
-Invoke `/paper-plan` to create the structural outline:
+Invoke `/paper-plan` to create the structural outline. If `NARRATIVE_REPORT.md` is missing but `CLAIMS_FROM_RESULTS.md` exists, first synthesize a narrative handoff from the approved claim scope, evidence package, and known limitations, then continue:
 
 ```
 /paper-plan "$ARGUMENTS"
@@ -56,7 +72,7 @@ Invoke `/paper-plan` to create the structural outline:
 - Design section structure (5-8 sections depending on paper type)
 - Plan figure/table placement with data sources
 - Scaffold citation structure
-- Gemini reviews the plan for completeness via the `/paper-plan` overlay
+- Gemini reviewer checks the plan for completeness
 
 **Output:** `PAPER_PLAN.md` with section plan, figure plan, citation scaffolding.
 
@@ -66,7 +82,7 @@ Invoke `/paper-plan` to create the structural outline:
 📐 Paper plan complete:
 - Title: [proposed title]
 - Sections: [N] ([list])
-- Figures: [N] auto-generated + [M] manual
+- Figures: [N] auto-generated + [M] external-artifact / illustration-dependent
 - Target: [VENUE], [PAGE_LIMIT] pages
 
 Shall I proceed with figure generation?
@@ -88,13 +104,13 @@ Invoke `/paper-figure` to generate data-driven plots and tables:
 - Generate matplotlib/seaborn plots from JSON/CSV data
 - Generate LaTeX comparison tables
 - Create `figures/latex_includes.tex` for easy insertion
-- Gemini reviews figure quality and captions via the `/paper-figure` overlay
+- Gemini reviewer checks figure quality and captions
 
 **Output:** `figures/` directory with PDFs, generation scripts, and LaTeX snippets.
 
-#### Phase 2b: AI Illustration Generation (when `illustration: true`)
+#### Phase 2b: AI Illustration Generation (when `illustration: true` or `paper_illustration: auto`)
 
-**Skip this step entirely if `illustration` is not set or is `false`.**
+**Skip this step entirely only if the paper plan contains no architecture / pipeline / conceptual figures that need illustration.** In unattended-safe mode, `CODEX.md -> ## Autonomy Profile -> paper_illustration: auto` should be treated as the default.
 
 If the paper plan includes architecture diagrams, pipeline figures, or method illustrations, invoke `/paper-illustration`:
 
@@ -105,20 +121,20 @@ If the paper plan includes architecture diagrams, pipeline figures, or method il
 **What this does:**
 - Codex plans the layout → Gemini optimizes → Nano Banana Pro renders → Codex reviews (score ≥ 9)
 - Output: `figures/ai_generated/*.png` — publication-quality method diagrams
-- Requires `GEMINI_API_KEY` environment variable
+- Requires a host-side Gemini/Paperbanana runtime. Do not call Gemini/Paperbanana directly from the Codex sandbox.
 
-> **Without `illustration: true`:** Architecture diagrams must still be created manually (draw.io, Figma, TikZ) and placed in `figures/` before proceeding — same as before.
+> **Without a usable illustration backend:** if the needed figure already exists in `figures/`, preserve it and continue. Otherwise create only provisional placeholders/spec artifacts, set `external_model_replay_required=true`, and keep `blocking_reason=missing_illustration_backend` or `external_illustration_pending` until the host runtime replay produces the real artifact.
 
-**Checkpoint:** List generated vs manual figures.
+**Checkpoint:** List generated vs external-artifact-dependent figures.
 
 ```
 📊 Figures complete:
 - Data plots (auto): [list]
 - AI illustrations (auto): [list, if illustration: true]
-- Manual (need your input): [list]
+- External artifacts (must already exist or block unattended mode): [list]
 - LaTeX snippets: figures/latex_includes.tex
 
-[If manual figures needed]: Please add them to figures/ before I proceed.
+[If external artifacts are missing in unattended mode]: Stop and record `blocking_reason=missing_illustration_backend` or the missing asset path before proceeding.
 [If all auto]: Shall I proceed with LaTeX writing?
 ```
 
@@ -137,7 +153,7 @@ Invoke `/paper-write` to generate section-by-section LaTeX:
 - Clean stale files from previous section structures
 - Automated bib cleaning (remove uncited entries)
 - De-AI polish (remove "delve", "pivotal", "landscape"...)
-- Gemini reviews each section for quality via the `/paper-write` overlay
+- Gemini reviewer checks each section for quality
 
 **Output:** `paper/` directory with `main.tex`, `sections/*.tex`, `references.bib`, `math_commands.tex`.
 
@@ -193,9 +209,9 @@ Invoke `/auto-paper-improvement-loop` to polish the paper:
 
 **What this does (2 rounds):**
 
-**Round 1:** Gemini reviews the full paper → identifies CRITICAL/MAJOR/MINOR issues → Codex implements fixes → recompile → save `main_round1.pdf`
+**Round 1:** Gemini CLI review reviews the full paper → identifies CRITICAL/MAJOR/MINOR issues → Codex implements fixes → recompile → save `main_round1.pdf`
 
-**Round 2:** Gemini re-reviews with conversation context → identifies remaining issues → Codex implements fixes → recompile → save `main_round2.pdf`
+**Round 2:** Gemini CLI review re-reviews with conversation context → identifies remaining issues → Codex implements fixes → recompile → save `main_round2.pdf`
 
 **Typical improvements:**
 - Fix assumption-model mismatches
@@ -222,7 +238,7 @@ Invoke `/auto-paper-improvement-loop` to polish the paper:
 | Phase | Status | Output |
 |-------|--------|--------|
 | 1. Paper Plan | ✅ | PAPER_PLAN.md |
-| 2. Figures | ✅ | figures/ ([N] auto + [M] manual) |
+| 2. Figures | ✅ | figures/ ([N] auto + [M] external-artifact / illustration-dependent) |
 | 3. LaTeX Writing | ✅ | paper/sections/*.tex ([N] sections, [M] citations) |
 | 4. Compilation | ✅ | paper/main.pdf ([X] pages) |
 | 5. Improvement | ✅ | [score0]/10 → [score2]/10 |
@@ -246,7 +262,7 @@ Invoke `/auto-paper-improvement-loop` to polish the paper:
 
 ## Next Steps
 - [ ] Visual inspection of PDF
-- [ ] Add any missing manual figures
+- [ ] Resolve any remaining external-artifact or illustration backend blockers
 - [ ] Submit to [venue] via OpenReview / CMT / HotCRP
 ```
 

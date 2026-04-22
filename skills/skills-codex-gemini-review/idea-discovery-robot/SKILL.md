@@ -1,9 +1,11 @@
 ---
 name: "idea-discovery-robot"
-description: "Workflow 1 adaptation for robotics and embodied AI. Orchestrates robotics-aware literature survey, idea generation, novelty check, and critical review to go from a broad robotics direction to benchmark-grounded, simulation-first ideas. Use when user says \\\"robotics idea discovery\\\", \\\"\u673a\u5668\u4eba\u627eidea\\\", \\\"embodied AI idea\\\", \\\"\u673a\u5668\u4eba\u65b9\u5411\u63a2\u7d22\\\", \\\"sim2real \u9009\u9898\\\", or wants ideas for manipulation, locomotion, navigation, drones, humanoids, or general robot learning."
+description: "Workflow 1 adaptation for robotics and embodied AI. Orchestrates robotics-aware literature survey, idea generation, novelty check, and critical review to go from a broad robotics direction to benchmark-grounded, simulation-first ideas. Use when user says \\\"robotics idea discovery\\\", \\\"机器人找idea\\\", \\\"embodied AI idea\\\", \\\"机器人方向探索\\\", \\\"sim2real 选题\\\", or wants ideas for manipulation, locomotion, navigation, drones, humanoids, or general robot learning."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, Skill, mcp__gemini_review__review_start, mcp__gemini_review__review_reply_start, mcp__gemini_review__review_status
+argument-hint: [robotics-direction]
 ---
 
-> Override for Codex users who want **Gemini**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
+> Override for Codex users who want **Gemini CLI**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
 # Robotics Idea Discovery Pipeline
 
@@ -36,10 +38,12 @@ The goal is not to produce flashy demos. The goal is to produce ideas that are:
 ## Constants
 
 - **MAX_PILOT_IDEAS = 3** — Validate at most 3 top ideas deeply
-- **PILOT_MODE = `sim-first`** — Prefer simulation or offline-log pilots before any hardware execution
+- **PILOT_MODE = `sim-first`** — Prefer simulation, rosbag, or offline-log pilots before any hardware execution
 - **REAL_ROBOT_PILOTS = `explicit approval only`** — Never assume physical robot access or approval
+- **EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`** — When this is `robotics_slam`, every surviving idea must stay compatible with `slam_offline` execution rather than drifting toward real-robot-only plans
+- **ROBOTICS_PROFILE = `CODEX.md -> ## Robotics Profile`** — Source of dataset / rosbag / simulator, sensor-stack, benchmark-suite, and ROS2 adapter assumptions
 - **AUTO_PROCEED = true** — If user does not respond at checkpoints, proceed with the best sim-first option
-- **REVIEWER_MODEL = `gemini-review`** — External reviewer route via the local `gemini-review` MCP bridge
+- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. This bridge is CLI-first; set `GEMINI_REVIEW_MODEL` if you need a specific Gemini CLI model override.
 - **TARGET_VENUES = CoRL, RSS, ICRA, IROS, RA-L** — Default novelty and reviewer framing
 
 > Override inline, e.g. `/idea-discovery-robot "bimanual manipulation" — only sim ideas, no real robot` or `/idea-discovery-robot "drone navigation" — focus on CoRL/RSS, 2 pilot ideas max`
@@ -62,15 +66,16 @@ Before generating ideas, extract or infer this **Robotics Problem Frame** from `
 - **Observation modalities**
 - **Action interface / controller abstraction**
 - **Learning regime**: RL, imitation, behavior cloning, world model, planning, VLA/VLM, classical robotics, hybrid
-- **Available assets**: simulator, benchmark suite, teleop data, offline logs, existing codebase, real hardware
+- **Available assets**: simulator, rosbag, benchmark suite, teleop data, offline logs, existing codebase, real hardware
 - **Compute budget**
 - **Safety constraints**
 - **Desired contribution type**: method, benchmark, diagnosis, systems, sim2real, data curation
 
 If some fields are missing, make explicit assumptions and default to:
-- **simulation-first**
+- **simulation-first / rosbag-first / offline-first**
 - **public benchmark preferred**
 - **no real robot execution**
+- **plain CMake first, optional ROS2 adapter only when the project already needs it**
 
 Write this frame into working notes before moving on. Every later decision should reference it.
 
@@ -211,8 +216,10 @@ If the repository already contains a usable simulator, benchmark harness, or off
 
 By default, pilots should be one of:
 - **simulation pilot**
-- **offline log / dataset pilot**
+- **offline log / dataset / rosbag pilot**
 - **analysis-only pilot** using existing benchmark outputs
+
+If `CODEX.md -> ## Execution Profile` is `robotics_slam`, keep each pilot compatible with `slam_offline`: plain CMake first, `cmake_ros2` only as an adapter, and never require an autonomous real-robot execution path.
 
 Only propose a real-robot pilot if the user explicitly wants that.
 

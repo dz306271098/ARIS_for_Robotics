@@ -121,9 +121,9 @@ If the paper plan includes architecture diagrams, pipeline figures, or method il
 **What this does:**
 - Codex plans the layout → Gemini optimizes → Nano Banana Pro renders → Codex reviews (score ≥ 9)
 - Output: `figures/ai_generated/*.png` — publication-quality method diagrams
-- Requires `GEMINI_API_KEY` environment variable
+- Requires a host-side Gemini/Paperbanana runtime. Do not call Gemini/Paperbanana directly from the Codex sandbox.
 
-> **Without a usable illustration backend:** if the needed figure already exists in `figures/`, preserve it and continue. In unattended-safe mode, otherwise stop with `blocking_reason=missing_illustration_backend`. Interactive mode may still fall back to manual drawing.
+> **Without a usable illustration backend:** if the needed figure already exists in `figures/`, preserve it and continue. Otherwise create only provisional placeholders/spec artifacts, set `external_model_replay_required=true`, and keep `blocking_reason=missing_illustration_backend` or `external_illustration_pending` until the host runtime replay produces the real artifact.
 
 **Checkpoint:** List generated vs external-artifact-dependent figures.
 

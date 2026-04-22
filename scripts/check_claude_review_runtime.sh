@@ -5,10 +5,39 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_PATH="$REPO_ROOT/mcp-servers/claude-review/server.py"
 MCP_NAME="${CLAUDE_REVIEW_MCP_NAME:-claude-review}"
+HOST_REQUIRED=0
 
 PRIMARY_MODEL="${CLAUDE_REVIEW_MODEL:-claude-opus-4-7[1m]}"
 FALLBACK_MODEL="${CLAUDE_REVIEW_FALLBACK_MODEL:-claude-opus-4-6}"
 PROXY_ENV_KEYS=(http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY all_proxy ALL_PROXY)
+
+usage() {
+  cat <<'EOF'
+Usage: check_claude_review_runtime.sh [options]
+
+Options:
+  --host-required   Fail if the script appears to run inside Codex/bwrap sandbox
+  -h, --help        Show this help message
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host-required)
+      HOST_REQUIRED=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/claude-review-runtime.XXXXXX")"
 MCP_JSON="$TEMP_DIR/mcp.json"
@@ -31,6 +60,34 @@ require_command() {
     exit 1
   fi
 }
+
+detect_codex_sandbox() {
+  if [[ -n "${CODEX_CI:-}" || -n "${CODEX_SANDBOX:-}" ]]; then
+    return 0
+  fi
+
+  local pid="$$"
+  local depth=0
+  while [[ "$pid" =~ ^[0-9]+$ ]] && (( pid > 1 )) && (( depth < 32 )); do
+    local args=""
+    args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+    if [[ "$args" == *"codex-linux-sandbox"* || "$args" == *"sandbox-policy"* || "$args" == *"bwrap --new-session"* ]]; then
+      return 0
+    fi
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+    depth=$((depth + 1))
+  done
+  return 1
+}
+
+if detect_codex_sandbox; then
+  echo "Detected Codex/bwrap sandbox ancestry."
+  if (( HOST_REQUIRED )); then
+    echo "Host-required Claude reviewer checks must be run from the host environment, not from this sandbox." >&2
+    exit 1
+  fi
+  echo "Continuing as sandbox diagnostic only; do not treat this result as host reviewer availability."
+fi
 
 require_command claude
 require_command codex

@@ -71,7 +71,8 @@ Generate publication-quality illustrations using a **multi-stage workflow** with
 - **MAX_ITERATIONS = 5** — Maximum refinement rounds
 - **TARGET_SCORE = 9** — Minimum acceptable score (1-10) — RAISED FOR QUALITY
 - **OUTPUT_DIR = `figures/ai_generated/`** — Output directory
-- **API_KEY_ENV = `GEMINI_API_KEY`** — Environment variable
+- **HOST_RUNTIME = `external_model_runtime: host_first`** — Gemini/Paperbanana calls must run through a host-side runtime, not direct sandbox HTTP.
+- **API_KEY_ENV = `GEMINI_API_KEY`** — Host environment variable used by the host runtime
 - **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of unattended-safe illustration policy.
 - **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor updated before rendering, on retries, and on blockers.
 
@@ -81,6 +82,7 @@ When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
 
 - retry the illustration backend first before blocking
 - keep drafting work moving when possible, but record `blocking_reason=missing_illustration_backend` if a required figure still cannot be produced or found
+- if the host Gemini/Paperbanana runtime is unavailable, create a placeholder/spec artifact only as provisional work and set `external_model_replay_required=true`
 - update `AUTONOMY_STATE.json` before each iteration, on backend failures, and on final artifact success
 
 ## CVPR/ICLR/NeurIPS Top-Tier Conference Style Guide
@@ -168,18 +170,7 @@ When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
 
 ### Step 0: Pre-flight Check
 
-```bash
-# Check API key
-if [ -z "$GEMINI_API_KEY" ]; then
-    echo "ERROR: GEMINI_API_KEY not set"
-    echo "Get your key from: https://aistudio.google.com/app/apikey"
-    echo "Set it: export GEMINI_API_KEY='your-key'"
-    exit 1
-fi
-
-# Create output directory
-mkdir -p figures/ai_generated
-```
+Do not call Gemini/Paperbanana APIs directly from the Codex sandbox. Confirm that a host-side Gemini/Paperbanana runtime is available. If it is not available and unattended-safe mode allows provisional fallback, create `figures/ai_generated/FIGURE_SPEC_PENDING.md`, set `external_model_replay_required=true`, and continue only with placeholder artifacts until the host runtime replay succeeds.
 
 ### Step 1: Codex Plans the Figure (YOU ARE HERE)
 
@@ -276,222 +267,28 @@ VERIFY: Each arrow must point to the CORRECT target!
 [Any specific requirements from user]
 ```
 
-### Step 2: Gemini Layout Optimization (gemini-3-pro)
+### Step 2: Host Gemini Layout Optimization (gemini-3-pro)
 
-**Codex sends the initial prompt to Gemini (gemini-3-pro) for layout optimization.**
+Send the initial prompt to the configured **host-side** Gemini runtime for layout optimization. The request should ask for optimized component positions, spacing, grouping, arrow routing, and visual hierarchy. Save the raw response to `figures/ai_generated/layout_description.txt`.
 
-```bash
-#!/bin/bash
-# Step 2: Optimize layout using Gemini gemini-3-pro
-# This step refines component positioning and spacing
+If the host runtime is unavailable after retries, create `figures/ai_generated/layout_description.pending.md` from the Codex-authored prompt, update `AUTONOMY_STATE.json` with `external_model_replay_required=true`, and mark the artifact as provisional.
 
-set -e
+### Step 3: Host Gemini Style Verification (gemini-3-pro)
 
-OUTPUT_DIR="figures/ai_generated"
-mkdir -p "$OUTPUT_DIR"
+Send `layout_description.txt` to the configured **host-side** Gemini runtime for CVPR/NeurIPS style verification. Save the enhanced rendering specification to `figures/ai_generated/style_spec.txt`.
 
-API_KEY="${GEMINI_API_KEY}"
-URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=$API_KEY"
+If the host runtime is unavailable, continue only with `style_spec.pending.md`, keep `external_model_replay_required=true`, and do not mark the final figure as complete.
 
-# The initial prompt from Codex
-INITIAL_PROMPT='[Codex fills in the detailed prompt here]'
+### Step 4: Host Paperbanana Image Rendering (gemini-3-pro-image-preview)
 
-# Layout optimization request
-LAYOUT_REQUEST="You are an expert in academic figure layout design for CVPR/NeurIPS papers.
+Send `style_spec.txt` to the configured **host-side** Paperbanana/Gemini image runtime. The host runtime must write the generated image to `figures/ai_generated/figure_v{N}.png` and preserve the raw model response metadata for replay/debugging.
 
-Analyze this figure request and provide an OPTIMIZED LAYOUT DESCRIPTION:
+If the image runtime is unavailable after retries:
 
-$INITIAL_PROMPT
-
-Provide:
-1. **Optimized Component Positions**: Exact positions (left/center/right, top/middle/bottom) for each component
-2. **Spacing Recommendations**: Specific spacing between components
-3. **Grouping Strategy**: Which components should be visually grouped together
-4. **Arrow Routing**: Optimal paths for arrows to avoid crossings
-5. **Visual Hierarchy**: Size recommendations for main vs sub-components
-
-Output a DETAILED layout specification that will be used for rendering."
-
-# Build JSON payload
-python3 << PYTHON
-import json
-payload = {
-    "contents": [{"parts": [{"text": '''$LAYOUT_REQUEST'''}]}]
-}
-with open("/tmp/gemini_layout_request.json", "w") as f:
-    json.dump(payload, f, indent=2)
-print("Layout request created")
-PYTHON
-
-# Call Gemini gemini-3-pro-preview for layout optimization (DIRECT connection, no proxy)
-RESPONSE=$(curl -s --max-time 90 \
-  -X POST "$URL" \
-  -H 'Content-Type: application/json' \
-  -d @/tmp/gemini_layout_request.json)
-
-# Extract layout description
-LAYOUT_DESCRIPTION=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-try:
-    print(data['candidates'][0]['content']['parts'][0]['text'])
-except:
-    print('Error extracting layout')
-")
-
-echo "=== Layout Optimization Complete ==="
-echo "$LAYOUT_DESCRIPTION"
-echo "$LAYOUT_DESCRIPTION" > "$OUTPUT_DIR/layout_description.txt"
-```
-
-### Step 3: Gemini Style Verification (gemini-3-pro)
-
-**Codex sends the optimized layout to Gemini for CVPR/NeurIPS style verification.**
-
-```bash
-#!/bin/bash
-# Step 3: Verify and enhance style compliance using Gemini gemini-3-pro
-
-API_KEY="${GEMINI_API_KEY}"
-URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=$API_KEY"
-
-# Read layout from previous step
-LAYOUT=$(cat figures/ai_generated/layout_description.txt)
-
-# Style verification request
-STYLE_REQUEST="You are a CVPR/NeurIPS paper figure reviewer specializing in visual standards.
-
-Review and ENHANCE this figure specification for top-tier conference compliance:
-
-$LAYOUT
-
-Ensure compliance with:
-1. **Color Palette**: Use professional academic colors (green for inputs, blue for encoders, purple for fusion, orange for outputs)
-2. **Arrow Standards**: Thick (5-6px), black/dark gray, clear arrowheads, all labeled
-3. **Font Standards**: Sans-serif, minimum 14pt, readable in print
-4. **Visual Appeal (科研风格)**:
-   - ✅ Subtle same-color gradients, rounded corners (6-10px), internal structure visible
-   - ❌ NO heavy shadows, NO glowing effects, NO rainbow gradients
-
-Output an ENHANCED figure specification with explicit style instructions for rendering."
-
-# Build JSON payload
-python3 << PYTHON
-import json
-payload = {
-    "contents": [{"parts": [{"text": '''$STYLE_REQUEST'''}]}]
-}
-with open("/tmp/gemini_style_request.json", "w") as f:
-    json.dump(payload, f, indent=2)
-print("Style request created")
-PYTHON
-
-# Call Gemini gemini-3-pro-preview for style verification (DIRECT connection, no proxy)
-RESPONSE=$(curl -s --max-time 90 \
-  -X POST "$URL" \
-  -H 'Content-Type: application/json' \
-  -d @/tmp/gemini_style_request.json)
-
-# Extract style-enhanced specification
-STYLE_SPEC=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-try:
-    print(data['candidates'][0]['content']['parts'][0]['text'])
-except:
-    print('Error extracting style spec')
-")
-
-echo "=== Style Verification Complete ==="
-echo "$STYLE_SPEC"
-echo "$STYLE_SPEC" > "figures/ai_generated/style_spec.txt"
-```
-
-### Step 4: Paperbanana Image Rendering (gemini-3-pro-image-preview)
-
-**Codex sends the optimized, style-verified specification to Paperbanana for rendering.**
-
-```bash
-#!/bin/bash
-# Step 4: Render image using Paperbanana (gemini-3-pro-image-preview)
-# Internal codename: Nano Banana Pro
-# Use DIRECT connection (no proxy) - proxy causes SSL errors
-
-set -e
-
-OUTPUT_DIR="figures/ai_generated"
-mkdir -p "$OUTPUT_DIR"
-
-API_KEY="${GEMINI_API_KEY}"
-URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=$API_KEY"
-
-# Read the style-enhanced specification from previous step
-STYLE_SPEC=$(cat figures/ai_generated/style_spec.txt)
-
-# Add rendering instructions
-RENDER_PROMPT="Render a publication-quality academic diagram based on this specification:
-
-$STYLE_SPEC
-
-RENDERING REQUIREMENTS:
-- Output a clean, professional diagram suitable for CVPR/NeurIPS submission
-- Use vector-quality rendering with sharp edges and clear text
-- Ensure all elements are properly aligned and spaced
-- The diagram should be immediately understandable at a glance"
-
-# Build JSON payload using Python for proper escaping
-python3 << PYTHON
-import json
-payload = {
-    "contents": [{"parts": [{"text": '''$RENDER_PROMPT'''}]}],
-    "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}
-}
-with open("/tmp/gemini_request.json", "w") as f:
-    json.dump(payload, f, indent=2)
-print("JSON payload created")
-PYTHON
-
-# Call Paperbanana API WITHOUT proxy (direct connection works better)
-RESPONSE=$(curl -s --max-time 180 \
-  -X POST "$URL" \
-  -H 'Content-Type: application/json' \
-  -d @/tmp/gemini_request.json)
-
-# Check for error
-if echo "$RESPONSE" | grep -q '"error"'; then
-    echo "API Error:"
-    echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
-    exit 1
-fi
-
-# Extract and save image
-echo "$RESPONSE" | python3 << 'PYTHON'
-import sys, json, base64
-from pathlib import Path
-
-output_dir = Path("figures/ai_generated")
-data = json.load(sys.stdin)
-
-try:
-    parts = data['candidates'][0]['content']['parts']
-    iteration = 1  # Codex increments this each iteration
-
-    for part in parts:
-        if 'text' in part:
-            print(f"\n[Paperbanana]: {part['text'][:200]}...")
-        elif 'inlineData' in part:
-            img_data = base64.b64decode(part['inlineData']['data'])
-            img_path = output_dir / f"figure_v{iteration}.png"
-            with open(img_path, "wb") as f:
-                f.write(img_data)
-            print(f"\n✅ Image saved: {img_path}")
-            print(f"   Size: {len(img_data)/1024:.1f} KB")
-
-except Exception as e:
-    print(f"Parse error: {e}")
-    print(f"Raw response: {str(data)[:500]}")
-PYTHON
-```
+1. Write `figures/ai_generated/FIGURE_SPEC_PENDING.md` with the full style spec and rendering requirements.
+2. Create a lightweight placeholder only if downstream LaTeX compilation needs a file.
+3. Update `AUTONOMY_STATE.json` with `external_model_replay_required=true`, `blocking_reason=external_illustration_pending`, and `recovery_step=host_paperbanana_replay_required`.
+4. Do not copy the placeholder to `figure_final.png` unless it is clearly labeled provisional.
 
 ### Step 5: Codex STRICT Visual Review & Scoring (MANDATORY)
 

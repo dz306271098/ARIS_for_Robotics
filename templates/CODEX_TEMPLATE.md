@@ -55,7 +55,11 @@
 - require_wandb_for_unattended_training: true
 - paper_illustration: auto
 - notifications: push_only
+- reviewer_provider: claude
 - review_fallback_mode: retry_then_local_critic
+- external_model_runtime: host_first
+- external_model_failure_policy: retry_then_local_fallback
+- external_model_replay_required: false
 - resume_window_hours: 24
 - max_reviewer_runtime_retries: 2
 - max_auto_retries_per_stage: 3

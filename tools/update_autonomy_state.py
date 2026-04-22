@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retry-count", type=int)
     parser.add_argument("--review-mode")
     parser.add_argument("--review-replay-required")
+    parser.add_argument("--external-model-replay-required")
     parser.add_argument("--recovery-step")
     parser.add_argument("--note")
     parser.add_argument("--touch-heartbeat", action="store_true")
@@ -49,9 +50,13 @@ def main() -> int:
 
     now = now_iso()
     state.setdefault("started_at", now)
+    state.setdefault("external_model_replay_required", False)
     review_replay_required = None
     if args.review_replay_required is not None:
         review_replay_required = normalize_bool(args.review_replay_required)
+    external_model_replay_required = None
+    if args.external_model_replay_required is not None:
+        external_model_replay_required = normalize_bool(args.external_model_replay_required)
 
     updates = {
         "workflow": args.workflow,
@@ -63,6 +68,7 @@ def main() -> int:
         "retry_count": args.retry_count,
         "review_mode": args.review_mode,
         "review_replay_required": review_replay_required,
+        "external_model_replay_required": external_model_replay_required,
         "recovery_step": args.recovery_step,
         "note": args.note,
     }

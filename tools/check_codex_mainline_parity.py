@@ -6,8 +6,8 @@ Checks:
 2. The repo only keeps the expected Codex skill roots and retained reviewer branches.
 3. Mainline docs plus retained reviewer branches do not reference CLAUDE.md / AGENTS.md / .claude-era paths.
 4. Mainline skills do not keep legacy /codex:* review commands or stale codex-specific tool declarations.
-5. Claude-review overlay skill descriptions round-trip cleanly from the Codex source descriptions.
-6. Reviewer-aware skills that use spawn_agent/send_input are covered by the Claude overlay generator.
+5. Claude/Gemini review overlay skill descriptions round-trip cleanly from the Codex source descriptions.
+6. Reviewer-aware skills that use spawn_agent/send_input are covered by both overlay generators.
 7. Core unattended-runtime artifacts and protocol markers are present.
 """
 
@@ -22,7 +22,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_SKILLS = ROOT / "skills" / "skills-codex"
 CLAUDE_OVERLAY_SKILLS = ROOT / "skills" / "skills-codex-claude-review"
-GENERATOR = ROOT / "tools" / "generate_codex_claude_review_overrides.py"
+GEMINI_OVERLAY_SKILLS = ROOT / "skills" / "skills-codex-gemini-review"
+CLAUDE_GENERATOR = ROOT / "tools" / "generate_codex_claude_review_overrides.py"
+GEMINI_GENERATOR = ROOT / "tools" / "generate_codex_gemini_review_overrides.py"
 CHECK_PATHS = [
     ROOT / "skills" / "skills-codex",
     ROOT / "skills" / "skills-codex-gemini-review",
@@ -37,6 +39,7 @@ CHECK_PATHS = [
     ROOT / "scripts" / "uninstall_codex_claude_mainline.sh",
     ROOT / "scripts" / "smoke_test_codex_claude_mainline.sh",
     ROOT / "scripts" / "check_unattended_mainline.sh",
+    ROOT / "scripts" / "check_gemini_review_runtime.sh",
     ROOT / "scripts" / "run_unattended_mainline.sh",
     ROOT / "mcp-servers" / "gemini-review",
     ROOT / "mcp-servers" / "minimax-chat",
@@ -68,6 +71,7 @@ REQUIRED_PRESENT_PATHS = [
     ROOT / "mcp-servers" / "claude-review",
     ROOT / "mcp-servers" / "gemini-review",
     ROOT / "mcp-servers" / "minimax-chat",
+    ROOT / "scripts" / "check_gemini_review_runtime.sh",
     ROOT / "scripts" / "check_unattended_mainline.sh",
     ROOT / "scripts" / "run_unattended_mainline.sh",
     ROOT / "tools" / "autonomy_supervisor.py",
@@ -75,6 +79,7 @@ REQUIRED_PRESENT_PATHS = [
     ROOT / "templates" / "CODEX_TEMPLATE.md",
     ROOT / "tools" / "research_workflow_eval.py",
     ROOT / "scripts" / "eval_research_workflow.sh",
+    ROOT / "tools" / "generate_codex_gemini_review_overrides.py",
 ]
 FORBIDDEN_PRESENT_PATHS = [
     ROOT / "skills" / "shared-references",
@@ -99,6 +104,29 @@ LEGACY_MAINLINE_SKILL_PATTERNS = (
     "Bash(codex*)",
     "Skill(codex:rescue)",
     "Skill(codex:adversarial-review)",
+)
+SANDBOX_EXTERNAL_MODEL_PATTERNS = (
+    "https://api.minimax.io/v1/chat/completions",
+    "generativelanguage.googleapis.com",
+    "curl -s \"https://api.minimax.io",
+    "curl -s --max-time 90",
+    "curl -s --max-time 180",
+)
+GEMINI_OVERLAY_FORBIDDEN_PATTERNS = (
+    "GPT-5.4",
+    "Secondary Codex",
+    "secondary Codex",
+    "Codex reviewer",
+    "agent id",
+    "same agent",
+    "Gemini CLI review Review",
+    "mcp__gemini-review__",
+    "review_start-reply",
+    "`send_input`",
+    "spawn_agent:",
+    "Claude visual",
+    "Claude reads",
+    "Claude reviews",
 )
 PROTOCOL_SKILL_MARKERS = {
     ROOT / "skills" / "skills-codex" / "experiment-bridge" / "SKILL.md": (
@@ -189,6 +217,8 @@ AUTONOMY_SKILL_MARKERS = {
         "## Unattended Safe Mode",
         "missing_illustration_backend",
         "AUTONOMY_STATE.json",
+        "external_model_replay_required=true",
+        "host-side",
     ),
     ROOT / "skills" / "skills-codex" / "paper-writing" / "SKILL.md": (
         "## Unattended Safe Mode",
@@ -286,6 +316,9 @@ AUTONOMY_TEMPLATE_MARKERS = {
         "## Robotics Profile",
         "project_stack: python_ml",
         "review_fallback_mode: retry_then_local_critic",
+        "external_model_runtime: host_first",
+        "external_model_failure_policy: retry_then_local_fallback",
+        "reviewer_provider: claude",
         "max_reviewer_runtime_retries: 2",
         "run_unattended_mainline.sh",
         "innovation_mode: high_innovation",
@@ -301,10 +334,35 @@ AUTONOMY_TEMPLATE_MARKERS = {
         "runtime_profile: cpu_cuda_mixed",
         "runtime_profile: slam_offline",
         "review_fallback_mode: retry_then_local_critic",
+        "external_model_runtime: host_first",
+        "external_model_failure_policy: retry_then_local_fallback",
         "max_reviewer_runtime_retries: 2",
         "paper-ready",
         "Research Intelligence Profile",
         "innovation_mode: high_innovation",
+    ),
+}
+
+EXTERNAL_MODEL_RUNTIME_MARKERS = {
+    ROOT / "skills" / "skills-codex" / "shared-references" / "unattended-runtime-protocol.md": (
+        "external_model_runtime: host_first",
+        "external_model_failure_policy: retry_then_local_fallback",
+        "external_model_replay_required=true",
+        "host MCP bridges",
+    ),
+    ROOT / "scripts" / "check_unattended_mainline.sh": (
+        "external_model_runtime",
+        "external_model_failure_policy",
+        "external_model_replay_required",
+    ),
+    ROOT / "tools" / "autonomy_supervisor.py": (
+        "external_model_runtime: host_first",
+        "external_model_failure_policy: retry_then_local_fallback",
+        "external_model_replay_required=true",
+    ),
+    ROOT / "tools" / "update_autonomy_state.py": (
+        "--external-model-replay-required",
+        "external_model_replay_required",
     ),
 }
 
@@ -342,16 +400,30 @@ def frontmatter_text(path: Path) -> str:
     return match.group(1) if match else ""
 
 
-def normalize_overlay_description(text: str) -> str:
-    text = text or "Claude-review override for a Codex-native ARIS skill."
-    text = text.replace("GPT using a secondary Codex agent", "Claude via claude-review MCP")
-    text = text.replace("using a secondary Codex agent", "using Claude Code via claude-review MCP")
-    text = text.replace("via GPT-5.4 xhigh review", "via Claude review through claude-review MCP")
+def normalize_overlay_description(text: str, *, provider: str) -> str:
+    if provider == "claude":
+        text = text or "Claude-review override for a Codex-native ARIS skill."
+        text = text.replace("GPT using a secondary Codex agent", "Claude via claude-review MCP")
+        text = text.replace("using a secondary Codex agent", "using Claude Code via claude-review MCP")
+        text = text.replace("via GPT-5.4 xhigh review", "via Claude review through claude-review MCP")
+        return text
+
+    text = text or "Gemini-review override for a Codex-native ARIS skill."
+    text = text.replace("A secondary Codex agent", "A Gemini reviewer via gemini-review MCP")
+    text = text.replace("A secondary Codex reviewer", "A Gemini reviewer via gemini-review MCP")
+    text = text.replace("from GPT using a secondary Codex reviewer agent", "from Gemini via gemini-review MCP")
+    text = text.replace("GPT using a secondary Codex agent", "Gemini via gemini-review MCP")
+    text = text.replace("using a secondary Codex reviewer agent", "using Gemini CLI via gemini-review MCP")
+    text = text.replace("secondary Codex reviewer", "Gemini reviewer")
+    text = text.replace("using a secondary Codex agent", "using Gemini CLI via gemini-review MCP")
+    text = text.replace("secondary Codex agent", "Gemini reviewer via gemini-review MCP")
+    text = text.replace("via iterative GPT-5.4 review", "via iterative Gemini review through gemini-review MCP")
+    text = text.replace("via GPT-5.4 xhigh review", "via Gemini CLI review through gemini-review MCP")
     return text
 
 
-def load_overlay_targets() -> set[str]:
-    text = GENERATOR.read_text(encoding="utf-8")
+def load_overlay_targets(generator: Path) -> set[str]:
+    text = generator.read_text(encoding="utf-8")
     match = re.search(r"TARGET_SKILLS = \[(.*?)\]", text, re.S)
     if not match:
         return set()
@@ -410,33 +482,57 @@ def main() -> int:
                 problems.append(
                     f"{skill.relative_to(ROOT)} contains legacy mainline review pattern: {pattern}"
                 )
+        for pattern in SANDBOX_EXTERNAL_MODEL_PATTERNS:
+            if pattern in text:
+                problems.append(
+                    f"{skill.relative_to(ROOT)} contains sandbox external-model call pattern: {pattern}"
+                )
 
-    for overlay_skill in iter_skill_files(CLAUDE_OVERLAY_SKILLS):
-        source_skill = CODEX_SKILLS / overlay_skill.parent.name / "SKILL.md"
-        if not source_skill.exists():
-            continue
+    for skill in iter_skill_files(GEMINI_OVERLAY_SKILLS):
+        text = skill.read_text(encoding="utf-8")
+        for pattern in GEMINI_OVERLAY_FORBIDDEN_PATTERNS:
+            if pattern in text:
+                problems.append(
+                    f"{skill.relative_to(ROOT)} contains stale Gemini-overlay reviewer wording: {pattern}"
+                )
 
-        source_desc = normalize_overlay_description(
-            extract_field(frontmatter_text(source_skill), "description")
-        )
-        overlay_desc = extract_field(frontmatter_text(overlay_skill), "description")
-        if overlay_desc != source_desc:
-            problems.append(
-                f"{overlay_skill.relative_to(ROOT)} description mismatch: "
-                f"expected normalized source description {source_desc!r}, got {overlay_desc!r}"
+    for provider, overlay_root in (
+        ("claude", CLAUDE_OVERLAY_SKILLS),
+        ("gemini", GEMINI_OVERLAY_SKILLS),
+    ):
+        for overlay_skill in iter_skill_files(overlay_root):
+            source_skill = CODEX_SKILLS / overlay_skill.parent.name / "SKILL.md"
+            if not source_skill.exists():
+                continue
+
+            source_desc = normalize_overlay_description(
+                extract_field(frontmatter_text(source_skill), "description"),
+                provider=provider,
             )
+            overlay_desc = extract_field(frontmatter_text(overlay_skill), "description")
+            if overlay_desc != source_desc:
+                problems.append(
+                    f"{overlay_skill.relative_to(ROOT)} description mismatch: "
+                    f"expected normalized source description {source_desc!r}, got {overlay_desc!r}"
+                )
 
-    overlay_targets = load_overlay_targets()
+    claude_overlay_targets = load_overlay_targets(CLAUDE_GENERATOR)
+    gemini_overlay_targets = load_overlay_targets(GEMINI_GENERATOR)
     reviewer_aware = set()
     for skill in iter_skill_files(CODEX_SKILLS):
         text = skill.read_text(encoding="utf-8")
         if "spawn_agent:" in text or "send_input:" in text:
             reviewer_aware.add(skill.parent.name)
 
-    missing_overlay = sorted(reviewer_aware - overlay_targets)
-    if missing_overlay:
+    missing_claude_overlay = sorted(reviewer_aware - claude_overlay_targets)
+    if missing_claude_overlay:
         problems.append(
-            "Overlay generator missing reviewer-aware skills: " + ", ".join(missing_overlay)
+            "Claude overlay generator missing reviewer-aware skills: " + ", ".join(missing_claude_overlay)
+        )
+    missing_gemini_overlay = sorted(reviewer_aware - gemini_overlay_targets)
+    if missing_gemini_overlay:
+        problems.append(
+            "Gemini overlay generator missing reviewer-aware skills: " + ", ".join(missing_gemini_overlay)
         )
 
     for skill_path, markers in PROTOCOL_SKILL_MARKERS.items():
@@ -461,6 +557,14 @@ def main() -> int:
         if missing_markers:
             problems.append(
                 f"{artifact_path.relative_to(ROOT)} missing unattended markers: {', '.join(missing_markers)}"
+            )
+
+    for artifact_path, markers in EXTERNAL_MODEL_RUNTIME_MARKERS.items():
+        text = artifact_path.read_text(encoding="utf-8")
+        missing_markers = [marker for marker in markers if marker not in text]
+        if missing_markers:
+            problems.append(
+                f"{artifact_path.relative_to(ROOT)} missing external-model runtime markers: {', '.join(missing_markers)}"
             )
 
     for artifact_path, markers in RESEARCH_INTELLIGENCE_MARKERS.items():

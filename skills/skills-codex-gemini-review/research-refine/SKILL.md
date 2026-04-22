@@ -1,9 +1,11 @@
 ---
 name: "research-refine"
-description: "Turn a vague research direction into a problem-anchored, elegant, frontier-aware, implementation-oriented method plan via iterative Gemini review. Use when the user says \"refine my approach\", \"帮我细化方案\", \"decompose this problem\", \"打磨idea\", \"refine research plan\", \"细化研究方案\", or wants a concrete research method that stays simple, focused, and top-venue ready instead of a vague or overbuilt idea."
+description: "Turn a vague research direction into a problem-anchored, elegant, frontier-aware, implementation-oriented method plan via iterative Gemini review through gemini-review MCP. Use when the user says \"refine my approach\", \"帮我细化方案\", \"decompose this problem\", \"打磨idea\", \"refine research plan\", \"细化研究方案\", or wants a concrete research method that stays simple, focused, and top-venue ready instead of a vague or overbuilt idea."
+argument-hint: [research-direction-or-rough-idea]
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, WebSearch, WebFetch, Agent, mcp__gemini_review__review_start, mcp__gemini_review__review_reply_start, mcp__gemini_review__review_status
 ---
 
-> Override for Codex users who want **Gemini**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
+> Override for Codex users who want **Gemini CLI**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
 # Research Refine: Problem-Anchored, Elegant, Frontier-Aware Plan Refinement
 
@@ -22,11 +24,11 @@ Four principles dominate this skill:
 
 ```
 User input (PROBLEM + vague APPROACH)
-  -> Phase 0 (Gemini): Freeze Problem Anchor
-  -> Phase 1 (Gemini): Scan grounding papers -> identify technical gap -> choose the sharpest route -> write focused proposal
-  -> Phase 2 (Codex/Gemini): Review for fidelity, specificity, contribution quality, and frontier leverage
-  -> Phase 3 (Gemini): Anchor check + simplicity check -> revise method -> rewrite full proposal
-  -> Phase 4 (Codex, same Gemini thread): Re-evaluate revised proposal
+  -> Phase 0 (Local step): Freeze Problem Anchor
+  -> Phase 1 (Local step): Scan grounding papers -> identify technical gap -> choose the sharpest route -> write focused proposal
+  -> Phase 2 (Codex/Gemini reviewer): Review for fidelity, specificity, contribution quality, and frontier leverage
+  -> Phase 3 (Local step): Anchor check + simplicity check -> revise method -> rewrite full proposal
+  -> Phase 4 (Codex, same reviewer thread): Re-evaluate revised proposal
   -> Repeat Phase 3-4 until OVERALL SCORE >= 9 or MAX_ROUNDS reached
   -> Phase 5: Save full history to refine-logs/
   -> Optional handoff: /experiment-plan for a detailed execution-ready experiment roadmap
@@ -34,7 +36,7 @@ User input (PROBLEM + vague APPROACH)
 
 ## Constants
 
-- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. Set `GEMINI_REVIEW_MODEL` if you need a specific Gemini model override.
+- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. This bridge is CLI-first; set `GEMINI_REVIEW_MODEL` if you need a specific Gemini CLI model override.
 - **MAX_ROUNDS = 5** — Maximum review-revise rounds.
 - **SCORE_THRESHOLD = 9** — Minimum overall score to stop.
 - **OUTPUT_DIR = `refine-logs/`** — Directory for round files and final report.
@@ -42,13 +44,34 @@ User input (PROBLEM + vague APPROACH)
 - **MAX_CORE_EXPERIMENTS = 3** — Default cap for core validation blocks inside this skill.
 - **MAX_PRIMARY_CLAIMS = 2** — Soft cap for paper-level claims. Prefer one dominant claim plus one supporting claim.
 - **MAX_NEW_TRAINABLE_COMPONENTS = 2** — Soft cap for genuinely new trainable pieces. Exceed only if the paper breaks otherwise.
+- **RESEARCH_INTELLIGENCE_PROFILE = `CODEX.md -> ## Research Intelligence Profile`** — Controls innovation intensity, route portfolio size, and whether an analogical/contrarian route must be preserved.
+- **EXECUTION_PROFILE = `CODEX.md -> ## Execution Profile`** — Declares whether the refined route must eventually land as a training pipeline, a compiled benchmark/CUDA pipeline, or an offline robotics / SLAM pipeline. Do not refine a method that the chosen execution profile cannot honestly run.
 
 > Override via argument if needed, e.g. `/research-refine "problem | approach" -- max rounds: 3, threshold: 9`.
+
+## State Persistence (Checkpoint Recovery)
+
+Long-running refinement sessions may fail mid-way (API timeout, context compaction, or session interruption). To avoid losing completed work, persist state to `refine-logs/REFINE_STATE.json` after each phase boundary:
+
+```json
+{
+  "phase": "review",
+  "round": 1,
+  "thread_id": "019cd392-...",
+  "last_score": 6.5,
+  "last_verdict": "REVISE",
+  "status": "in_progress",
+  "timestamp": "2026-03-22T20:00:00"
+}
+```
+
+Write after each completed phase. On completion, set `"status": "completed"`.
 
 ## Output Structure
 
 ```
 refine-logs/
+├── REFINE_STATE.json
 ├── round-0-initial-proposal.md
 ├── round-1-review.md
 ├── round-1-refinement.md
@@ -56,6 +79,7 @@ refine-logs/
 ├── round-2-refinement.md
 ├── ...
 ├── REVIEW_SUMMARY.md
+├── ROUTE_PORTFOLIO.md
 ├── FINAL_PROPOSAL.md
 ├── REFINEMENT_REPORT.md
 └── score-history.md
@@ -64,6 +88,21 @@ refine-logs/
 Every `round-N-refinement.md` must contain a **full anchored proposal**, not just incremental fixes.
 
 ## Workflow
+
+### Initialization (Checkpoint Recovery)
+
+Before starting any phase, check whether a previous run left a checkpoint:
+
+1. **Check for `refine-logs/REFINE_STATE.json`**:
+   - If it does not exist → fresh start
+   - If it exists and `status` is `"completed"` → fresh start
+   - If it exists and `status` is `"in_progress"` but `timestamp` is older than 24 hours → fresh start
+   - If it exists and `status` is `"in_progress"` within 24 hours → resume
+2. **On resume**:
+   - Read all existing `refine-logs/round-*.md` files and `score-history.md`
+   - Recover `thread_id` for reviewer continuity
+   - Resume from the next phase based on the saved `phase`
+3. **On fresh start**, ensure `refine-logs/` exists and proceed to Phase 0.
 
 ### Phase 0: Freeze the Problem Anchor
 
@@ -76,14 +115,19 @@ Write:
 - **Non-goals**: What is explicitly *not* the goal of this project?
 - **Constraints**: Compute, data, time, tooling, venue, deployment limits.
 - **Success condition**: What evidence would make the user say "yes, this method addresses the actual problem"?
+- **Execution-form constraints**: if `project_stack: cpp_algorithm`, include benchmark family, correctness oracle, toolchain/compiler constraints, and which runtime/memory/scaling metrics matter to the eventual paper
+- **Execution-form constraints**: if `runtime_profile: cpu_cuda_mixed`, also include CUDA toolkit / `nvcc` assumptions, profiler backend, kernel-time / transfer / overlap metrics, and the fairness rules for GPU comparisons
+- **Execution-form constraints**: if `project_stack: robotics_slam`, include dataset / rosbag / simulator choice, ground-truth provenance, sensor-stack assumptions, ROS2 adapter needs, and which ATE/RPE/latency/FPS/perception metrics matter to the eventual paper
 
 If later reviewer feedback would change the problem being solved, mark that as **drift** and push back or adapt carefully.
+
+**Checkpoint:** Write `refine-logs/REFINE_STATE.json` with `{"phase": "anchor", "round": 0, "thread_id": null, "last_score": null, "last_verdict": null, "status": "in_progress", "timestamp": "<now>"}`.
 
 ### Phase 1: Build the Initial Proposal
 
 #### Step 1.1: Scan Grounding Material
 
-Check `papers/` and `literature/` first. Read only the relevant parts needed to answer:
+Check `papers/` and `literature/` first. If `research-wiki/principle_pack.md`, `research-wiki/analogy_pack.md`, or `research-wiki/failure_pack.md` exist, read them before scanning raw papers. Read only the relevant parts needed to answer:
 
 - What mechanism do current methods use?
 - Where exactly do they fail for this problem?
@@ -104,12 +148,22 @@ Do not stop at generic research questions. Make the gap operational:
 5. **Core technical claim**: what exact mechanism claim could survive top-venue scrutiny?
 6. **Required evidence**: what minimum proof is needed to defend that claim?
 
-#### Step 1.3: Choose the Sharpest Route
+#### Step 1.3: Build and Rank a Route Portfolio
 
-Before locking the method, compare two candidate routes if both are plausible:
+Before locking the method, compare up to three candidate routes:
 
 - **Route A: Elegant minimal route** — the smallest mechanism that directly targets the bottleneck.
 - **Route B: Frontier-native route** — a more modern route that uses LLM / VLM / Diffusion / RL / distillation / inference-time scaling *only if* it gives a cleaner or stronger story.
+- **Route C: Analogical / contrarian route** — a route justified by cross-domain principle transfer, contradiction resolution, or an anti-assumption thesis.
+
+For each route, record:
+- source principles and source lane
+- closest prior work and novelty risk
+- main kill criterion
+- first decisive experiment
+- whether it should stay as `mainline` or `shadow route`
+
+Write these to `refine-logs/ROUTE_PORTFOLIO.md` before picking the recommended mainline route.
 
 Then decide:
 
@@ -117,7 +171,7 @@ Then decide:
 - Which route has the cleaner novelty story relative to the closest work?
 - Which route avoids contribution sprawl?
 
-If both routes are weak, rethink the framing instead of combining them into a larger system by default.
+If all routes are weak, rethink the framing instead of combining them into a larger system by default. Do not collapse to one route before the portfolio is documented.
 
 #### Step 1.4: Concretize the Method First
 
@@ -155,6 +209,9 @@ Additional rules:
 - Ensure one experiment block directly supports the **Problem Anchor**.
 - If complexity risk exists, include one **simplification or deletion check**.
 - If a frontier primitive is central, include one **necessity check** showing why that choice matters.
+- If `project_stack: cpp_algorithm`, ensure the minimal validation package includes correctness tests plus at least one decisive runtime/memory/scaling benchmark instead of assuming a training curve.
+- If `runtime_profile: cpu_cuda_mixed`, ensure the minimal validation package also includes at least one decisive CUDA-side measurement: kernel time, copy time, throughput, occupancy, or CPU-GPU overlap.
+- If `project_stack: robotics_slam`, ensure the minimal validation package includes correctness tests plus one decisive offline replay / evaluation package covering trajectory or perception quality, failure buckets, and realtime behavior.
 - Default to **1-3 core experiment blocks** and leave the full execution roadmap to `/experiment-plan`.
 
 #### Step 1.6: Write the Initial Proposal
@@ -251,12 +308,14 @@ Use this structure:
 - Timeline:
 ```
 
+**Checkpoint:** Update `refine-logs/REFINE_STATE.json` with `{"phase": "proposal", "round": 0, ...}`.
+
 ### Phase 2: External Method Review (Round 1)
 
-Send the full proposal to Gemini for an **elegance-first, frontier-aware, method-first** review. The reviewer should spend most of the critique budget on the method itself, not on expanding the experiment menu.
+Send the full proposal to Gemini through `gemini-review` for an **elegance-first, frontier-aware, method-first** review. The reviewer should spend most of the critique budget on the method itself, not on expanding the experiment menu.
 
 ```
-mcp__gemini-review__review_start:
+mcp__gemini_review__review_start:
   prompt: |
     You are a senior ML reviewer for a top venue (NeurIPS/ICML/ICLR).
     This is an early-stage, method-first research proposal.
@@ -318,13 +377,15 @@ mcp__gemini-review__review_start:
     - RETHINK: the core mechanism or framing is still fundamentally off
 ```
 
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
+After this review-start or review-reply call, immediately save the returned `jobId` and poll `mcp__gemini_review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
-**CRITICAL: Save the returned `jobId`**, poll `mcp__gemini-review__review_status` until `done=true`, then save the completed `threadId` from the status result for all later rounds.
+**CRITICAL: Save the returned `jobId`**, poll `mcp__gemini_review__review_status` until `done=true`, then save the completed `threadId` from the status result for all later rounds.
 
 **CRITICAL: Save the FULL raw response** verbatim.
 
 Save review to `refine-logs/round-1-review.md` with the raw response in a `<details>` block.
+
+**Checkpoint:** Update `refine-logs/REFINE_STATE.json` with `{"phase": "review", "round": 1, "thread_id": "<saved>", "last_score": <parsed>, "last_verdict": "<parsed>", ...}`.
 
 ### Phase 3: Parse Feedback and Revise the Method
 
@@ -426,12 +487,14 @@ Save to `refine-logs/round-N-refinement.md`:
 [Full updated proposal from Problem Anchor through Claim-Driven Validation Sketch]
 ```
 
+**Checkpoint:** Update `refine-logs/REFINE_STATE.json` with `{"phase": "refine", "round": N, ...}`.
+
 ### Phase 4: Re-evaluation (Round 2+)
 
-Send the revised proposal back to Gemini in the **same review thread**:
+Send the revised proposal back to Gemini through `gemini-review` in the **same reviewer thread**:
 
 ```
-mcp__gemini-review__review_reply_start:
+mcp__gemini_review__review_reply_start:
   threadId: [saved from Phase 2]
   prompt: |
     [Round N re-evaluation]
@@ -461,9 +524,11 @@ mcp__gemini-review__review_reply_start:
     Same output format: 7 scores, overall score, verdict, drift warning, simplification opportunities, modernization opportunities, remaining action items.
 ```
 
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
+After this review-start or review-reply call, immediately save the returned `jobId` and poll `mcp__gemini_review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
 Save review to `refine-logs/round-N-review.md`.
+
+**Checkpoint:** Update `refine-logs/REFINE_STATE.json` with `{"phase": "review", "round": N, "thread_id": "<saved>", "last_score": <parsed>, "last_verdict": "<parsed>", ...}`.
 
 Then return to Phase 3 until:
 
@@ -471,6 +536,9 @@ Then return to Phase 3 until:
 - or **MAX_ROUNDS reached**
 
 ### Phase 5: Final Report and Logs
+
+The final proposal should identify one recommended mainline route, but the route portfolio must preserve at least one surviving shadow route when the evidence is not decisive enough to kill it.
+
 
 #### Step 5.1: Write `refine-logs/REVIEW_SUMMARY.md`
 
@@ -577,7 +645,7 @@ If the final verdict is not READY, still write the best current final version he
 <details>
 <summary>Round 1 Review</summary>
 
-[Full verbatim response from Gemini]
+[Full verbatim response from Gemini reviewer]
 
 </details>
 
@@ -622,6 +690,8 @@ Final proposal: refine-logs/FINAL_PROPOSAL.md
 Suggested next step: /experiment-plan
 ```
 
+**Checkpoint:** Update `refine-logs/REFINE_STATE.json` with `{"phase": "done", "status": "completed", ...}`.
+
 ## Key Rules
 
 - **Large file handling**: If the Write tool fails due to file size, immediately retry using Bash (`cat << 'EOF' > file`) to write in chunks. Do NOT ask the user for permission — just do it silently.
@@ -635,7 +705,7 @@ Suggested next step: /experiment-plan
 - **Review the mechanism, not the parts count.** A long module list is not novelty.
 - **Pushback is encouraged.** If reviewer feedback causes drift or unnecessary complexity, argue back with evidence.
 - **Always ask the Gemini reviewer for strict, high-rigor feedback** in every review round.
-- **Save the completed `threadId` from Phase 2** and use `mcp__gemini-review__review_reply_start` plus `mcp__gemini-review__review_status` for later rounds.
+- **Save the completed `threadId` from Phase 2** and use `mcp__gemini_review__review_reply_start` plus `mcp__gemini_review__review_status` for later rounds.
 - **Do not fabricate results.** Only describe expected evidence and planned experiments.
 - **Be specific about compute and data assumptions.** Vague "we'll train a model" is not enough.
 - **Document everything.** Save every raw review, every anchor check, every simplicity check, and every major method change.

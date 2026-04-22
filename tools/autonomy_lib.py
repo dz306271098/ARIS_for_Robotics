@@ -20,7 +20,11 @@ DEFAULT_AUTONOMY_PROFILE = {
     "require_wandb_for_unattended_training": False,
     "paper_illustration": "auto",
     "notifications": "off",
+    "reviewer_provider": "claude",
     "review_fallback_mode": "retry_then_local_critic",
+    "external_model_runtime": "host_first",
+    "external_model_failure_policy": "retry_then_local_fallback",
+    "external_model_replay_required": False,
     "resume_window_hours": 24,
     "max_reviewer_runtime_retries": 2,
     "max_auto_retries_per_stage": 3,
@@ -59,6 +63,7 @@ BOOL_KEYS = {
     "allow_auto_real_robot",
     "require_watchdog",
     "require_wandb_for_unattended_training",
+    "external_model_replay_required",
 }
 CUDA_BOOL_KEYS = {"cuda_enabled"}
 INT_KEYS = {"resume_window_hours", "max_reviewer_runtime_retries", "max_auto_retries_per_stage"}

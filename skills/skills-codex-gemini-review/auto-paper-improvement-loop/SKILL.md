@@ -1,9 +1,11 @@
 ---
 name: "auto-paper-improvement-loop"
-description: "Autonomously improve a generated paper via Gemini review through gemini-review MCP → implement fixes → recompile, for 2 rounds. Use when user says \"改论文\", \"improve paper\", \"论文润色循环\", \"auto improve\", or wants to iteratively polish a generated paper."
+description: "Autonomously improve a generated paper via Gemini CLI review through gemini-review MCP → implement fixes → recompile, for 2 rounds. Use when user says \\\"改论文\\\", \\\"improve paper\\\", \\\"论文润色循环\\\", \\\"auto improve\\\", or wants to iteratively polish a generated paper."
+allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob, Agent, mcp__gemini_review__review_start, mcp__gemini_review__review_reply_start, mcp__gemini_review__review_status
+argument-hint: [paper-directory]
 ---
 
-> Override for Codex users who want **Gemini**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
+> Override for Codex users who want **Gemini CLI**, not a second Codex agent, to act as the reviewer. Install this package **after** `skills/skills-codex/*`.
 
 # Auto Paper Improvement Loop: Review → Fix → Recompile
 
@@ -18,9 +20,11 @@ Unlike `/auto-review-loop` (which iterates on **research** — running experimen
 ## Constants
 
 - **MAX_ROUNDS = 2** — Two rounds of review→fix→recompile. Empirically, Round 1 catches structural issues (4→6/10), Round 2 catches remaining presentation issues (6→7/10). Diminishing returns beyond 2 rounds for writing-only improvements.
-- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. Set `GEMINI_REVIEW_MODEL` if you need a specific Gemini model override.
+- **REVIEWER_MODEL = `gemini-review`** — Gemini reviewer invoked through the local `gemini-review` MCP bridge. This bridge is CLI-first; set `GEMINI_REVIEW_MODEL` if you need a specific Gemini CLI model override.
 - **REVIEW_LOG = `PAPER_IMPROVEMENT_LOG.md`** — Cumulative log of all rounds, stored in paper directory.
 - **HUMAN_CHECKPOINT = false** — When `true`, pause after each round's review and present score + weaknesses to the user. The user can approve fixes, provide custom modification instructions, skip specific fixes, or stop early. When `false` (default), runs fully autonomously.
+- **AUTONOMY_PROFILE = `CODEX.md -> ## Autonomy Profile`** — Source of unattended-safe reviewer fallback policy.
+- **AUTONOMY_STATE = `AUTONOMY_STATE.json`** — Cross-workflow state anchor for paper-polish progress, provisional reviewer fallback, and replay requirements.
 
 > 💡 Override: `/auto-paper-improvement-loop "paper/" — human checkpoint: true`
 
@@ -28,6 +32,15 @@ Unlike `/auto-review-loop` (which iterates on **research** — running experimen
 
 1. **Compiled paper** — `paper/main.pdf` + LaTeX source files
 2. **All section `.tex` files** — concatenated for review prompt
+
+## Unattended Safe Mode
+
+When `CODEX.md -> ## Autonomy Profile` sets `autonomy_mode: unattended_safe`:
+
+- keep `HUMAN_CHECKPOINT=false` unless a hard safety boundary forces a stop
+- update `AUTONOMY_STATE.json` before each review round, after each recompile, and on blockers
+- if the reviewer path temporarily falls back to a local critic, set `review_mode=local_fallback` and `review_replay_required=true`
+- do not let the parent workflow mark paper polish complete until the external reviewer replay clears the provisional state
 
 ## State Persistence (Compact Recovery)
 
@@ -69,10 +82,10 @@ done > /tmp/paper_full_text.txt
 
 ### Step 2: Round 1 Review
 
-Send the full paper text to Gemini review:
+Send the full paper text to Gemini CLI review:
 
 ```
-mcp__gemini-review__review_start:
+mcp__gemini_review__review_start:
   prompt: |
     You are reviewing a [VENUE] paper. Please provide a detailed, structured review.
 
@@ -93,9 +106,9 @@ mcp__gemini-review__review_start:
     self-containedness, notation consistency.
 ```
 
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
+After this review-start or review-reply call, immediately save the returned `jobId` and poll `mcp__gemini_review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
-Save the returned `jobId`, poll `mcp__gemini-review__review_status` until `done=true`, then save the completed `threadId` for Round 2.
+Save the returned `jobId`, poll `mcp__gemini_review__review_status` until `done=true`, then save the completed `threadId` for Round 2.
 
 ### Step 2b: Human Checkpoint (if enabled)
 
@@ -149,10 +162,10 @@ Verify: 0 undefined references, 0 undefined citations.
 
 ### Step 5: Round 2 Review
 
-Use `mcp__gemini-review__review_reply_start` with the saved completed `threadId`:
+Use `mcp__gemini_review__review_reply_start` with the saved completed `threadId`:
 
 ```
-mcp__gemini-review__review_reply_start:
+mcp__gemini_review__review_reply_start:
   threadId: [saved from Round 1]
   prompt: |
     [Round 2 update]
@@ -166,7 +179,7 @@ mcp__gemini-review__review_reply_start:
     Score, Summary, Strengths, Weaknesses, Actionable fixes, Verdict.
 ```
 
-After this start call, immediately save the returned `jobId` and poll `mcp__gemini-review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
+After this review-start or review-reply call, immediately save the returned `jobId` and poll `mcp__gemini_review__review_status` with a bounded `waitSeconds` until `done=true`. Treat the completed status payload's `response` as the reviewer output, and save the completed `threadId` for any follow-up round.
 
 ### Step 5b: Human Checkpoint (if enabled)
 
@@ -302,7 +315,7 @@ paper/
 
 - **Preserve all PDF versions** — user needs to compare progression
 - **Save FULL raw review text** — do not summarize or truncate Gemini reviewer responses
-- **Use `mcp__gemini-review__review_reply_start` plus `mcp__gemini-review__review_status`** for Round 2 to maintain conversation context
+- **Use `mcp__gemini_review__review_reply_start` plus `mcp__gemini_review__review_status`** for Round 2 to maintain conversation context
 - **Always recompile after fixes** — verify 0 errors before proceeding
 - **Do not fabricate experimental results** — synthetic validation must describe methodology, not invent numbers
 - **Respect the paper's claims** — soften overclaims rather than adding unsupported new claims
