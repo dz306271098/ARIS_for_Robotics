@@ -651,7 +651,11 @@ N_CONFLICT=$(grep -c '^CONFLICT|' "$PLAN_FILE" || true)
 if (( N_CONFLICT > 0 )); then
     if [[ ${#REPLACE_LINK_NAMES[@]} -gt 0 ]]; then
         for n in "${REPLACE_LINK_NAMES[@]}"; do
-            sed -i.bak "s|^CONFLICT|$n|UPDATE_TARGET|$n|" "$PLAN_FILE" 2>/dev/null || true
+            # Use `#` as the sed delimiter so the `|` inside the pattern (which
+            # is the row separator in the plan file) doesn't collide with the
+            # delimiter. Match the literal prefix `CONFLICT|<name>|` and rewrite
+            # only the action verb, leaving the rest of the row intact.
+            sed -i.bak "s#^CONFLICT|${n}|#UPDATE_TARGET|${n}|#" "$PLAN_FILE" 2>/dev/null || true
             rm -f "$PLAN_FILE.bak"
         done
         N_CONFLICT=$(grep -c '^CONFLICT|' "$PLAN_FILE" || true)

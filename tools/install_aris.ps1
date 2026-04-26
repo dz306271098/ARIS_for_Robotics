@@ -96,7 +96,13 @@ param(
     [switch]$Quiet,
     [switch]$NoDoc,
     [string[]]$AdoptExisting = @(),
-    [string[]]$ReplaceLink = @()
+    [string[]]$ReplaceLink = @(),
+
+    # Legacy migration / lock recovery (parity with install_aris.sh)
+    [switch]$FromOld,                                          # trigger migration from legacy nested install
+    [ValidateSet('', 'keep-user', 'prefer-upstream')]
+    [string]$MigrateCopy = '',                                 # for legacy COPY install: keep-user | prefer-upstream
+    [switch]$ClearStaleLock                                    # remove stale lock dir from a crashed prior run
 )
 
 $ErrorActionPreference = 'Stop'
@@ -221,12 +227,40 @@ function Acquire-Lock {
         } catch {
             $owner = ''
             if (Test-Path (Join-Path $LockDir 'owner.json')) { $owner = Get-Content (Join-Path $LockDir 'owner.json') -Raw }
-            Die "another install_aris is running for this install root`n       lock: $LockDir`n       owner: $owner"
+            if ($ClearStaleLock) {
+                Write-Warn "removing stale lock: $LockDir (was: $owner)"
+                Remove-Item -Recurse -Force $LockDir -ErrorAction SilentlyContinue
+                New-Item -ItemType Directory -Path $LockDir -ErrorAction Stop | Out-Null
+                @{
+                    host       = $env:COMPUTERNAME
+                    pid        = $PID
+                    started_at = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+                    tool       = 'install_aris.ps1'
+                    mode       = $InstallMode
+                } | ConvertTo-Json | Out-File (Join-Path $LockDir 'owner.json') -Encoding utf8
+                $PID | Out-File (Join-Path $LockDir 'owner.pid') -Encoding utf8
+                return
+            }
+            Die "another install_aris is running for this install root`n       lock: $LockDir`n       owner: $owner`n       if you are sure no install is in progress, rerun with -ClearStaleLock"
         }
     }
     $owner = ''
     if (Test-Path (Join-Path $LockDir 'owner.json')) { $owner = Get-Content (Join-Path $LockDir 'owner.json') -Raw }
-    Die "another install_aris is running for this install root`n       lock: $LockDir`n       owner: $owner"
+    if ($ClearStaleLock) {
+        Write-Warn "removing stale lock: $LockDir (was: $owner)"
+        Remove-Item -Recurse -Force $LockDir -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $LockDir -ErrorAction Stop | Out-Null
+        @{
+            host       = $env:COMPUTERNAME
+            pid        = $PID
+            started_at = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            tool       = 'install_aris.ps1'
+            mode       = $InstallMode
+        } | ConvertTo-Json | Out-File (Join-Path $LockDir 'owner.json') -Encoding utf8
+        $PID | Out-File (Join-Path $LockDir 'owner.pid') -Encoding utf8
+        return
+    }
+    Die "another install_aris is running for this install root`n       lock: $LockDir`n       owner: $owner`n       if you are sure no install is in progress, rerun with -ClearStaleLock"
 }
 
 function Release-Lock {
@@ -238,6 +272,64 @@ function Release-Lock {
                 Remove-Item -Recurse -Force $LockDir -ErrorAction SilentlyContinue
             }
         }
+    }
+}
+
+# ─── Legacy detection (parity with install_aris.sh:322-368) ───────────────────
+# A legacy install is the old nested layout `<root>\.claude\skills\aris\<name>`
+# from pre-v2.0 versions. We detect what's at that path and decide what to do.
+
+$LegacyNested = Join-Path $InstallSkillsDir 'aris'
+
+function Detect-Legacy {
+    if (-not (Test-Path $LegacyNested) -and -not (Get-Item $LegacyNested -Force -ErrorAction SilentlyContinue)) {
+        return 'none'
+    }
+    if (Is-Link $LegacyNested) {
+        $tgt = Get-LinkTarget $LegacyNested
+        if ($tgt -eq $SkillsDirAbs -or $tgt -eq "$SkillsDirAbs\") {
+            return 'symlink_to_repo'
+        } else {
+            return 'symlink_to_other'
+        }
+    }
+    if (Test-Path $LegacyNested -PathType Container) { return 'real_dir' }
+    return 'real_file'
+}
+
+function Migrate-Legacy {
+    $kind = Detect-Legacy
+    switch ($kind) {
+        'none' { return }
+        'symlink_to_repo' {
+            Write-Log "→ migrating legacy nested junction: removing $LegacyNested"
+            if (-not $DryRun) {
+                Remove-Item -Force $LegacyNested -ErrorAction Stop
+            }
+        }
+        'symlink_to_other' {
+            Die "S2: legacy $LegacyNested is a junction to OUTSIDE the repo — refusing to touch.`n       investigate manually before re-running."
+        }
+        'real_file' {
+            Die "$LegacyNested is a regular file (unexpected). Move/delete it manually."
+        }
+        'real_dir' {
+            if (-not $MigrateCopy) {
+                Die "legacy nested COPY install detected at $LegacyNested.`n       -MigrateCopy keep-user | prefer-upstream"
+            }
+            # When MigrateCopy is set, archival is handled by Archive-LegacyCopy
+            # in the main flow when MigrateCopy = 'prefer-upstream'.
+        }
+    }
+}
+
+function Archive-LegacyCopy {
+    $ts = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $archive = Join-Path $InstallArisDir "legacy-copy-backup-$ts"
+    Write-Log "→ archiving legacy nested copy to: $archive"
+    if (-not $DryRun) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $archive) | Out-Null
+        Move-Item -Path $LegacyNested -Destination $archive -Force
     }
 }
 
@@ -470,6 +562,21 @@ try {
     if ($Uninstall) {
         Do-Uninstall
         exit 0
+    }
+
+    # ─── Legacy nested install detection (parity with install_aris.sh:624-693) ───
+    $legacyKind = Detect-Legacy
+    if ($legacyKind -ne 'none') {
+        if (-not $FromOld) {
+            Write-Log "Legacy nested install detected: $LegacyNested ($legacyKind)"
+            Write-Log "→ to migrate, rerun with -FromOld"
+            Write-Log "  for COPY-style legacy installs, also pass -MigrateCopy keep-user|prefer-upstream"
+            exit 1
+        }
+        Migrate-Legacy
+        if ($legacyKind -eq 'real_dir' -and $MigrateCopy -eq 'prefer-upstream') {
+            Archive-LegacyCopy
+        }
     }
 
     if ($Reconcile -and -not (Test-Path $ManifestPath)) {
