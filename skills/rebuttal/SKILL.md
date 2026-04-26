@@ -281,3 +281,26 @@ When new reviewer comments arrive:
 - **Respect the limit.** Character budget is a hard constraint.
 - **Resume cleanly.** Continue from REBUTTAL_STATE.md on rerun.
 - **Anti-hallucination citations.** Any reference added must go through DBLP → CrossRef → [VERIFY].
+
+## Domain-specific reviewer archetypes (v2.2+)
+
+The default archetypes cover ML-conference reviewers (novelty / baselines / empirical). For theory, robotics, and GPU venues, extend with these archetypes when classifying each reviewer concern:
+
+**Theory (SODA/STOC/ICALP/SPAA/POPL)**:
+- `theory_proof_gap` — reviewer claims step X of the proof is unjustified. Response: cite the specific line of the appendix proof; if the gap is real, fix it and resubmit a revision.
+- `theory_tightness` — reviewer claims the lower bound is not tight. Response: cite prior lower-bound papers; if the gap exists, acknowledge and scope the contribution as upper-bound-only.
+- `theory_model_unrealistic` — reviewer claims the computation model (RAM, EREW PRAM, cache-oblivious) is unrealistic. Response: cite standard references for the model + justify why the result transfers to more realistic models.
+
+**Robotics (ICRA/IROS/RSS/RA-L)**:
+- `robotics_simtoreal_gap` — reviewer doubts sim results transfer. Response: cite real-robot numbers in the paper; run follow-up trials if missing and append to rebuttal table.
+- `robotics_hardware_specificity` — reviewer claims the method only works on one robot. Response: enumerate platform-independent properties + point to abstracted interface if present; acknowledge limitation explicitly.
+- `robotics_safety_concerns` — reviewer flags safety (manipulation forces, collision handling). Response: cite supervised-training constraints + emergency-stop logic + failure-mode analysis from `/ros2-realtime-audit`.
+
+**Systems / PL (OSDI/SOSP/PLDI/OOPSLA)**:
+- `systems_artifact_reproducibility` — reviewer couldn't reproduce on their machine. Response: link to anonymized artifact repo + `/cpp-build` reproducer output; if real difference, investigate and patch before camera-ready.
+- `pl_mechanization_missing` — reviewer asks for Coq/Agda/Lean proof. Response: defer to extended-version if time-bounded; show pen-and-paper proof sketch inline.
+
+**GPU / HPC (SC/PPoPP/IPDPS)**:
+- `gpu_unverified_occupancy` — reviewer skeptical of occupancy number. Response: cite `CUDA_PROFILE_REPORT.json` in the repository.
+- `gpu_arch_dependence` — reviewer says results won't scale to H100 / MI300. Response: rerun on alternative arch if container + time permits; else acknowledge and scope to the evaluated arch.
+- `algorithmic_not_novel` — reviewer says algorithm is known. Response: distinguish "known algorithm" from "known implementation with new optimizations"; cite the closest prior work honestly.

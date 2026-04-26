@@ -207,6 +207,152 @@ Final-check implications:
 - Comparison with recent baselines (within 2 years) on recognized benchmarks.
 - Verify `\bibliographystyle{IEEEtran}` and correct `[conference]` document class.
 
+## Theory Venues (SODA, STOC, FOCS, ICALP, SPAA, PODC)
+
+Planning implications:
+
+- **Full proofs are mandatory**, not optional — every theorem must have a complete proof in the main paper OR a complete proof in the appendix that reviewers will read.
+- Most theory venues use **single-column** layout (LNCS, LIPIcs, ACM single-column) rather than two-column.
+- Correctness and tightness of bounds dominate; empirical validation is secondary or absent entirely.
+- Novelty is measured in terms of **new techniques, tighter bounds, or improved dependencies** — not engineering artifacts.
+- Anonymous submission for SODA/STOC/FOCS/SPAA/PODC; ICALP historically non-anonymous (check CFP).
+- Artifact evaluation is optional at most theory venues (ICALP Track A accepts but does not require).
+
+Final-check implications:
+
+- Every `\begin{theorem}` / `\begin{lemma}` / `\begin{proposition}` has a proof (main text or appendix) with all assumptions listed.
+- Parameter dependencies are uniform (e.g. "O(n)" must not secretly scale with log d or 1/ε).
+- `/proof-checker` audit verdict is PASS, not BYPASSED.
+- `/complexity-claim-audit` (v2.2+) verdict is PASS: every `\mathcal{O}` / `\Theta` / `\Omega` matches a proof.
+- Empirical tables, if present, list all input sizes, hardware, and implementation language; they are never the load-bearing evidence.
+- Title and abstract mention the improved bound explicitly (e.g. "O(n log² n) → O(n log n)").
+
+## Programming Languages Venues (PLDI, OOPSLA, POPL, CGO, ICFP)
+
+Planning implications:
+
+- **Artifact evaluation is mandatory** at PLDI/OOPSLA/POPL (Reusable / Available / Functional badges). Plan from day-1 a Docker/VM image that reproduces every claim.
+- Anonymized artifact repos (e.g. Zenodo with redacted metadata) during the review phase.
+- Reproducibility expectations are high: exact compiler versions, OS versions, and benchmark inputs must be documented.
+- Empirical claims require statistical rigor — report geomean + per-benchmark variance, not just aggregates.
+- POPL weights formal (proofs, Coq/Agda/Lean mechanizations) heavily; OOPSLA balances empirical + formal; PLDI/CGO weight empirical heavily.
+- Novelty bar is high — compiler optimizations or type-system extensions must be evaluated on multiple real workloads.
+
+Final-check implications:
+
+- Artifact repo passes Functional on a clean machine in under 30 minutes.
+- Every `Table X` result is reproducible with a single `make <table-x>` command.
+- Benchmark suite includes both stressors (unit tests) and real workloads (full programs).
+- If sanitizers or static analysis are claimed: SANITIZER_AUDIT.json / static-analysis report included.
+- For formal claims: mechanized proofs type-check (Coq `coqc`, Agda `agda`, Lean `lean`).
+
+## Systems Venues (OSDI, SOSP, NSDI, EuroSys, ASPLOS, SC, HPCA)
+
+Planning implications:
+
+- **Microbenchmark vs macro-workload discipline** — single-component microbenchmarks don't settle systems claims; end-to-end workloads (e.g., YCSB, SPEC, application traces) are required.
+- Hardware disclosure is mandatory: CPU/GPU model, memory bandwidth, NIC specs, storage hierarchy.
+- Cluster-scale reproducibility: if the paper claims scaling to N nodes, the artifact must demonstrate at least one non-trivial cluster run.
+- Baseline comparison must include the **strongest prior system** in the category — "we beat a straw-man" is rejected.
+- Double-blind for most, but SOSP rolls artifact review after accept (different timeline).
+
+Final-check implications:
+
+- Every perf claim has a comparison with at least one prior system + a well-motivated baseline.
+- Error bars or confidence intervals on all comparison figures (not just means).
+- Sensitivity analysis to workload parameters (at minimum: skew, scale, concurrency).
+- Complete hardware + software stack table (kernel version, driver version, compiler flags).
+- If GPU-centric: CUDA version, GPU model with compute capability, memory size disclosed.
+
+## Database Venues (VLDB, SIGMOD, ICDE, CIDR)
+
+Planning implications:
+
+- **TPC workloads** (TPC-H, TPC-DS, TPC-C) or recognized traces (e.g., Wikipedia, Twitter) are the standard — custom workloads need strong justification.
+- Query plans, index structures, and buffer-pool state must be reproducible.
+- PVLDB is **rolling-submission** with a 1-month cycle — plan for revision rounds.
+- SIGMOD/ICDE are annual with specific submission deadlines; CIDR is workshop-style with emphasis on vision papers.
+- Fairness: comparison baselines must use the **same data loader and same caching state** unless the contribution is explicitly about data loading.
+
+Final-check implications:
+
+- Queries used are listed verbatim in the appendix or linked artifact.
+- Scale factor (SF) is disclosed for every TPC experiment.
+- Hardware identical across baseline and method comparisons.
+- If concurrency claims: transaction conflict rate, abort rate, and throughput-vs-latency curves disclosed.
+
+## Graphics Venues (SIGGRAPH, EG, HPG, I3D)
+
+Planning implications:
+
+- **Visual-quality metrics** are first-class: PSNR, SSIM, LPIPS, FLIP for rendering papers; FID, inception score, user study for generative.
+- Supplementary **video** is near-mandatory for dynamic content (animation, rendering, simulation).
+- Rendering-performance plots: FPS vs scene complexity, memory consumption, convergence speed (for Monte Carlo).
+- SIGGRAPH (Journal track) is rolling-submission via ACM TOG; EG is annual; HPG focuses on high-performance.
+- Failure cases and visual comparisons on challenging scenes strengthen the paper.
+
+Final-check implications:
+
+- Supplementary video linked from paper (anonymous hosting for double-blind venues).
+- Visual-quality table has at least 3 perceptual metrics + 1 structural metric.
+- Hardware GPU model and driver version disclosed.
+- For real-time claims: min FPS (not just mean) and frame-time distribution reported.
+
+## HPC Venues (SC, PPoPP, IPDPS)
+
+Planning implications:
+
+- **Strong and weak scaling plots** are expected — missing either raises red flags.
+- I/O discipline: for storage-intensive claims, disclose PFS (Lustre / GPFS), striping config, aggregate I/O bandwidth.
+- GPU/CPU architecture: full disclosure (e.g., "NVIDIA A100 80GB, compute 8.0, CUDA 12.4, driver 550.x").
+- Reproducibility appendix (SC has explicit reproducibility initiative — SC-RI).
+- Artifact evaluation increasingly common, track-dependent.
+
+Final-check implications:
+
+- Strong-scaling plot up to at least 4× the smallest scale, weak-scaling with efficiency > 70% marked.
+- Roofline model placement (where possible) for kernel-level claims.
+- GPU occupancy / warp efficiency reported if CUDA/HIP claims are made (`/cuda-profile` produces this).
+- Communication-computation ratio disclosed for parallel algorithms.
+
+## Robotics Venues (ICRA, IROS, RSS, RA-L, T-RO, HRI, CoRL)
+
+Planning implications (general — see IEEE RA-L / IEEE TRO / ICRA sections above for per-venue format details):
+
+- **Hardware-platform disclosure** is mandatory: robot model, sensors (LiDAR, cameras, IMU with specs), controller spec, actuators.
+- **Sim-to-real gap** reporting is expected when sim is used — quantify the gap on real-world trials, not just claim transferability.
+- **Rosbag artifacts + launch files** strengthen reproducibility. For ROS2-based work, include `colcon.meta` + `package.xml` in the artifact.
+- Real-time deadline discipline: if the paper claims 100 Hz control, benchmarks must show p99 latency < 10 ms (not just mean).
+- Failure-mode video supplementary: reviewers expect to see not just success but edge-case behavior.
+- RSS: annual single-track, higher selectivity; CoRL: learning-focused subset of robotics; HRI: human-subject studies (IRB disclosure).
+
+Final-check implications:
+
+- Robot name + sensor suite + compute platform (onboard vs offboard) listed in a setup table.
+- If ROS2 used: distro (Humble / Iron / Jazzy), QoS profiles on critical topics, TF tree root node specified.
+- `/ros2-realtime-audit` (v2.2+) verdict is PASS on any real-time claim.
+- `/ros2-launch-test` (v2.2+) verdict is PASS — node discovery, QoS match, TF completeness validated.
+- For sim-to-real: both sim-only and real numbers in the results table, with the transfer gap explicit.
+- Video supplementary referenced in the paper body with a deterministic timestamp / URL.
+
+## GPU / Accelerator Venues (overlap with HPC + Systems, amplifies specific checks)
+
+When the paper's primary contribution is a GPU kernel or accelerator-specific system (typical for CUDA research):
+
+Planning implications:
+
+- Disclose CUDA version (runtime + driver), GPU model + compute capability, and any GPU-specific optimizations (tensor cores, asynchronous copies, cooperative groups).
+- Kernel-level metrics: occupancy, warp execution efficiency, memory throughput, DRAM/HBM utilization, L2 hit rate.
+- Profiling tool disclosure: Nsight Compute / Nsight Systems / nvprof — specify version.
+
+Final-check implications:
+
+- `/cuda-profile` report (Nsight Compute JSON) included in artifact — not just summary plots.
+- `/cuda-sanitizer` audit clean (no racecheck / memcheck / initcheck violations) on benchmark runs.
+- `/cuda-correctness-audit` clean (numerical equivalence vs CPU reference within ulp tolerance).
+- For tensor-core claims: show both dense and sparse-pattern benchmarks; flag FP16/BF16/INT8 precision used.
+- Binary size / register pressure / shared-memory usage reported (from `ptxas -v` or Nsight Compute).
+
 ## Minimal Submission Checklist
 
 Before submission, verify:

@@ -279,3 +279,26 @@ Tracker file: refine-logs/EXPERIMENT_TRACKER.md
 /run-experiment    -> execute the runs
 /auto-review-loop  -> react to results and iterate on the paper
 ```
+
+## Domain modes (v2.2+)
+
+When `.aris/project.yaml` declares `language ≠ python` or `frameworks` includes `ros2` / `cuda`, pivot the "Metrics" and "Run order" sections per domain.
+
+The domain keywords describe **project shape**, not research topic. Any C++ research project (SLAM, perception, NLP, LLM inference, graphics, HPC kernel, database, compiler, etc.) picks the mode matching how its code is organized:
+
+- **`— domain: cpp-generic`** (default for any `language: cpp` project without specific framework flavor):
+  - Metrics: pick from `{wall_time_ms, peak_rss_kb, cache_misses, instructions_retired, throughput_ops_sec, p99_latency_ms, model-specific quality metric}`; the domain is empirical, not inherently about asymptotic bounds.
+  - Run order: correctness (sanitizers PASS) → baseline comparison at matched budget → ablations (compiler flags / data structures / algorithm variants / representative hyperparameters) → scalability study on the relevant inputs.
+  - Claim surface: empirical deltas against baseline + reproducibility details. `/complexity-claim-audit` applies ONLY when the paper actually states `\mathcal{O}`/`\Theta`/`\Omega` bounds (common for theory / systems papers, uncommon for perception / NLP / SLAM).
+
+- **`— domain: robotics`** (`frameworks: [ros2, ...]`, `venue_family: robotics`):
+  - Metrics: `control_loop_freq_hz`, `topic_latency_p50_ms` / `p99_ms`, `tf_lookup_error_rate`, `node_uptime_s`, `sim_to_real_gap`, domain-specific success rate (e.g. ATE / RPE for SLAM, IoU for perception pipelines).
+  - Run order: sim-only baseline → sim with ablations → real-robot (fewer trials) → sim-to-real gap analysis → failure-mode analysis.
+  - Claim surface: real-time deadline + success rate + generalization across environments. Audited by `/ros2-launch-test` and `/ros2-realtime-audit`.
+
+- **`— domain: gpu`** (`frameworks: [cuda, ...]`, `venue_family: gpu|hpc|ml`):
+  - Metrics: `kernel_time_us`, `occupancy_pct`, `warp_execution_efficiency`, `dram_throughput_gbs`, `l2_hit_rate`, `tokens_per_sec` / `throughput_qps` when serving LLM / inference workloads.
+  - Run order: correctness (`/cuda-correctness-audit` PASS) → occupancy sweep (block-size ∈ {64,128,256,512,1024}) → memory-layout ablation (AoS vs SoA, shared vs global, tensor-core vs FP32) → full benchmark at fixed problem size → roofline analysis.
+  - Claim surface: throughput / occupancy at the declared compute capability — always disclose the arch (the `sm_XX` you set in `build.cuda_arch`). Audited by `/cuda-profile` and `/cuda-correctness-audit`.
+
+Legacy alias `— domain: algorithms` (v2.2 early draft) is accepted and interpreted as `cpp-generic`.

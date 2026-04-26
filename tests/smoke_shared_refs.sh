@@ -19,7 +19,7 @@ for f in skills/shared-references/*.md; do
 done
 pass "$COUNT shared-reference files checked (all non-empty, all have H1)"
 
-# Must include the v2 and v2.1 additions
+# Must include the v2, v2.1, and v2.2 additions
 REQUIRED=(
     "principle-extraction.md"
     "failure-extraction.md"
@@ -34,6 +34,7 @@ REQUIRED=(
     "effort-contract.md"
     "assurance-contract.md"
     "integration-contract.md"
+    "build-system-contract.md"
     "post-coding-verification.md"
     "experiment-integrity.md"
     "citation-discipline.md"

@@ -296,10 +296,39 @@ Every invocation uses a fresh `codex exec` session. Never `codex exec resume --l
 
 This skill never blocks by itself; `paper-writing` Phase 6 plus `tools/verify_paper_audits.sh` decide whether the verdict blocks finalization based on the `assurance` level. The `PAPER_CLAIM_AUDIT.md` human-readable report remains, side-by-side with the JSON artifact.
 
+### Phase C.4 — Asymptotic claim audit (v2.2+, opt-in)
+
+**Only active when the paper actually makes asymptotic claims.** Pattern-match `\mathcal{O}` / `\Theta` / `\Omega` / "amortized O(1)" / "O(n log n)" in the paper body; if **no matches**, set verdict `NOT_APPLICABLE` with reason_code `no_asymptotic_claims` and skip this phase. Most SLAM / perception / NLP / LLM / graphics / robotics papers report empirical numbers only and land here — that is expected, not a gap.
+
+When matches DO exist, delegate the audit itself to `/complexity-claim-audit` (emits `COMPLEXITY_AUDIT.json`). In paper-claim-audit we only cross-reference empirical evidence: if the paper cites "O(n log n) running time" in a caption adjacent to an empirical scaling table, check the table's scaling fits the claim. Verdict reason codes: `complexity_empirical_mismatch`, `asymptotic_audit_missing_but_required` (when `\mathcal{O}` present but `COMPLEXITY_AUDIT.json` absent at submission).
+
+### Phase C.5 — Real-time claim audit (v2.2+, robotics)
+
+When `frameworks` includes `ros2` AND paper body has latency (ms, μs) or frequency (Hz) claims, verify each against `ROS2_REALTIME_AUDIT.json`:
+
+- "100 Hz control" → `observed_rate_hz ≥ 100` in the audit
+- "p99 latency 10 ms" → `p99_ms ≤ 10` in the audit
+- Missing audit at submission → `realtime_unverified`
+- Mismatch (claim 100 Hz, audit shows 92 Hz) → `realtime_deadline_missed`
+
+### Phase C.6 — GPU-throughput / occupancy claim audit (v2.2+, gpu)
+
+When `frameworks` includes `cuda` AND paper body has TFLOPS / DRAM-throughput / occupancy / warp-efficiency claims, verify each against `CUDA_PROFILE_REPORT.json`:
+
+- "Achieves 412 GB/s DRAM throughput" → `dram_throughput_gbs ≥ 412` for the named kernel
+- "87% SM occupancy" → `achieved_occupancy_pct` matches within 2%
+- Missing audit at submission → `gpu_metrics_unverified`
+- Mismatch → `occupancy_claim_overstated` or `throughput_claim_overstated`
+
+Numerical claims of accuracy drop for TRT engines delegate similarly to `TRT_ENGINE_AUDIT.json`.
+
 ## See Also
 
 - `/citation-audit` — sibling skill for bibliographic integrity
 - `/proof-checker` — sibling skill for theorem verification
 - `/experiment-audit` — sibling skill for evaluation code integrity
+- `/complexity-claim-audit` — asymptotic bound audit (v2.2+)
+- `/ros2-realtime-audit` — real-time claim source (v2.2+)
+- `/cuda-profile` — GPU metrics source (v2.2+)
 - `shared-references/assurance-contract.md` — 6-verdict state machine + artifact schema
 - `shared-references/integration-contract.md` — architectural contract for cross-skill integration

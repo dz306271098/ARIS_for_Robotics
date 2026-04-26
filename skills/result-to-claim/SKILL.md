@@ -101,7 +101,7 @@ Extract structured fields from Codex response:
 /codex:rescue --effort xhigh "An idea has FAILED experimental validation. Perform a deep failure analysis.
 
 Read these files directly:
-- All experiment result files (JSON/CSV in results/ or refine-logs/)
+- All experiment result files (JSON/CSV in results/ or refine-logs/) AND v2.2 domain audit JSONs at the project root: BENCHMARK_RESULT.json (cpp-bench), CUDA_PROFILE_REPORT.json (cuda-profile), CUDA_CORRECTNESS_AUDIT.json (cuda-correctness-audit), ROS2_REALTIME_AUDIT.json (ros2-realtime-audit), ROS2_LAUNCH_TEST_AUDIT.json (ros2-launch-test), TRT_ENGINE_AUDIT.json (tensorrt-engine-audit) — these carry the structured per-kernel / per-topic / per-test metrics for non-Python projects
 - Source code in src/ — the implementation of the failed method
 - refine-logs/EXPERIMENT_PLAN.md — what was planned
 - refine-logs/FINAL_PROPOSAL.md — the method design
@@ -153,7 +153,7 @@ Save the rescue report to `findings.md` under `## Failure Analysis: [idea name]`
 **Step 4a: Partial Failure Investigation** (codex:rescue):
 ```
 /codex:rescue --effort xhigh "An idea shows PARTIAL results. Read these files directly:
-- All experiment result files (JSON/CSV in results/ or refine-logs/)
+- All experiment result files (JSON/CSV in results/ or refine-logs/) AND v2.2 domain audit JSONs at the project root: BENCHMARK_RESULT.json (cpp-bench), CUDA_PROFILE_REPORT.json (cuda-profile), CUDA_CORRECTNESS_AUDIT.json (cuda-correctness-audit), ROS2_REALTIME_AUDIT.json (ros2-realtime-audit), ROS2_LAUNCH_TEST_AUDIT.json (ros2-launch-test), TRT_ENGINE_AUDIT.json (tensorrt-engine-audit) — these carry the structured per-kernel / per-topic / per-test metrics for non-Python projects
 - Source code in src/ — the implementation
 - refine-logs/EXPERIMENT_PLAN.md — what was planned
 - refine-logs/FINAL_PROPOSAL.md — the method design
@@ -205,6 +205,31 @@ python3 tools/research_wiki.py log research-wiki/ "result-to-claim: exp:<id> ver
 ## Rules
 
 - **Codex CLI is the judge, not CC.** CC collects evidence and routes; Codex evaluates. This prevents post-hoc rationalization.
+
+## Polyglot evidence sources (v2.2+)
+
+For non-Python projects, the structured evidence comes from domain audit JSONs rather than `wandb-summary.json`. Treat these as first-class evidence:
+
+| Audit JSON | Produced by | Carries |
+|---|---|---|
+| `BENCHMARK_RESULT.json` | `/cpp-bench` | per-benchmark median / 95% CI / CV / outliers / baseline-speedup |
+| `SANITIZER_AUDIT.json` | `/cpp-sanitize` | runtime UB/race/leak findings (negative evidence) |
+| `PROFILE_REPORT.json` | `/cpp-profile` | top-10 hotspots / cache-miss / branch-mispredict |
+| `CUDA_PROFILE_REPORT.json` | `/cuda-profile` | per-kernel occupancy / warp-eff / DRAM throughput / roofline placement |
+| `CUDA_CORRECTNESS_AUDIT.json` | `/cuda-correctness-audit` | abs/rel/ulp diff vs CPU reference; determinism |
+| `CUDA_SANITIZER_AUDIT.json` | `/cuda-sanitize` | memcheck / racecheck / synccheck / initcheck findings |
+| `ROS2_REALTIME_AUDIT.json` | `/ros2-realtime-audit` | per-topic p50/p95/p99 / control-loop freq / TF errors |
+| `ROS2_LAUNCH_TEST_AUDIT.json` | `/ros2-launch-test` | node discovery / QoS match / TF completeness |
+| `TRT_ENGINE_AUDIT.json` | `/tensorrt-engine-audit` | INT8 calibration accuracy drop, per-class regressions |
+
+When evaluating "does evidence support this claim?", these JSON fields map directly to claim language:
+- "achieves 30 Hz tracking" → `ROS2_REALTIME_AUDIT.json[topics][/cmd_vel].observed_rate_hz ≥ 30`
+- "p99 latency < 10 ms" → `ROS2_REALTIME_AUDIT.json[topics][...].p99_ms ≤ 10`
+- "2.3× throughput vs baseline" → `BENCHMARK_RESULT.json[benchmarks][...].speedup_vs_baseline ≥ 2.3`
+- "87% SM occupancy" → `CUDA_PROFILE_REPORT.json[top_kernels][...].achieved_occupancy_pct ≥ 87`
+- "matches CPU reference within 1e-5" → `CUDA_CORRECTNESS_AUDIT.json[per_kernel][...].max_abs_diff ≤ 1e-5`
+
+If the corresponding audit JSON is missing or has verdict `FAIL`/`BLOCKED`, the claim is `unsupported` regardless of what auxiliary log files say.
 - Do not inflate claims beyond what the data supports. If Codex says "partial", do not round up to "yes".
 - A single positive result on one dataset does not support a general claim. Be honest about scope.
 - If `confidence` is low, treat the judgment as inconclusive and add experiments rather than committing to a claim.

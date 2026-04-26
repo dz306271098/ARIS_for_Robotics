@@ -7,9 +7,87 @@ allowed-tools: Bash(*), Read, Grep, Glob, Edit, Write, Agent
 
 # Run Experiment
 
-Deploy and run ML experiment: $ARGUMENTS
+Deploy and run experiment: $ARGUMENTS
 
 ## Workflow
+
+### Step 0: Build System Contract (polyglot dispatch)
+
+Before applying any Python/ML-specific behavior, consult the project contract (see `shared-references/build-system-contract.md`):
+
+```bash
+LANG=$(python3 tools/project_contract.py get-language)          # python | cpp | rust | polyglot
+FRAMEWORKS=$(python3 tools/project_contract.py get-frameworks)  # e.g. "ros2 cuda cudnn tensorrt"
+SOURCE=$(python3 tools/project_contract.py source)              # CLAUDE.md | <path>/.aris/project.yaml | auto-detect
+```
+
+The contract is read with priority: **CLAUDE.md `## Project` section** (recommended — same convention as `## Remote Server` / `## Vast.ai` already used by this skill) → `.aris/project.yaml` (programmatic / advanced) → auto-detection from project files. Most users will simply add a `## Project` section to their existing `CLAUDE.md`.
+
+Container dispatch (when needed) reads `## Container` from the same `CLAUDE.md` (or `.aris/container.yaml` as the YAML alternative); see Step 0.5.
+
+Branch based on the contract:
+
+**If `LANG == python`** (or no `## Project` section / no `.aris/project.yaml`): proceed with Steps 1–7 below — the ML/PyTorch workflow (screen + conda + CUDA_VISIBLE_DEVICES, W&B logging, vast.ai rental). This is the default and covers all legacy ARIS usage. The existing CLAUDE.md sections (`## Remote Server`, `## Vast.ai`, `## Local Environment`) continue to be read by Step 1.
+
+**If `LANG ∈ {cpp, rust}` or `FRAMEWORKS` includes `ros2` / `cuda`**: take the polyglot path:
+
+1. **Resolve commands from the contract** (no hardcoded `python x.py`):
+   ```bash
+   BUILD_CMD=$(python3 tools/project_contract.py get-build-cmd)
+   RUN_CMD=$(python3 tools/project_contract.py get-run-cmd)
+   ```
+2. **Container dispatch when configured** — see Step 0.5; whether the build + run execute inside a container, on a remote SSH host, or on the host itself depends on what the user has declared. The skill does not force a container.
+   ```bash
+   # containerized (only if `## Container` / .aris/container.yaml present):
+   bash tools/container_run.sh -- bash -c "$BUILD_CMD && $RUN_CMD 2>&1 | tee <log>"
+
+   # host-direct (default when no container config):
+   bash -c "$BUILD_CMD && $RUN_CMD 2>&1 | tee <log>"
+
+   # remote SSH (when `## Remote Server` declares gpu: remote):
+   ssh "$REMOTE_HOST" "cd $REMOTE_DIR && $BUILD_CMD && $RUN_CMD" 2>&1 | tee <log>
+   ```
+3. **Skip Step 3.5 (W&B)** for `cpp` / `ros2` / `cuda` — metrics are collected from the domain-specific audit artifacts the adjacent skills emit: `BENCHMARK_RESULT.json` (C++), `ROS2_LAUNCH_TEST_AUDIT.json` / `ROS2_REALTIME_AUDIT.json` (ROS2), `CUDA_PROFILE_REPORT.json` / `CUDA_CORRECTNESS_AUDIT.json` (CUDA). Forward those paths to `/result-to-claim`.
+4. **Steps 5 (verify launch), 6 (Feishu), and the vast.ai integration** remain backend-agnostic and apply identically to polyglot runs.
+
+Delegate to `/cpp-build`, `/ros2-build`, or `/cuda-build` when you need more than a one-shot build + run (e.g., warning capture, register-usage, or multi-package colcon workspaces). Those skills produce the audit JSONs that `/paper-writing` Phase 6 will require at `assurance: submission`.
+
+### Step 0.5: CLAUDE.md `## Project` / `## Container` sections (recommended UX)
+
+The user's CLAUDE.md is the single place ARIS reads project + execution config. Recognised sections (case-insensitive, parens stripped):
+
+```markdown
+## Project
+- language: cpp                      # python | cpp | rust | polyglot
+- venue_family: robotics             # theory | pl | systems | db | graphics | hpc | robotics | gpu | ml
+- frameworks: ros2, cuda             # comma-separated subset of {ros2, cuda, cudnn, tensorrt, torch, jax}
+- build_system: colcon               # make | cmake | cargo | colcon | custom | pip
+- build_cmd: "colcon build --symlink-install"   # optional; overrides system default
+- cuda_arch: sm_86                   # required when cuda in frameworks (sm_75/sm_80/sm_86/sm_89/sm_90 — your hardware)
+- ros2_distro: jazzy                 # required when ros2 in frameworks (humble/iron/jazzy/rolling)
+- bench_harness: google-benchmark    # google-benchmark | catch2 | rosbag-replay | cuda-eventtimer | custom
+- bench_iterations: 10
+- sanitizers_cpu: address, undefined, thread          # any non-empty findings block submission
+- sanitizers_gpu: memcheck, racecheck, synccheck      # compute-sanitizer tools
+- profile_cpu_tool: perf
+- profile_gpu_tool: nsight-compute
+
+## Container                         # optional — only when you want isolation
+- runtime: docker                    # auto | docker | podman | distrobox | toolbox
+- name: my-cpp-dev                   # YOUR container name; ARIS does not ship one
+- workdir: /workspace
+- pre_exec: source /opt/ros/jazzy/setup.bash
+- pre_exec: export PATH=/usr/local/cuda/bin:$PATH
+```
+
+Multiple `- pre_exec: ...` lines accumulate into the in-container shell prelude. Quick scaffolding:
+
+```bash
+python3 tools/project_contract.py init --target claude-md --language cpp --frameworks ros2,cuda
+# Appends `## Project` + `## Container` blocks to CLAUDE.md you can then customize.
+```
+
+Existing CLAUDE.md sections (`## Remote Server`, `## Vast.ai`, `## Local Environment`) are unchanged; the new sections coexist with them.
 
 ### Step 1: Detect Environment
 

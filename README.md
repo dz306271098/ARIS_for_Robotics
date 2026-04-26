@@ -298,7 +298,7 @@ claude
 
 ### 工作流总览
 
-ARIS 的 52 个技能组成完整科研流水线。六个工作流可以单独使用，也可以串联：
+ARIS 的 66 个技能组成完整科研流水线（其中 v2.2 新增 14 个 cpp-* / ros2-* / cuda-* / complexity-claim-audit / tensorrt-engine-audit）。六个工作流可以单独使用，也可以串联：
 
 ```
 /research-lit → /idea-creator → /novelty-check → /research-refine → /experiment-bridge → /auto-review-loop → /paper-writing → /rebuttal
@@ -1254,7 +1254,7 @@ ARIS 默认使用 Claude Code + GPT-5.4，也支持其他组合：
 ## 全部技能一览
 
 <details>
-<summary><b>52 个技能（点击展开）</b></summary>
+<summary><b>66 个技能（点击展开）</b></summary>
 
 **核心工作流：**
 
@@ -1365,6 +1365,295 @@ ARIS 默认使用 Claude Code + GPT-5.4，也支持其他组合：
 </details>
 
 ---
+
+## C++ 研究项目支持（v2.2+）
+
+ARIS v2.2 的目标是让全自动科研工作流**兼容用 C++（以及相邻的 C/Rust/CUDA）实现的科研项目**——无论具体研究题目是什么。典型场景包括但不限于：
+
+- **机器人 / SLAM / 运动规划 / 控制**（colcon workspace、ROS2 节点、实时约束）
+- **计算机视觉 / 感知**（OpenCV、PCL、原生 CUDA 算子）
+- **自然语言处理 / 大模型推理**（GGML、llama.cpp、vLLM、TensorRT-LLM 之类的 C++/CUDA 栈）
+- **图形学 / 物理仿真**（Taichi、Mitsuba、自定义渲染器）
+- **HPC / 数值计算**（MPI、OpenMP、自定义 CUDA kernel）
+- **系统 / 数据库 / 编译器**（LLVM pass、运行时、存储引擎）
+- **（若用户需要）理论算法论文**（复用 `/complexity-claim-audit`、`/proof-checker` 算法分类扩展）
+
+重点在**验证自动化科研流水线的机制**对这些项目可用——从 idea-discovery 到 paper-writing 到 submission audit 整个环节。ARIS **不要求**特定版本的编译器、CUDA 工具包、ROS2 发行版或 GPU 架构；所有版本字段都从 `CLAUDE.md` `## Project` 段（或 `.aris/project.yaml`，或环境）中读取，skill 本身保持版本无关。
+
+**运行环境完全由用户自选**——ARIS 不假设任何特定部署，也不自带任何容器。用户可以选择本地工作站、远程 SSH 服务器（复用 `run-experiment` 的 vast.ai 模板）、自己的 Docker/Podman 容器、Kubernetes pod 等。`tests/container/` 是 ARIS 自己的 CI 自检，跑在用户通过 `$ARIS_TEST_CONTAINER` 或 `.aris/container.yaml` 指向的临时测试容器里，不是部署要求。
+
+| 运行环境 | CLAUDE.md `## Container`（或 `.aris/container.yaml`） | skill 行为 |
+|---|---|---|
+| 本地已装工具链 | 无 | 直接在宿主机执行 |
+| 远程 SSH（参照 `run-experiment` vast.ai 流） | 无 | SSH 派发 |
+| 用户自己的容器 | 有，`name:` 为用户容器名 | 经 `container_run.sh` 派发 |
+| K8s pod / CI runner | skill 已在 pod 内运行 | 直接执行 |
+| ARIS 仓库 CI 自检 | `$ARIS_TEST_CONTAINER` 指向一个用户提供的临时容器 | 仅 `tests/container/` 使用，不影响 skill 运行时 |
+
+### 架构要点 —— CLAUDE.md 是单一入口
+
+延续 ARIS 既有约定（`## Remote Server` / `## Vast.ai` / `## Local Environment` 都写在 `CLAUDE.md` 里），v2.2 也通过 CLAUDE.md 配置项目和执行环境。在你已有的 CLAUDE.md 里追加两段就够了：
+
+```markdown
+## Project
+- language: cpp
+- venue_family: robotics
+- frameworks: ros2, cuda
+- build_system: colcon
+- cuda_arch: sm_86            # 你的 GPU 架构（sm_75/sm_80/sm_86/sm_89/sm_90，按硬件填）
+- ros2_distro: jazzy          # 或 humble / iron / rolling
+- bench_harness: google-benchmark
+- bench_iterations: 10
+- sanitizers_cpu: address, undefined, thread
+- sanitizers_gpu: memcheck, racecheck, synccheck, initcheck
+- profile_cpu_tool: perf
+- profile_gpu_tool: nsight-compute
+
+## Container                  # 可选——仅当你想用自己的容器隔离执行
+- runtime: docker             # auto / docker / podman / distrobox / toolbox
+- name: my-cpp-dev            # ← 你自己的容器名；ARIS 不自带容器
+- workdir: /workspace
+- pre_exec: source /opt/ros/jazzy/setup.bash
+- pre_exec: export PATH=/usr/local/cuda/bin:$PATH
+```
+
+一键 scaffold（追加到现有 CLAUDE.md）：
+
+```bash
+python3 tools/project_contract.py init --target claude-md --language cpp --frameworks ros2,cuda
+```
+
+读取优先级：**CLAUDE.md `## Project` / `## Container`** > `.aris/project.yaml` + `.aris/container.yaml`（高级 / CI 程序化路径）> 自动检测（看 `pyproject.toml` / `CMakeLists.txt` / `package.xml` / `.cu` 文件）。
+
+两个主 helper：
+
+- `tools/project_contract.py` —— 解析配置，提供 `validate` / `get-language` / `get-frameworks` / `get-build-cmd` / `get-run-cmd` / `get-bench-cmd` / `get-metrics` / `get-container` / `source` / `init` 子命令。
+- `tools/container_run.sh` —— 当 `## Container` 段存在时启用；自动检测 docker/podman/distrobox/toolbox 运行时，进入用户指定的容器，应用 `pre_exec` 后执行命令并透传退出码。支持 `--probe`、`--dry-run`。
+
+<details>
+<summary>YAML 形态（高级 / 程序化用户）</summary>
+
+如果你需要程序化生成、CI 模板化、或不想动 CLAUDE.md，可以直接写 `.aris/project.yaml` + `.aris/container.yaml`：
+
+```yaml
+# .aris/project.yaml
+language: cpp
+venue_family: robotics
+frameworks: [ros2, cuda]
+build:
+  system: colcon
+  cuda_arch: sm_86
+  ros2_distro: jazzy
+sanitizers:
+  cpu: [address, undefined, thread]
+  gpu: [memcheck, racecheck, synccheck, initcheck]
+profile:
+  cpu_tool: perf
+  gpu_tool: nsight-compute
+```
+
+```yaml
+# .aris/container.yaml
+runtime: docker
+name: my-cpp-dev
+workdir: /workspace
+pre_exec:
+  - "source /opt/ros/jazzy/setup.bash"
+  - "export PATH=/usr/local/cuda/bin:$PATH"
+```
+
+CLAUDE.md 里的同名段落优先级更高，所以两套并存时以 CLAUDE.md 为准。
+</details>
+
+### 新增的 14 个 domain-specific 技能
+
+按代码形态分组——和具体研究题目（SLAM / NLP / LLM / 感知 / 渲染 / 数据库 …）解耦。skill 看到 CLAUDE.md `## Project` 段（或 `.aris/project.yaml`）中相应的 `language` / `frameworks` 时自动启用。
+
+**C++ 通用（5 个）**——任何 C++ 实现的科研项目（SLAM、感知、LLM 推理、图形、HPC、系统、编译器……）都用这一套：
+- `/cpp-build` —— 检测 CMake/Make、执行 `$(project_contract.py get-build-cmd)`、捕获编译警告、产出 `BUILD_ARTIFACT.json`
+- `/cpp-sanitize` —— ASan/UBSan/TSan/MSan runtime 审计；`assurance: submission` 下任一发现都会阻塞
+- `/cpp-bench` —— Google Benchmark / Catch2 median-of-N + 95% CI + 离群点检测 + baseline 对比
+- `/cpp-profile` —— perf / valgrind / cachegrind 热点定位 + 分支/缓存失败率
+- `/complexity-claim-audit` —— **可选**——只有论文里真的写了 $\mathcal{O}$/$\Theta$/$\Omega$ 声明时才触发；多数 SLAM/感知/NLP 论文不需要
+
+**ROS2（4 个）**——当 `frameworks` 包含 `ros2` 时启用：
+- `/ros2-build`（colcon）、`/ros2-launch-test`（launch_testing + QoS + TF）、`/ros2-bag-replay`（rosbag 回放与黄金对比）、`/ros2-realtime-audit`（p99 latency + 控制环频率审计）
+
+**CUDA（5 个）**——当 `frameworks` 包含 `cuda` 或工程含 `.cu`/`.cuh` 时启用：
+- `/cuda-build`（nvcc + 寄存器/shared-mem/PTX）、`/cuda-sanitize`（compute-sanitizer 四工具）、`/cuda-profile`（Nsight Compute + Systems + Roofline）、`/cuda-correctness-audit`（GPU vs CPU 数值等价 + 多运行确定性）、`/tensorrt-engine-audit`（TRT 引擎 INT8 校准 + 每类精度回退）
+
+另有 `/proof-checker` 扩展（v2.2）：amortized / loop invariant / recurrence / adversarial / entropy / cache-oblivious 算法证明分类——同样是 **可选**，仅理论方向论文用得上。
+
+### venue 家族扩展（+7 个）
+
+`shared-references/venue-checklists.md` 新增 Theory（SODA/STOC/FOCS/ICALP/SPAA/PODC）、Programming Languages（PLDI/OOPSLA/POPL/CGO/ICFP）、Systems（OSDI/SOSP/NSDI/EuroSys/ASPLOS/SC/HPCA）、Database（VLDB/SIGMOD/ICDE/CIDR）、Graphics（SIGGRAPH/EG/HPG/I3D）、HPC（SC/PPoPP/IPDPS）、Robotics（ICRA/IROS/RSS/RA-L/T-RO/HRI/CoRL）。
+
+### 审计流水线扩展
+
+`tools/verify_paper_audits.sh` 在 `assurance: submission` 下按 CLAUDE.md `## Project` 段（或 `.aris/project.yaml`）自动附加必需审计；与此对应，`/paper-writing` Phase 6 会**自动 fan-out 触发产生这些 JSON 的 skill**——用户只需 `/paper-writing — assurance: submission` 一条命令：
+
+| 条件 | 新增必需审计 |
+|---|---|
+| `language: cpp` | `COMPLEXITY_AUDIT.json` + `SANITIZER_AUDIT.json` + `BENCHMARK_RESULT.json` |
+| `frameworks` 含 `ros2` | + `ROS2_LAUNCH_TEST_AUDIT.json` + `ROS2_REALTIME_AUDIT.json` |
+| `frameworks` 含 `cuda` | + `CUDA_SANITIZER_AUDIT.json` + `CUDA_PROFILE_REPORT.json` + `CUDA_CORRECTNESS_AUDIT.json` |
+| `frameworks` 含 `tensorrt` | + `TRT_ENGINE_AUDIT.json` |
+
+三个一体化验证脚本各自输出 `*_INTEGRITY_REPORT.json`：`tools/verify_cpp_project.sh`、`tools/verify_ros2_project.sh`、`tools/verify_cuda_project.sh`。
+
+### 15 个领域失败反模式（失败库种子）
+
+```bash
+bash tools/seed_cpp_ros2_cuda_failure_patterns.sh <wiki-root>
+```
+
+一次性把下列 15 个失败反模式种入 `research-wiki/failures/`：
+
+- **C++（6）**：`ub-exploit-compiler-optimization`、`hidden-asymptotic-constant`、`cache-thrash-false-sharing`、`numerical-instability-catastrophic-cancellation`、`race-condition-data-race`、`memory-fragmentation-allocator-pressure`
+- **ROS2（4）**：`ros2-qos-profile-mismatch`、`ros2-callback-group-deadlock`、`ros2-tf-tree-race`、`ros2-dds-discovery-failure`
+- **CUDA（5）**：`cuda-warp-divergence-perf`、`cuda-shared-memory-bank-conflict`、`cuda-unaligned-global-access`、`cuda-register-pressure-spill`、`cuda-async-copy-race`
+
+每条记录含 `generalized_form`、`tags`、`status=active`，并通过 `paper:aris-v22-seeds` 挂接到 wiki 图中。
+
+### 容器测试套件（ARIS 仓库 CI 自检，用户无需关心）
+
+`tests/container/` 下 6 个 smoke 测试把 ARIS 自身的 v2.2 skill 试跑到一个**用户临时提供**的测试容器里（通过 `$ARIS_TEST_CONTAINER` 环境变量或 `.aris/container.yaml` 指定）。这只是 ARIS 仓库 CI 的自检——用户跑自己的 C++/ROS2/CUDA 项目时并不需要这个容器。没有配置时整套测试会自动 SKIP：
+
+| 测试 | 覆盖 |
+|---|---|
+| `smoke_cuda_build.sh` | nvcc 为 sm_86 编译最小 SAXPY 内核 + 解析寄存器数 |
+| `smoke_cuda_sanitize.sh` | compute-sanitizer --version + memcheck（驱动可用时） |
+| `smoke_cuda_profile.sh` | ncu + nsys 存在 + GPU 设备节点可见 |
+| `smoke_ros2_build.sh` | colcon build 最小 rclcpp hello world |
+| `smoke_ros2_launch_test.sh` | launch / launch_testing 可导入 + pytest 存在 |
+| `smoke_tensorrt_presence.sh` | libnvinfer-dev + trtexec + cuDNN（任何版本） |
+
+使用方式：
+
+```bash
+bash tests/run_all.sh                   # 仅宿主机（默认，兼容 ML 用户）
+bash tests/run_all.sh --with-container  # 宿主机 + 容器
+bash tests/run_all.sh --container-only  # 仅容器
+bash tests/ci.sh                        # 一键入口，自动检测
+```
+
+当前状态：宿主机 13/13 全绿 + 容器 6/6 全绿。
+
+### 新增 HALT 消息（v2.2）
+
+| HALT 消息 | 触发条件 | 修复 |
+|---|---|---|
+| `SANITIZER_AUDIT blocking (findings_present)` | `/cpp-sanitize` 在 submission 级发现任何 ASan/UBSan/TSan/MSan 告警 | 修复 UB/race，重新运行；不应在 audit JSON 中伪造 PASS |
+| `CUDA_SANITIZER_AUDIT blocking` | compute-sanitizer 在 submission 级有任何违规 | 定位 kernel/line，修复 race/unaligned/init，重新审计 |
+| `ROS2_REALTIME_AUDIT deadline_missed` | p99 超过 `.aris/deadlines.yaml` 预算 | 降负载 / 改 executor / 换 callback group，重跑 |
+| `COMPLEXITY_AUDIT unproven` | 论文中 $\mathcal{O}$ 声明在附录找不到对应证明 | 补证明 or 修正 claim；重新运行 `/complexity-claim-audit` |
+| `BENCHMARK_RESULT missing at submission` | cpp 项目 submission 缺 `BENCHMARK_RESULT.json` | 运行 `/cpp-bench` |
+| `container runtime not found` | `container_run.sh --probe` 未发现 docker/podman/distrobox/toolbox | 安装其一或改为 host-only |
+| `GPU driver version insufficient` | `compute-sanitizer` / `ncu` 运行期报驱动不足 | 重启容器时加 `--gpus all`；或升级主机驱动；或 CI 跳过 GPU-runtime 块 |
+
+### 端到端示例 1：C++ SLAM 研究 → IROS / ICRA 投稿（主线）
+
+一个典型的 C++ 研究项目：视觉-惯性 SLAM 系统，实现使用 C++17 + Eigen + Ceres + OpenCV，用 ROS2 封装，需要在真实数据集（EuRoC / TUM-VI）和自己采集的 bag 上评估。
+
+**Step 1 — 在 CLAUDE.md 里追加项目段（一次性）**：
+
+```markdown
+## Project
+- language: cpp
+- venue_family: robotics
+- frameworks: ros2
+- build_system: colcon
+- ros2_distro: humble        # 你的 ROS2 distro
+- bench_harness: rosbag-replay
+- sanitizers_cpu: address, undefined, thread
+
+## Container                 # 可选——如果你已经在装好 ROS2 的本地/远程，这段可省
+- runtime: docker
+- name: my-ros2-dev          # 你自己启动的容器名
+- workdir: /workspace
+- pre_exec: source /opt/ros/humble/setup.bash
+```
+
+或一键生成（追加到现有 CLAUDE.md）：
+```bash
+python3 tools/project_contract.py init --target claude-md --language cpp --frameworks ros2
+# 然后手动改 ros2_distro / cuda_arch / 容器名等以匹配实际环境
+```
+
+**Step 2 — 一键完成 idea → submission**：
+
+```bash
+# 走主流程，全自动
+/idea-discovery --domain "loop closure reliability in dynamic scenes"
+/research-lit   --focus "recent VI-SLAM + learned-descriptor closures 2024-2026"
+/experiment-plan — domain: cpp-generic
+/run-experiment              # Step 0 polyglot 派发——按 CLAUDE.md 走 colcon build + 测试
+
+# 论文 + 一键 submission 审计
+/paper-writing — effort: max, assurance: submission — venue: IROS
+# Phase 6 在 frameworks 含 ros2 时自动 fan-out 到：
+#   /ros2-build, /ros2-launch-test, /ros2-realtime-audit
+# + 通用三件套 /proof-checker /paper-claim-audit /citation-audit
+# 然后 bash tools/verify_paper_audits.sh paper/ --assurance submission
+# 全部 PASS / NOT_APPLICABLE → submission-ready
+```
+
+工作流里**没有一步**需要 ARIS 知道你的 ROS2 发行版、编译器版本、或 GPU 架构——版本字段全部在 CLAUDE.md 里由用户声明，skill 从中读取。ML 用户完全不受影响：没有 `## Project` 段时自动检测 → `language: python`，走原 PyTorch/W&B/vast.ai 路径。
+
+### 端到端示例 2：LLM 推理优化 → MLSys / ASPLOS 投稿
+
+C++/CUDA 栈的研究项目（llama.cpp 分叉、自定义 attention kernel、量化方案），重点在 throughput / latency / memory-footprint 提升：
+
+```markdown
+## Project
+- language: cpp
+- venue_family: gpu
+- frameworks: cuda, cudnn
+- build_system: cmake
+- cuda_arch: sm_89           # 比如 RTX 4090；按你的卡填 sm_75/sm_80/sm_86/sm_90
+- bench_harness: cuda-eventtimer
+- sanitizers_cpu: address, undefined
+- sanitizers_gpu: memcheck, racecheck
+- profile_gpu_tool: nsight-compute
+
+## Container                 # 视需要——若本地已装 CUDA 工具链可省
+- runtime: docker
+- name: my-cuda-dev
+- pre_exec: export PATH=/usr/local/cuda/bin:$PATH
+```
+
+```bash
+/run-experiment
+/paper-writing — effort: max, assurance: submission — venue: MLSys
+# 自动 fan-out：cuda-build, cuda-sanitize, cuda-profile, cuda-correctness-audit
+# /paper-claim-audit Phase C.6 核对 "2.3× throughput, occupancy 87%" 等声明
+```
+
+### 端到端示例 3：感知 / 计算机视觉 → CVPR / ECCV
+
+传统 C++ 感知 pipeline（OpenCV + PCL + 自定义 CUDA ops），评估在 KITTI / Waymo 上：
+
+```markdown
+## Project
+- language: cpp
+- venue_family: graphics
+- frameworks: cuda
+- build_system: cmake
+- cuda_arch: sm_86
+- sanitizers_cpu: address, undefined
+- sanitizers_gpu: memcheck, racecheck
+```
+
+```bash
+/paper-writing — venue: CVPR, assurance: submission
+# 自动 fan-out：cpp-build, cpp-sanitize, cpp-bench + cuda-build, cuda-sanitize, cuda-correctness-audit
+```
+
+三个示例共用一条流水线，差别只在 CLAUDE.md `## Project` 段的 `frameworks` 和 `venue_family`。ARIS 不预设你的研究题目——**你的项目长什么样，workflow 就怎么配合**。一键启动跟之前 ML 工作流完全一致：`/research-pipeline` 或 `/paper-writing` 即可。
+
+### 对 ML 用户的影响
+
+**零。** `.aris/project.yaml` 和 `.aris/container.yaml` 都是可选的；缺省时 `project_contract.py` 自动检测（pyproject.toml / requirements.txt → python），继承原有 PyTorch/WandB/vast.ai 工作流；`run-experiment` 的 Step 0 只在 `language ≠ python` 时才走 polyglot 分支。
 
 ## 许可证与引用
 

@@ -117,3 +117,31 @@ Before running anything, CC checks:
 - Component ablations (remove/replace) take priority over hyperparameter sweeps.
 - Do not generate ablations for components identical to the baseline (no-op ablations).
 - Record all ablation results in EXPERIMENT_LOG.md, including negative results (component removal had no effect = important finding).
+
+## Domain mode templates (v2.2+)
+
+When `.aris/project.yaml` declares `language: cpp` or `frameworks: [ros2, cuda, ...]`, use these templates instead of the ML-centric component-removal flow. The mode names describe the *code shape* to ablate — independent of the specific research topic:
+
+### `— mode: cpp-generic`
+Covers any empirical C++ research project (SLAM, perception, NLP/LLM serving, graphics, HPC kernel, database engine, compiler pass, etc.):
+- **Compiler flag sweep**: `-O0 / -O1 / -O2 / -O3 / -Ofast`, `-march=native` on/off, `-funroll-loops` on/off, `-flto` on/off. Report runtime + binary size.
+- **Data-structure swap** (when applicable): `std::unordered_map` vs `absl::flat_hash_map` vs `boost::multi_index` vs `btree::map`. Same API contract, different micro-arch behavior.
+- **Algorithm / module variant**: e.g. ORB vs SIFT vs learned features (SLAM); greedy vs beam vs speculative decoding (LLM); direct vs iterative solver (HPC); different loss weights / data augmentation (CV).
+- **Output**: per-ablation `BENCHMARK_RESULT.json` + aggregate table with CV + significance.
+
+Legacy alias `— mode: cpp-algo` is interpreted as `cpp-generic`.
+
+### `— mode: ros2`
+- **QoS profile**: RELIABLE + KEEP_LAST(10) vs BEST_EFFORT + KEEP_LAST(5) vs SYSTEM_DEFAULT; verify whether claim holds under each.
+- **Callback group**: MutuallyExclusive vs Reentrant; for real-time, observe priority-inversion signatures.
+- **Executor variant**: SingleThreadedExecutor vs MultiThreadedExecutor vs EventsExecutor; measure latency distribution.
+- **DDS middleware**: Fast-DDS vs Cyclone vs Connext (if installed). Disclose DDS-specific tunings.
+- **Output**: per-ablation `ROS2_LAUNCH_TEST_AUDIT.json` + `ROS2_REALTIME_AUDIT.json`; compare p99 latency across variants.
+
+### `— mode: cuda`
+- **Block-size sweep**: 64 / 128 / 256 / 512 / 1024 threads per block; measure occupancy + kernel time.
+- **Memory layout**: AoS vs SoA; coalesced vs strided access pattern.
+- **Shared memory strategy**: global-only vs shared-tiled vs register-tiled; report L2 hit rate.
+- **Warp primitives**: `__shfl_down_sync` vs shared-memory reduction; report warp efficiency.
+- **Tensor core usage**: FP32 vs FP16-tensor-cores vs BF16-tensor-cores; pair with `/cuda-correctness-audit` to verify precision claims hold.
+- **Output**: per-ablation `CUDA_PROFILE_REPORT.json` + roofline-placement comparison.

@@ -476,9 +476,25 @@ Every fresh run uses a new `codex exec` session. During multi-round iteration wi
 
 This skill never blocks by itself; `paper-writing` Phase 6 plus `tools/verify_paper_audits.sh` decide whether the verdict blocks finalization based on the `assurance` level. The `PROOF_AUDIT.md` human-readable report remains, side-by-side with the JSON artifact.
 
+## Algorithm-Proof Taxonomy Extension (v2.2+)
+
+When the paper's `venue_family ∈ {theory, pl, systems, hpc}` or `language: cpp`, add six algorithm-specific proof categories to the reviewer checklist alongside the existing math-proof categories:
+
+1. **Amortized analysis** — accounting method (credit invariant maintained? Debt settled?) or potential method (Φ is non-negative, starts at 0, bounds the amortized cost?). Flag if the analysis only shows single-operation cost without framing amortized.
+2. **Loop invariants** — initialization, maintenance, termination. Each must be proven separately or obviously true.
+3. **Recurrence solutions** — Master Theorem applicability (all three cases), Akra-Bazzi generalization, unrolling with telescoping. Flag if the recurrence is asserted to solve without showing the base case.
+4. **Adversarial arguments (lower bounds)** — for claimed optimality, the adversary must be explicit: input distribution, information-theoretic accounting, and a matching upper bound cited.
+5. **Entropy / information-theoretic lower bounds** — counting / decision-tree / comparison-based arguments. Flag if counting is tacit.
+6. **Cache-oblivious / external-memory analysis** — I/O complexity with tall-cache assumption disclosed, block size B and memory M parameters tracked separately.
+
+Reason codes for algorithm-proof issues: `amortized_credit_mismatch`, `loop_invariant_termination_missing`, `recurrence_base_case_absent`, `adversary_not_explicit`, `counting_tacit`, `tall_cache_unstated`.
+
+Papers at `assurance: submission` with `venue_family: theory` must have PROOF_AUDIT verdict = PASS (not just WARN) on every theorem; `/complexity-claim-audit` runs in parallel to audit the asymptotic symbols themselves.
+
 ## See Also
 
 - `/paper-claim-audit` — sibling skill for numerical claims
 - `/citation-audit` — sibling skill for bibliographic integrity
+- `/complexity-claim-audit` — sibling skill for asymptotic bounds (v2.2+)
 - `shared-references/assurance-contract.md` — 6-verdict state machine + artifact schema
 - `shared-references/integration-contract.md` — architectural contract for cross-skill integration

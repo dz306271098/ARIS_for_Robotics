@@ -363,14 +363,74 @@ The skill emits `paper/CITATION_AUDIT.json` (machine-readable, per `shared-refer
 
 ```
 📋 Submission audits required before Final Report (at assurance: submission):
+
+  Always-on:
    [ ] 1. /proof-checker     → paper/PROOF_AUDIT.json
    [ ] 2. /paper-claim-audit → paper/PAPER_CLAIM_AUDIT.json
    [ ] 3. /citation-audit    → paper/CITATION_AUDIT.json
-   [ ] 4. bash tools/verify_paper_audits.sh paper/ --assurance submission
-   [ ] 5. Block Final Report iff verifier exit code != 0
+
+  Auto-fan-out per project contract (v2.2+ — only when frameworks declared):
+   [ ] 4. If language=cpp        → /cpp-build, /cpp-sanitize, /cpp-bench
+   [ ] 5. If frameworks: cuda    → /cuda-build, /cuda-sanitize, /cuda-profile, /cuda-correctness-audit
+   [ ] 6. If frameworks: ros2    → /ros2-build, /ros2-launch-test, /ros2-realtime-audit
+   [ ] 7. If frameworks: tensorrt → /tensorrt-engine-audit
+   [ ] 8. If asymptotic claims present (\mathcal{O} / \Theta / \Omega) → /complexity-claim-audit
+
+  Verifier:
+   [ ] 9.  bash tools/verify_paper_audits.sh paper/ --assurance submission
+   [ ] 10. Block Final Report iff verifier exit code != 0
 ```
 
-All three audits follow the "always emit, never block" contract (`shared-references/assurance-contract.md`). They write JSON artifacts at `paper/*_AUDIT.json`; the parent (this phase) decides blocking via the verifier.
+All audits follow the "always emit, never block" contract (`shared-references/assurance-contract.md`). They write JSON artifacts at `paper/*_AUDIT.json`; the parent (this phase) decides blocking via the verifier.
+
+**Step 6.-1 — Auto-fan-out (v2.2+, before invoking the verifier at submission)**:
+
+When `assurance: submission`, **before** running `verify_paper_audits.sh`, fan out to the domain-specific audit skills based on the project contract. This makes `/paper-writing — assurance: submission` a true one-click submission gate — the user does not have to remember to call each `/cpp-*` / `/ros2-*` / `/cuda-*` skill manually.
+
+```bash
+# Read the project contract (CLAUDE.md > .aris/project.yaml > auto-detect)
+LANG=$(python3 tools/project_contract.py get-language)
+FRAMEWORKS=$(python3 tools/project_contract.py get-frameworks)
+
+# Always — domain-agnostic core (already documented in Phases 4.5 / 4.7 / 5.5 / 5.7)
+# /proof-checker /paper-claim-audit /citation-audit
+
+# C++ project audits (when language=cpp)
+if [[ "$LANG" == "cpp" ]]; then
+  /cpp-build       # → BUILD_ARTIFACT.json
+  /cpp-sanitize    # → SANITIZER_AUDIT.json (blocks on findings)
+  /cpp-bench       # → BENCHMARK_RESULT.json (CV stability gate)
+fi
+
+# CUDA project audits (when frameworks contains cuda)
+if echo " $FRAMEWORKS " | grep -q " cuda "; then
+  /cuda-build              # → CUDA_BUILD_ARTIFACT.json
+  /cuda-sanitize           # → CUDA_SANITIZER_AUDIT.json (blocks on race/oob)
+  /cuda-profile            # → CUDA_PROFILE_REPORT.json (occupancy / DRAM throughput evidence)
+  /cuda-correctness-audit  # → CUDA_CORRECTNESS_AUDIT.json (GPU vs CPU equivalence)
+fi
+
+# ROS2 project audits (when frameworks contains ros2)
+if echo " $FRAMEWORKS " | grep -q " ros2 "; then
+  /ros2-build              # → ROS2_BUILD_ARTIFACT.json
+  /ros2-launch-test        # → ROS2_LAUNCH_TEST_AUDIT.json (QoS / TF / discovery)
+  /ros2-realtime-audit     # → ROS2_REALTIME_AUDIT.json (p99 latency / control-loop freq)
+fi
+
+# TensorRT engine audit (when frameworks contains tensorrt)
+if echo " $FRAMEWORKS " | grep -q " tensorrt "; then
+  /tensorrt-engine-audit   # → TRT_ENGINE_AUDIT.json
+fi
+
+# Complexity-claim audit — opt-in, only fires if the paper has \mathcal{O} / \Theta / \Omega
+if grep -qE '\\\\(mathcal\\{O\\}|Theta|Omega)|O\\(' paper/sections/*.tex paper/main.tex 2>/dev/null; then
+  /complexity-claim-audit  # → COMPLEXITY_AUDIT.json
+fi
+```
+
+Skip Step 6.-1 entirely when `assurance: draft` — the user can opt in to any individual audit at draft level but the executor does not auto-fan-out.
+
+Each fan-out call follows the existing per-finding verification + dispute protocol (see `shared-references/codex-context-integrity.md`); a `FAIL` verdict from any audit is surfaced and disputed once before being treated as a blocker.
 
 **Step 6.0 — Invoke the verifier**:
 

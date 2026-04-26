@@ -83,18 +83,32 @@ git clone <BASE_REPO> base_repo/
 # Implement experiments by modifying/extending this codebase
 ```
 
+### Phase 2.0: Polyglot dispatch (consult project contract)
+
+Before writing any code, read `tools/project_contract.py get-language` and `get-frameworks`. The kind of code to scaffold differs per project shape:
+
+| Contract | What to scaffold |
+|---|---|
+| `language: python` (default) | Training scripts (PyTorch / JAX / sklearn) + W&B logging — the existing flow below. |
+| `language: cpp`, no `frameworks` | C++ test/bench main() with Google Benchmark or Catch2 + CLI argparse (`cxxopts`/`CLI11`); JSON output via nlohmann/json. Gate behind CMakeLists target. |
+| `frameworks` includes `ros2` | ROS2 node + launch file + `launch_testing` harness; `colcon test` integration; rosbag fixture for replay. |
+| `frameworks` includes `cuda` | CUDA `.cu` kernel + CPU reference + numerical-equivalence test; nvcc CMake target with `-arch=$(cuda_arch)` from contract; `compute-sanitizer` smoke run scaffolded. |
+| `frameworks` includes `tensorrt` | ONNX → TRT engine builder + accuracy-drop evaluation script. |
+
+Skip W&B scaffolding entirely when `language ≠ python`. Domain artifacts (`BENCHMARK_RESULT.json`, `ROS2_LAUNCH_TEST_AUDIT.json`, `CUDA_PROFILE_REPORT.json`, etc.) play the same role: they're the structured-output artifact that downstream `/result-to-claim` consumes.
+
 For each milestone (in order), write the experiment scripts:
 
 1. **Check existing code** — scan the project (or cloned `base_repo/`) for existing experiment scripts, model code, data loaders. Reuse as much as possible.
 
-2. **Implement missing pieces:**
+2. **Implement missing pieces** (Python ML default; for cpp/ros2/cuda projects substitute the equivalents from the table above):
    - Training scripts with proper argparse (all hyperparameters configurable)
    - Evaluation scripts computing the specified metrics
    - Data loading / preprocessing if needed
    - Baseline implementations if not already present
    - Fixed random seeds for reproducibility
    - Results saved to JSON/CSV for later analysis
-   - Proper logging (wandb if configured in CLAUDE.md)
+   - Proper logging (wandb if configured in CLAUDE.md, OR domain audit JSONs for non-Python projects)
 
 3. **Follow the plan's run order** — implement sanity-stage experiments first, then baselines, then main method, then ablations.
 

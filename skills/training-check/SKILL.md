@@ -1,13 +1,27 @@
 ---
 name: training-check
-description: Periodically check WandB metrics during training to catch problems early (NaN, loss divergence, idle GPUs). Avoids wasting GPU hours on broken runs. Use when training is running and you want automated health checks.
-argument-hint: [wandb-run-path]
+description: Periodically check experiment health metrics to catch problems early (NaN, loss divergence, idle GPUs for ML; runtime regressions, memory leaks for C++/CUDA; real-time deadline misses for ROS2). Avoids wasting compute on broken runs. Use when an experiment is running and you want automated health checks.
+argument-hint: [wandb-run-path | .aris/project.yaml]
 allowed-tools: Bash(*), Read, Grep, Glob, Write, Edit, Bash(codex*), Skill(codex:rescue), Skill(codex:adversarial-review)
 ---
 
-# Training Check
+# Training / Experiment Health Check
 
-Periodically read WandB metrics during training to catch problems early. Do not wait until training finishes to discover it was a waste of GPU time.
+Periodically read experiment metrics to catch problems early. Do not wait until the run finishes to discover it was a waste of compute time.
+
+## Domain dispatch (polyglot)
+
+Consult `tools/project_contract.py` before selecting metric sources:
+
+- `language: python` (default, ML workflows) → WandB history or training log (existing behavior, Steps 1–6 below)
+- `language: cpp` or `frameworks` includes `ros2` / `cuda` → read artifacts instead:
+  - C++: `BENCHMARK_RESULT.json` (throughput / wall_time CV) + `SANITIZER_AUDIT.json` (any runtime UB / leak)
+  - ROS2: `ROS2_REALTIME_AUDIT.json` (control-loop freq, p99 latency) + `ROS2_LAUNCH_TEST_AUDIT.json` (node liveness)
+  - CUDA: `CUDA_PROFILE_REPORT.json` (occupancy / throughput) + `CUDA_SANITIZER_AUDIT.json` (runtime race / oob)
+  - "Clearly bad" in the polyglot mode: non-clean sanitizer run, occupancy drop > 20% from baseline, p99 latency exceeds deadline, benchmark CV > 10%.
+  - "Clearly fine" in the polyglot mode: all audits PASS/NOT_APPLICABLE, benchmark median within 5% of baseline, sanitizer reports empty.
+
+The judgment → Codex dispatch → action flow (Steps 2–6 below) applies identically; only the metric source changes.
 
 ## Context: $ARGUMENTS
 

@@ -101,3 +101,16 @@ List every file that was modified or created for profiling purposes:
 
 This allows the user to review and revert all instrumentation changes.
 Offer to clean up (remove all instrumentation) when the user is done.
+
+## CUDA profile dispatch (v2.2+)
+
+When `.aris/project.yaml` has `frameworks` including `cuda`, delegate GPU-side profiling to `/cuda-profile` rather than host-side `perf` / `valgrind`:
+
+```bash
+FRAMEWORKS=$(python3 tools/project_contract.py get-frameworks)
+if echo "$FRAMEWORKS" | grep -qw cuda; then
+  /cuda-profile                 # produces CUDA_PROFILE_REPORT.json
+fi
+```
+
+Host-side `perf` still runs for the non-kernel (host-code) portions when requested, but the kernel-level timing + occupancy + warp efficiency come from `ncu` / `nsys` inside the container. Do NOT run `perf` with sudo inside the container for CUDA kernels — the kernel-mode counters don't see GPU events. The dispatch boundary is: host-code overhead → perf; kernel internals → cuda-profile.

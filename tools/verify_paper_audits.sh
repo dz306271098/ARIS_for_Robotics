@@ -38,6 +38,23 @@ MANDATORY_AUDITS=(
     "PAPER_CLAIM_AUDIT.json|paper-claim-audit"
     "CITATION_AUDIT.json|citation-audit"
 )
+
+# Domain-specific audits — appended to MANDATORY_AUDITS when
+# .aris/project.yaml indicates the matching language/framework.
+# Format: "<artifact>|<skill>|<condition>"
+#   condition: lang=cpp | framework=ros2 | framework=cuda | framework=tensorrt
+DOMAIN_AUDITS=(
+    "COMPLEXITY_AUDIT.json|complexity-claim-audit|lang=cpp"
+    "SANITIZER_AUDIT.json|cpp-sanitize|lang=cpp"
+    "BENCHMARK_RESULT.json|cpp-bench|lang=cpp"
+    "ROS2_LAUNCH_TEST_AUDIT.json|ros2-launch-test|framework=ros2"
+    "ROS2_REALTIME_AUDIT.json|ros2-realtime-audit|framework=ros2"
+    "CUDA_SANITIZER_AUDIT.json|cuda-sanitize|framework=cuda"
+    "CUDA_PROFILE_REPORT.json|cuda-profile|framework=cuda"
+    "CUDA_CORRECTNESS_AUDIT.json|cuda-correctness-audit|framework=cuda"
+    "TRT_ENGINE_AUDIT.json|tensorrt-engine-audit|framework=tensorrt"
+)
+
 ALLOWED_VERDICTS=("PASS" "WARN" "FAIL" "NOT_APPLICABLE" "BLOCKED" "ERROR")
 SUBMISSION_BLOCKING=("FAIL" "BLOCKED" "ERROR")
 REQUIRED_FIELDS=(
@@ -83,6 +100,41 @@ esac
 
 [[ -n "$JSON_OUT" ]] || JSON_OUT="$PAPER_DIR/.aris/audit-verifier-report.json"
 mkdir -p "$(dirname "$JSON_OUT")"
+
+# ─── Domain audit expansion (v2.2+) ───────────────────────────────────────────
+# If .aris/project.yaml exists at paper root OR repo root, append the
+# per-domain audits that match the declared language/frameworks.
+PROJECT_YAML=""
+for candidate in "$PAPER_DIR/.aris/project.yaml" "$PAPER_DIR/../.aris/project.yaml" "$(pwd)/.aris/project.yaml"; do
+    if [[ -f "$candidate" ]]; then PROJECT_YAML="$candidate"; break; fi
+done
+
+PROJECT_LANG=""
+PROJECT_FRAMEWORKS=""
+if [[ -n "$PROJECT_YAML" ]]; then
+    # Use the canonical helper if available
+    if [[ -f "$(dirname "$0")/project_contract.py" ]]; then
+        PROJECT_LANG="$(python3 "$(dirname "$0")/project_contract.py" --root "$(dirname "$(dirname "$PROJECT_YAML")")" get-language 2>/dev/null || true)"
+        PROJECT_FRAMEWORKS="$(python3 "$(dirname "$0")/project_contract.py" --root "$(dirname "$(dirname "$PROJECT_YAML")")" get-frameworks 2>/dev/null || true)"
+    fi
+fi
+
+for entry in "${DOMAIN_AUDITS[@]}"; do
+    artifact="${entry%%|*}"
+    rest="${entry#*|}"
+    skill="${rest%%|*}"
+    cond="${rest##*|}"
+    apply=0
+    case "$cond" in
+        lang=cpp) [[ "$PROJECT_LANG" == "cpp" ]] && apply=1 ;;
+        framework=ros2) echo " $PROJECT_FRAMEWORKS " | grep -q " ros2 " && apply=1 ;;
+        framework=cuda) echo " $PROJECT_FRAMEWORKS " | grep -q " cuda " && apply=1 ;;
+        framework=tensorrt) echo " $PROJECT_FRAMEWORKS " | grep -q " tensorrt " && apply=1 ;;
+    esac
+    if (( apply )); then
+        MANDATORY_AUDITS+=("$artifact|$skill")
+    fi
+done
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 SHA256() {
